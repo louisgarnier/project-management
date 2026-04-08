@@ -34,6 +34,7 @@
 - **NG5:** No mobile app — web only
 - **NG6:** No export, sharing, or PDF generation in v1
 - **NG7:** No Supabase Storage — all file storage excluded; transcripts stored as text in DB
+- **NG8:** No artifact re-generation — user edits or pastes content directly; no re-run of Claude on existing artifacts
 
 ---
 
@@ -64,7 +65,7 @@
 | ID | Story | Notes |
 |---|---|---|
 | US-20 | Per-project prompt overrides | Different prompts per client engagement |
-| US-21 | Re-generate individual artifact | Retry with same or edited prompt |
+| US-21 | Re-generate individual artifact | Removed — edit/paste is sufficient |
 | US-22 | Export call summary as markdown/PDF | Defer to v2 |
 | US-23 | Archive / close a project | Defer to v2 |
 
@@ -75,9 +76,9 @@
 - **FR-01:** The system shall allow creation, viewing, and deletion of projects
 - **FR-02:** The system shall accept a .txt file upload to create a call record and store transcript text in the database
 - **FR-03:** The system shall display call cards in a 4-column kanban: Get Transcript · Artifacts · Topics · Done
-- **FR-04:** The system shall allow the user to select artifact types before generating; default types are pre-checked
+- **FR-04:** The system shall seed 6 global default artifact types at app launch, all pre-checked by default: (1) Executive Summary, (2) Next Steps / Action Items, (3) Questions for Stakeholders, (4) Email Summary (1-pager), (5) Email Follow-up (pre-next-call), (6) Next Call Meeting Invite Topics. User can deselect any before generating.
 - **FR-05:** The system shall generate all selected artifacts simultaneously via Claude API, streaming per-artifact status to the frontend via SSE
-- **FR-06:** The system shall allow the user to edit artifact content inline and mark each as Done
+- **FR-06:** The system shall allow the user to edit artifact content inline (or paste in externally generated content) and mark each as Done
 - **FR-07:** The system shall block advancement from the Artifacts stage until all selected artifacts are marked Done
 - **FR-08:** The system shall extract topics via Claude API after the Artifacts stage is complete
 - **FR-09:** On the first call of a project, the system shall extract topics fresh; on subsequent calls, it shall check existing topics for updates and surface new ones
@@ -155,10 +156,10 @@
 
 | # | Question | Owner | Deadline | Answer |
 |---|---|---|---|---|
-| Q1 | Which Claude model for artifact generation and topic extraction? (recommendation: claude-sonnet-4-6) | Louis | Before architecture | |
-| Q2 | Should default artifact types be seeded globally at app launch, or per-project on first creation? | Louis | Before architecture | |
-| Q3 | Should the user be able to re-generate an artifact (retry with same/edited prompt), or only edit manually? | Louis | Before architecture | |
-| Q4 | What is the expected call naming convention — user-defined title, or auto-named from date/filename? | Louis | Before architecture | |
+| Q1 | Which Claude model for artifact generation and topic extraction? | Louis | Before architecture | `claude-sonnet-4-6` for both |
+| Q2 | Default artifact types — global or per-project? | Louis | Before architecture | 6 global defaults seeded at app launch (see FR-04) |
+| Q3 | Re-generate artifact or edit-only? | Louis | Before architecture | Edit-only — user can also paste in externally generated content |
+| Q4 | Call naming convention | Louis | Before architecture | User-defined title — typically the date of the call |
 
 ---
 
