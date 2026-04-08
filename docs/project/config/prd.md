@@ -1,5 +1,5 @@
 # PRD — Call Tracker
-> **Status:** `[ ] Draft` → `[ ] Reviewed` → `[ ] Locked`
+> **Status:** `[ ] Draft` → `[ ] Reviewed` → `[x] Locked — 2026-04-08`
 > ⚠️ Once LOCKED, changes require a dated amendment at the bottom.
 
 ---
