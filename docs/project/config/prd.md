@@ -56,7 +56,7 @@
 
 | ID | Story | Acceptance Criteria |
 |---|---|---|
-| US-10 | As a user, I want to see the Topic Dashboard for a project so that I get a bird's-eye view of all themes across calls | - [ ] Dedicated tab at project level <br>- [ ] Each topic shows: first raised (which call), latest status/update, open follow-up items <br>- [ ] Can expand a topic to see its per-call history |
+| US-10 | As a user, I want two project-level views — Kanban and Topic Dashboard — so that I can track both call progress and evolving themes | - [ ] **Kanban view:** all calls as cards (in-progress and historical); clicking any Done call shows its artifacts read-only <br>- [ ] **Topic Dashboard view:** aggregated topics across all calls — each topic shows first raised (call), latest update, open follow-up items, per-call history <br>- [ ] Each topic has a status: `Active` · `Decision Made` · `On Hold` · `Closed` <br>- [ ] User can manually add new topics at any time <br>- [ ] User can remove topics <br>- [ ] User can edit topic content, status, and follow-up items |
 | US-11 | As a user, I want to edit artifact type prompts so that the AI output matches my specific needs | - [ ] Can view the prompt behind each artifact type <br>- [ ] Can edit the prompt inline <br>- [ ] Edited prompt is used on the next generation <br>- [ ] Original prompt snapshot is preserved on already-generated artifacts |
 | US-12 | As a user, I want to create new artifact types so that I can extend the system for different call types | - [ ] Can add a new artifact type with a name and prompt <br>- [ ] New type appears in the artifact selector for future calls |
 
@@ -84,7 +84,8 @@
 - **FR-09:** On the first call of a project, the system shall extract topics fresh; on subsequent calls, it shall use the validated topics from the previous call as context, check for updates, and surface new ones
 - **FR-09b:** The system shall enforce sequential call completion — only one call per project may be active (not Done) at a time. The "New Call" button is disabled until the current call reaches Done. This is required to preserve topic chain integrity across calls.
 - **FR-10:** The system shall require topic validation before a call card moves to Done
-- **FR-11:** The system shall aggregate all validated topics into a project-level Topic Dashboard, showing first raised, latest update, and open follow-up items per topic
+- **FR-11:** The system shall aggregate all topics into a project-level Topic Dashboard showing: first raised (call), latest update, open follow-up items, per-call history, and status (`Active` · `Decision Made` · `On Hold` · `Closed`)
+- **FR-11b:** The user shall be able to manually add, remove, and edit topics at any time from the Topic Dashboard — not only during the Topics kanban stage
 - **FR-12:** The system shall allow the user to add, edit, and delete artifact types and their associated prompts
 - **FR-13:** The system shall store the exact prompt used at generation time on each artifact record (immutable — changes to prompts do not alter past artifacts)
 - **FR-14:** The system shall log all errors and surface user-friendly messages — no raw stack traces in the UI
