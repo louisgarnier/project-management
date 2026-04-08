@@ -74,7 +74,9 @@
 ## 4. Functional Requirements
 
 - **FR-01:** The system shall allow creation, viewing, and deletion of projects
-- **FR-02:** The system shall accept either an MP3 or .txt file to create a call record. If MP3: a local FastAPI endpoint (running on the user's machine) transcribes it using Whisper + pyannote and stores the resulting transcript. If .txt: transcript is stored directly. Both paths store transcript text in Supabase and advance the card.
+- **FR-02:** The system shall accept either an MP3 or .txt file to create a call record. If MP3: a local FastAPI endpoint (running on the user's machine) transcribes it using Whisper + pyannote (replicating `transcribe_watcher.py` 100%) and stores the resulting transcript. If .txt: transcript is stored directly. Both paths store transcript text in Supabase and advance the card.
+- **FR-02b:** The app shall display a persistent status badge on every page showing local transcription server status (`Online ✅` / `Offline ⚠️`). The frontend pings a health check endpoint on `localhost` every 30 seconds to detect status and updates the badge automatically.
+- **FR-02c:** If the user attempts to upload an MP3 while the local server is offline, the app shall show a modal with exact steps to start it: (1) open terminal, (2) navigate to the Call Tracker local folder, (3) run `./run_transcription.sh`. The modal dismisses automatically once the server comes online.
 - **FR-03:** The system shall display call cards in a 4-column kanban: Get Transcript · Artifacts · Topics · Done
 - **FR-04:** The system shall seed 6 global default artifact types at app launch: (1) Executive Summary, (2) Next Steps / Action Items, (3) Questions for Stakeholders, (4) Email Summary (1-pager), (5) Email Follow-up (pre-next-call), (6) Next Call Meeting Invite Topics. For each call, the user sets each artifact to: Generate via Claude · Manual · Excluded.
 - **FR-05:** The system shall generate all "Generate via Claude" artifacts simultaneously via Claude API, streaming per-artifact status to the frontend via SSE. Manual artifacts skip the API and present an empty editable field immediately.
@@ -147,7 +149,7 @@
 
 - Solo-use only — no authentication, no multi-user, no row-level security required
 - MP3 transcription runs on a local FastAPI endpoint (user's machine) — MP3 never sent to Railway
-- Transcription requires Whisper + pyannote models installed locally (same stack as existing `transcribe_watcher.py`)
+- Transcription requires Whisper + pyannote models installed locally (same stack as `transcribe_watcher.py`) — a `run_transcription.sh` script starts the local FastAPI server
 - No Supabase Storage — all data in PostgreSQL as text/JSON
 - Claude API rate limits must be respected — implement basic retry with backoff on 429s
 - Next.js deployed to Vercel; FastAPI deployed to Railway — no self-hosted infra
