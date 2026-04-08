@@ -50,7 +50,7 @@
 | US-04 | As a user, I want Claude-selected artifacts to generate simultaneously so that I don't wait sequentially | - [ ] Only artifacts set to "Generate via Claude" trigger API calls <br>- [ ] All Claude artifacts start generating at the same time <br>- [ ] Each artifact shows its own progress status (pending / generating / done / error) via SSE <br>- [ ] Manual artifacts show an empty editable field immediately <br>- [ ] Partial success is visible — one failure does not block others |
 | US-05 | As a user, I want to review, edit, and mark each artifact as done so that I validate output before moving on | - [ ] Each artifact is editable inline (both Claude-generated and manual) <br>- [ ] Can paste content into manual artifacts <br>- [ ] Can mark individual artifacts as Done <br>- [ ] Call card cannot advance past Artifacts until all included artifacts are marked Done |
 | US-06 | As a user, I want extracted topics to be reviewed and validated before the call is marked Done so that the topic dashboard stays accurate | - [ ] Topics are extracted automatically after artifacts are done <br>- [ ] On Call 1: fresh extraction from transcript + artifacts <br>- [ ] On Call 2+: existing topics checked for updates, new ones surfaced <br>- [ ] User can add, edit, remove topics before confirming <br>- [ ] Call moves to Done only after topic validation |
-| US-07 | As a user, I want to see all calls as a kanban board so that I know where each call is in the pipeline | - [ ] Kanban columns: Get Transcript · Artifacts · Topics · Done <br>- [ ] Each call is a card with title and current stage <br>- [ ] Can open a card to see its detail view |
+| US-07 | As a user, I want to see all calls as a kanban board so that I know where each call is in the pipeline | - [ ] Kanban columns: Get Transcript · Artifacts · Topics · Done <br>- [ ] Each call is a card with title and current stage <br>- [ ] Can open a card to see its detail view <br>- [ ] Only one call can be active (not Done) per project at a time — "New Call" button is disabled until the current call reaches Done <br>- [ ] Enforced sequentially to preserve topic chain integrity |
 
 ### Should Have
 
@@ -81,7 +81,8 @@
 - **FR-06:** The system shall allow the user to edit artifact content inline (or paste in externally generated content) and mark each as Done
 - **FR-07:** The system shall block advancement from the Artifacts stage until all selected artifacts are marked Done
 - **FR-08:** The system shall extract topics via Claude API after the Artifacts stage is complete
-- **FR-09:** On the first call of a project, the system shall extract topics fresh; on subsequent calls, it shall check existing topics for updates and surface new ones
+- **FR-09:** On the first call of a project, the system shall extract topics fresh; on subsequent calls, it shall use the validated topics from the previous call as context, check for updates, and surface new ones
+- **FR-09b:** The system shall enforce sequential call completion — only one call per project may be active (not Done) at a time. The "New Call" button is disabled until the current call reaches Done. This is required to preserve topic chain integrity across calls.
 - **FR-10:** The system shall require topic validation before a call card moves to Done
 - **FR-11:** The system shall aggregate all validated topics into a project-level Topic Dashboard, showing first raised, latest update, and open follow-up items per topic
 - **FR-12:** The system shall allow the user to add, edit, and delete artifact types and their associated prompts
