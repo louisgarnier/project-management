@@ -45,7 +45,7 @@
 | ID | Story | Acceptance Criteria |
 |---|---|---|
 | US-01 | As a user, I want to create and manage projects so that I can track calls per client engagement | - [ ] Can create a project with a name and description <br>- [ ] Project appears in the project list <br>- [ ] Can open a project to see its kanban board |
-| US-02 | As a user, I want to drop a .txt transcript to create a call card so that I can start processing a call | - [ ] File picker or drag-and-drop accepts .txt files only <br>- [ ] Call card is created and placed in the first kanban column <br>- [ ] Transcript text is stored and visible |
+| US-02 | As a user, I want to load either an MP3 or a .txt to create a call card so that I can start processing a call | - [ ] File picker accepts .mp3 or .txt <br>- [ ] If MP3: local FastAPI endpoint runs Whisper + pyannote transcription, produces transcript, stores it — card advances automatically <br>- [ ] If .txt: transcript stored directly — card advances immediately <br>- [ ] Both paths produce the same result: transcript stored in Supabase, call card ready for Artifacts stage |
 | US-03 | As a user, I want to select which artifact types to generate for a call so that I only get what's relevant | - [ ] Default artifact types are pre-selected <br>- [ ] Can deselect/select artifact types before generating <br>- [ ] Selection is saved per call |
 | US-04 | As a user, I want all selected artifacts to generate simultaneously via Claude API so that I don't wait sequentially | - [ ] All artifacts start generating at the same time <br>- [ ] Each artifact shows its own progress status (pending / generating / done / error) via SSE <br>- [ ] Partial success is visible — one failure doesn't block others |
 | US-05 | As a user, I want to review, edit, and mark each artifact as done so that I validate AI output before moving on | - [ ] Each artifact is editable inline <br>- [ ] Can mark individual artifacts as Done <br>- [ ] Call card cannot advance past Artifacts until all selected artifacts are marked Done |
@@ -74,7 +74,7 @@
 ## 4. Functional Requirements
 
 - **FR-01:** The system shall allow creation, viewing, and deletion of projects
-- **FR-02:** The system shall accept a .txt file upload to create a call record and store transcript text in the database
+- **FR-02:** The system shall accept either an MP3 or .txt file to create a call record. If MP3: a local FastAPI endpoint (running on the user's machine) transcribes it using Whisper + pyannote and stores the resulting transcript. If .txt: transcript is stored directly. Both paths store transcript text in Supabase and advance the card.
 - **FR-03:** The system shall display call cards in a 4-column kanban: Get Transcript · Artifacts · Topics · Done
 - **FR-04:** The system shall seed 6 global default artifact types at app launch, all pre-checked by default: (1) Executive Summary, (2) Next Steps / Action Items, (3) Questions for Stakeholders, (4) Email Summary (1-pager), (5) Email Follow-up (pre-next-call), (6) Next Call Meeting Invite Topics. User can deselect any before generating.
 - **FR-05:** The system shall generate all selected artifacts simultaneously via Claude API, streaming per-artifact status to the frontend via SSE
@@ -127,7 +127,7 @@
 | Supabase (PostgreSQL) | Read/Write | Supabase Python client (FastAPI) + Supabase JS client (Next.js, read-only queries) | Service role key (.env) |
 | Vercel | Deploy | Git push (main branch) | Vercel account |
 | Railway | Deploy | Git push (main branch) | Railway account |
-| `transcribe_watcher.py` | External tool | Local filesystem (user's machine) | None — separate process |
+| Local FastAPI (transcription) | Outbound from browser | REST (`localhost`) | None — local only |
 
 ---
 
@@ -144,7 +144,8 @@
 ## 9. Constraints
 
 - Solo-use only — no authentication, no multi-user, no row-level security required
-- MP3 files must never be uploaded to the server — local reference (filename) only
+- MP3 transcription runs on a local FastAPI endpoint (user's machine) — MP3 never sent to Railway
+- Transcription requires Whisper + pyannote models installed locally (same stack as existing `transcribe_watcher.py`)
 - No Supabase Storage — all data in PostgreSQL as text/JSON
 - Claude API rate limits must be respected — implement basic retry with backoff on 429s
 - Next.js deployed to Vercel; FastAPI deployed to Railway — no self-hosted infra
