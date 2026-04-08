@@ -1,5 +1,5 @@
 # Architecture — Call Tracker
-> **Status:** `[ ] Draft` → `[ ] Reviewed` → `[ ] Locked`
+> **Status:** `[ ] Draft` → `[ ] Reviewed` → `[x] Locked — 2026-04-09`
 > ⚠️ Once LOCKED, changes require a new ADR entry in `workflow/ADR.md`.
 
 ---
