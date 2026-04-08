@@ -49,7 +49,7 @@
 | US-03 | As a user, I want to select which artifact types to include for a call and choose how each is generated so that I control token usage | - [ ] All 6 artifact types shown with two options each: "Generate via Claude" or "Manual" <br>- [ ] Can also deselect an artifact entirely (exclude it from this call) <br>- [ ] Selection and mode saved per call |
 | US-04 | As a user, I want Claude-selected artifacts to generate simultaneously so that I don't wait sequentially | - [ ] Only artifacts set to "Generate via Claude" trigger API calls <br>- [ ] All Claude artifacts start generating at the same time <br>- [ ] Each artifact shows its own progress status (pending / generating / done / error) via SSE <br>- [ ] Manual artifacts show an empty editable field immediately <br>- [ ] Partial success is visible — one failure does not block others |
 | US-05 | As a user, I want to review, edit, and mark each artifact as done so that I validate output before moving on | - [ ] Each artifact is editable inline (both Claude-generated and manual) <br>- [ ] Can paste content into manual artifacts <br>- [ ] Can mark individual artifacts as Done <br>- [ ] Call card cannot advance past Artifacts until all included artifacts are marked Done |
-| US-06 | As a user, I want extracted topics to be reviewed and validated before the call is marked Done so that the topic dashboard stays accurate | - [ ] Topics are extracted automatically after artifacts are done <br>- [ ] On Call 1: fresh extraction from transcript + artifacts <br>- [ ] On Call 2+: existing topics checked for updates, new ones surfaced <br>- [ ] User can add, edit, remove topics before confirming <br>- [ ] Call moves to Done only after topic validation |
+| US-06 | As a user, I want to control whether Claude extracts topics or I add them manually so that I decide before any API call is made | - [ ] Topics stage presents two options: "Extract via Claude" or "Manual" <br>- [ ] If Claude: API call runs, results shown for review/edit/add/remove <br>- [ ] If Manual: empty topic list, user adds topics themselves <br>- [ ] On Call 2+, Claude mode uses validated topics from previous call as context <br>- [ ] Call moves to Done only after topic validation |
 | US-07 | As a user, I want to see all calls as a kanban board so that I know where each call is in the pipeline | - [ ] Kanban columns: Get Transcript · Artifacts · Topics · Done <br>- [ ] Each call is a card with title and current stage <br>- [ ] Can open a card to see its detail view <br>- [ ] Only one call can be active (not Done) per project at a time — "New Call" button is disabled until the current call reaches Done <br>- [ ] Enforced sequentially to preserve topic chain integrity |
 
 ### Should Have
@@ -82,8 +82,8 @@
 - **FR-05:** The system shall generate all "Generate via Claude" artifacts simultaneously via Claude API, streaming per-artifact status to the frontend via SSE. Manual artifacts skip the API and present an empty editable field immediately.
 - **FR-06:** The system shall allow the user to edit artifact content inline (or paste in externally generated content) and mark each as Done
 - **FR-07:** The system shall block advancement from the Artifacts stage until all selected artifacts are marked Done
-- **FR-08:** The system shall extract topics via Claude API after the Artifacts stage is complete
-- **FR-09:** On the first call of a project, the system shall extract topics fresh; on subsequent calls, it shall use the validated topics from the previous call as context, check for updates, and surface new ones
+- **FR-08:** At the Topics stage, the user shall choose: "Extract via Claude" (triggers API call) or "Manual" (no API call, user adds topics themselves). No API call is made without explicit user choice.
+- **FR-09:** When "Extract via Claude" is chosen: on Call 1, topics are extracted fresh from transcript + artifacts; on Call 2+, validated topics from the previous call are passed as context and the system surfaces updates and new topics.
 - **FR-09b:** The system shall enforce sequential call completion — only one call per project may be active (not Done) at a time. The "New Call" button is disabled until the current call reaches Done. This is required to preserve topic chain integrity across calls.
 - **FR-10:** The system shall require topic validation before a call card moves to Done
 - **FR-11:** The system shall aggregate all topics into a project-level Topic Dashboard showing: first raised (call), latest update, open follow-up items, per-call history, and status (`Active` · `Decision Made` · `On Hold` · `Closed`)
@@ -104,6 +104,7 @@
 | NFR-04 | Security | Supabase connection strings and service role key stored in environment variables — never committed to source |
 | NFR-05 | Observability | All FastAPI requests and Claude API calls logged with timestamp, status, and duration |
 | NFR-06 | Availability | Cold starts on Railway/Vercel are acceptable — solo-use tool, no SLA required |
+| NFR-08 | User control | No API call (Claude or local transcription) shall be triggered without explicit user action — the user always chooses before the app calls any external service |
 | NFR-07 | Data integrity | Prompt snapshot stored immutably on each artifact — editing a prompt template never mutates past artifacts |
 
 ---
