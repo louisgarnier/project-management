@@ -29,7 +29,7 @@
 ### ❌ Non-Goals (Out of Scope — do NOT implement)
 - **NG1:** No authentication or user accounts — solo-use tool, no login required
 - **NG2:** No audio playback or processing inside the app — MP3 stays on local machine, never uploaded
-- **NG3:** No speech-to-text inside the app — the external `transcribe_watcher.py` tool handles this; app only accepts .txt
+- **NG3:** Transcription does NOT run on Railway — it runs on a local FastAPI endpoint on the user's machine only (Whisper + pyannote, replicating `/Users/louisgarnier/Claude/PM/transcribe_watcher.py` 100%)
 - **NG4:** No real-time collaboration or multi-user access
 - **NG5:** No mobile app — web only
 - **NG6:** No export, sharing, or PDF generation in v1
