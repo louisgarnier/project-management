@@ -3,7 +3,9 @@
 **Epic:** EPIC-3 — Kanban Board & Calls
 **Maps to plan:** Slice 3
 **Maps to PRD:** US-07, FR-03
-**Status:** `pending`
+**Status:** `in_progress`
+**Design spec:** `docs/project/config/2026-04-09-story-3.2-kanban-board-design.md`
+**Implementation plan:** `docs/project/config/2026-04-09-story-3.2-kanban-board-plan.md`
 
 ---
 
