@@ -41,7 +41,7 @@ export default function OfflineModal({ onDismiss }: Props) {
               Navigate to your Call Tracker folder:
               <br />
               <code className="font-mono text-[12px] bg-[#f4f5f7] px-1.5 py-0.5 rounded">
-                cd ~/Call\ Tracker
+                cd ~/Claude/Project\ management
               </code>
             </div>
           </div>
