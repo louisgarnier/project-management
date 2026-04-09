@@ -21,7 +21,6 @@ export async function GET(): Promise<NextResponse> {
   const healthy = await isHealthy();
 
   if (healthy) {
-    console.log(`${ts()} ✅ [LocalServer] Status: running`);
     return NextResponse.json({ running: true, starting: false });
   }
 

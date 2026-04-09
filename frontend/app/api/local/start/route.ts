@@ -34,5 +34,5 @@ export async function POST(): Promise<NextResponse> {
 
   setServerProcess(child);
   console.log(`${ts()} ✅ [LocalServer] Spawned (PID ${child.pid})`);
-  return NextResponse.json({ ok: true, pid: child.pid });
+  return NextResponse.json({ ok: true, ...(child.pid !== undefined && { pid: child.pid }) });
 }

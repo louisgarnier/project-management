@@ -10,7 +10,11 @@ export async function POST(): Promise<NextResponse> {
     return NextResponse.json({ ok: true, message: "Not running" });
   }
 
-  proc.kill("SIGTERM");
+  try {
+    proc.kill("SIGTERM");
+  } catch {
+    // Process already exited between check and kill — treat as stopped
+  }
   setServerProcess(null);
   console.log(`${ts()} 🛑 [LocalServer] Stopped`);
   return NextResponse.json({ ok: true });
