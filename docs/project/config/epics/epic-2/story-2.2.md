@@ -3,7 +3,7 @@
 **Epic:** EPIC-2 — Projects
 **Maps to plan:** Slice 2
 **Maps to PRD:** US-01
-**Status:** `pending`
+**Status:** `done`
 
 ---
 
@@ -19,11 +19,11 @@ The app opens to a project list. User can create a project and click into it. Te
 - [ ] Empty state: "No projects yet — create your first one" shown when list is empty
 
 ## Tasks
-- [ ] Create `frontend/app/page.tsx` — project list with fetch from `/api/proxy/projects`
-- [ ] Create `frontend/components/ProjectList.tsx` — renders list + empty state
-- [ ] Create `frontend/components/CreateProjectModal.tsx` — form with name + description
-- [ ] Create `frontend/app/projects/[id]/page.tsx` — placeholder showing project name
-- [ ] Wire logger calls: log API fetch start/success/error in components
+- [x] Create `frontend/app/page.tsx` — project list with fetch from `/api/proxy/projects`
+- [x] Create `frontend/components/ProjectList.tsx` — renders list + empty state
+- [x] Create `frontend/components/CreateProjectModal.tsx` — form with name + description
+- [x] Create `frontend/app/projects/[id]/page.tsx` — placeholder showing project name
+- [x] Wire logger calls: log API fetch start/success/error in components
 
 ## Dev Tests
 No automated frontend tests at this stage — verify manually:

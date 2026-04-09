@@ -1,7 +1,7 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-2 / Story 2.2 — Project List UI**
+**EPIC-3 / Story 3.1 — Calls API with Sequential Enforcement**
 - Status: not started
 - Blocked by: nothing
 
@@ -40,3 +40,19 @@
 - db_logger on every Supabase operation
 
 **Next session starts at:** EPIC-2 / Story 2.2 — Project List UI
+
+### 2026-04-09 — EPIC-2 / Story 2.2 — Project List UI
+**Completed:** Project list, create modal, project detail placeholder
+**Built:**
+- `frontend/app/page.tsx` — fetches projects, shows list + create button
+- `frontend/src/components/ProjectList.tsx` — list with empty state
+- `frontend/src/components/CreateProjectModal.tsx` — form (name + description)
+- `frontend/app/projects/[id]/page.tsx` — placeholder page
+- `frontend/src/api/client.ts` — added `projectsAPI` (list, create, delete)
+
+**Verification:**
+- ESLint: 0 errors
+- 13/13 backend tests still passing
+- Manual browser test required before EPIC-3
+
+**Next session starts at:** EPIC-3 / Story 3.1 — Calls API with Sequential Enforcement

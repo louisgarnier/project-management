@@ -1,13 +1,14 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-2 / Story 2.2 — Project List UI
-- **File:** `docs/project/config/epics/epic-2/story-2.2.md`
-- **Goal:** App opens to a project list. User can create a project and click into it. Testable in browser.
-- **Modules touched:** `frontend/app/page.tsx`, `frontend/components/ProjectList.tsx`, `frontend/components/CreateProjectModal.tsx`, `frontend/app/projects/[id]/page.tsx`
+- **Story:** EPIC-3 / Story 3.1 — Calls API with Sequential Enforcement
+- **File:** `docs/project/config/epics/epic-3/story-3.1.md`
+- **Goal:** FastAPI manages calls per project. Sequential enforcement: 409 if active call exists.
+- **Modules touched:** `backend/routers/calls.py`, `backend/main.py`, `backend/tests/test_calls.py`
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
 - [x] EPIC-1 / Story 1.2 — Logging Foundation — 2026-04-09
 - [x] EPIC-1 / Story 1.3 — Supabase Schema — 2026-04-09
 - [x] EPIC-2 / Story 2.1 — Projects API — 2026-04-09
+- [x] EPIC-2 / Story 2.2 — Project List UI — 2026-04-09

@@ -2,6 +2,8 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
+import type { Project } from "@/types";
+
 const PROXY_BASE = "/api/proxy";
 
 async function proxyFetch<T>(
@@ -30,4 +32,15 @@ export const healthAPI = {
   check: () => proxyFetch<{ status: string; db: string }>("/health"),
 };
 
-// Further API modules added per epic (projects, calls, artifacts, topics)
+export const projectsAPI = {
+  list: () => proxyFetch<Project[]>("/projects"),
+  create: (data: { name: string; description: string }) =>
+    proxyFetch<Project>("/projects", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    proxyFetch<void>(`/projects/${id}`, { method: "DELETE" }),
+};
+
+// Further API modules added per epic (calls, artifacts, topics)
