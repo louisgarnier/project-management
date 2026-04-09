@@ -60,7 +60,7 @@ The full project brainstorm, PRD, architecture, logging, and epic breakdown are 
 | `superpowers:systematic-debugging` | When a bug is encountered | — |
 | `superpowers:test-driven-development` | When writing code | — |
 | `superpowers:verification-before-completion` | Before closing a story | — |
-| `superpowers:brainstorming` | Only if design is explicitly rejected and needs rethinking from scratch | **Never** for a story/epic that already has AC defined in `docs/project/config/epics/` |
+| `superpowers:brainstorming` | **Step 1 only** (1-BRAINSTORM.md), or if a design is explicitly rejected and needs rethinking | Never for a story/epic that already has AC defined in `docs/project/config/epics/` |
 
 **Key principle:** Superpowers skills are tools. Use them when they help. Don't re-run a skill for work that's already done. The brainstorm, PRD, architecture, and epics for this project are complete — don't redo them.
 
