@@ -5,7 +5,6 @@ import { callsAPI, transcriptionAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { Call } from "@/types";
 import TranscriptionStatusBadge from "@/components/TranscriptionStatusBadge";
-import OfflineModal from "@/components/OfflineModal";
 
 interface Props {
   call: Call;
@@ -16,7 +15,6 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
   const [uploading, setUploading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showOfflineModal, setShowOfflineModal] = useState(false);
   const mp3Ref = useRef<HTMLInputElement>(null);
   const txtRef = useRef<HTMLInputElement>(null);
 
@@ -34,8 +32,8 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
 
     const online = await transcriptionAPI.health();
     if (!online) {
-      logger.info("Transcription server offline — showing modal", { component: "TranscriptStage" });
-      setShowOfflineModal(true);
+      logger.info("Transcription server offline", { component: "TranscriptStage" });
+      setError("Server is offline. Use the Start server button above.");
       return;
     }
 
@@ -102,52 +100,46 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
   }
 
   return (
-    <>
-      <div className="bg-white border border-[#dfe1e6] rounded-lg">
-        <div className="px-4 py-3 border-b border-[#dfe1e6] flex items-center justify-between">
-          <span className="text-[14px] font-semibold text-[#172b4d]">Get Transcript</span>
-          <TranscriptionStatusBadge />
-        </div>
-        <div className="p-4">
-          {error && (
-            <div className="mb-3 text-[12px] text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-              {error}
-            </div>
-          )}
-
-          {/* MP3 upload */}
-          <div
-            onClick={() => mp3Ref.current?.click()}
-            className="border-2 border-dashed border-[#dfe1e6] rounded-md p-6 text-center cursor-pointer hover:border-[#0052cc] hover:bg-[#f8f9ff] transition-colors mb-3"
-          >
-            <div className="text-2xl mb-2">🎵</div>
-            <div className="text-[14px] font-semibold text-[#172b4d] mb-1">Upload MP3</div>
-            <div className="text-[12px] text-[#5e6c84]">Transcribed locally via Whisper + pyannote</div>
-          </div>
-          <input ref={mp3Ref} type="file" accept=".mp3" className="hidden" onChange={handleMp3Change} />
-
-          <div className="flex items-center gap-2 my-3">
-            <hr className="flex-1 border-[#dfe1e6]" />
-            <span className="text-[11px] text-[#97a0af] uppercase tracking-wide">or</span>
-            <hr className="flex-1 border-[#dfe1e6]" />
-          </div>
-
-          {/* TXT upload */}
-          <div
-            onClick={() => txtRef.current?.click()}
-            className="border-2 border-dashed border-[#dfe1e6] rounded-md p-6 text-center cursor-pointer hover:border-[#0052cc] hover:bg-[#f8f9ff] transition-colors"
-          >
-            <div className="text-2xl mb-2">📄</div>
-            <div className="text-[14px] font-semibold text-[#172b4d] mb-1">Upload transcript (.txt)</div>
-            <div className="text-[12px] text-[#5e6c84]">Already have a transcript? Upload it directly.</div>
-          </div>
-          <input ref={txtRef} type="file" accept=".txt" className="hidden" onChange={handleTxtChange} />
-        </div>
+    <div className="bg-white border border-[#dfe1e6] rounded-lg">
+      <div className="px-4 py-3 border-b border-[#dfe1e6] flex items-center justify-between">
+        <span className="text-[14px] font-semibold text-[#172b4d]">Get Transcript</span>
+        <TranscriptionStatusBadge />
       </div>
+      <div className="p-4">
+        {error && (
+          <div className="mb-3 text-[12px] text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+            {error}
+          </div>
+        )}
 
-      {showOfflineModal && (
-        <OfflineModal onDismiss={() => setShowOfflineModal(false)} />
-      )}
-    </>
+        {/* MP3 upload */}
+        <div
+          onClick={() => mp3Ref.current?.click()}
+          className="border-2 border-dashed border-[#dfe1e6] rounded-md p-6 text-center cursor-pointer hover:border-[#0052cc] hover:bg-[#f8f9ff] transition-colors mb-3"
+        >
+          <div className="text-2xl mb-2">🎵</div>
+          <div className="text-[14px] font-semibold text-[#172b4d] mb-1">Upload MP3</div>
+          <div className="text-[12px] text-[#5e6c84]">Transcribed locally via Whisper + pyannote</div>
+        </div>
+        <input ref={mp3Ref} type="file" accept=".mp3" className="hidden" onChange={handleMp3Change} />
+
+        <div className="flex items-center gap-2 my-3">
+          <hr className="flex-1 border-[#dfe1e6]" />
+          <span className="text-[11px] text-[#97a0af] uppercase tracking-wide">or</span>
+          <hr className="flex-1 border-[#dfe1e6]" />
+        </div>
+
+        {/* TXT upload */}
+        <div
+          onClick={() => txtRef.current?.click()}
+          className="border-2 border-dashed border-[#dfe1e6] rounded-md p-6 text-center cursor-pointer hover:border-[#0052cc] hover:bg-[#f8f9ff] transition-colors"
+        >
+          <div className="text-2xl mb-2">📄</div>
+          <div className="text-[14px] font-semibold text-[#172b4d] mb-1">Upload transcript (.txt)</div>
+          <div className="text-[12px] text-[#5e6c84]">Already have a transcript? Upload it directly.</div>
+        </div>
+        <input ref={txtRef} type="file" accept=".txt" className="hidden" onChange={handleTxtChange} />
+      </div>
+    </div>
   );
 }
