@@ -52,15 +52,17 @@ The full project brainstorm, PRD, architecture, logging, and epic breakdown are 
 - **NEVER advance to an epic** that doesn't have story files in `docs/project/config/epics/`. Stop and tell the user the story files need to be created first.
 - **The only time `superpowers:brainstorming` is allowed** is if the user explicitly rejects an existing design and asks to redesign it from scratch.
 
-### Superpowers skills allowed per story
-| Skill | When |
-|---|---|
-| `superpowers:subagent-driven-development` | Every story — executes the plan |
-| `superpowers:writing-plans` | Every story — writes the implementation plan |
-| `superpowers:systematic-debugging` | When a bug is encountered |
-| `superpowers:test-driven-development` | When writing code |
-| `superpowers:verification-before-completion` | Before closing a story |
-| `superpowers:brainstorming` | **NEVER** — already done at project start |
+### Superpowers skills — when to use each
+| Skill | When to use | When NOT to use |
+|---|---|---|
+| `superpowers:subagent-driven-development` | Every story — executes the plan | — |
+| `superpowers:writing-plans` | Every story — writes the implementation plan | — |
+| `superpowers:systematic-debugging` | When a bug is encountered | — |
+| `superpowers:test-driven-development` | When writing code | — |
+| `superpowers:verification-before-completion` | Before closing a story | — |
+| `superpowers:brainstorming` | Only if design is explicitly rejected and needs rethinking from scratch | **Never** for a story/epic that already has AC defined in `docs/project/config/epics/` |
+
+**Key principle:** Superpowers skills are tools. Use them when they help. Don't re-run a skill for work that's already done. The brainstorm, PRD, architecture, and epics for this project are complete — don't redo them.
 
 ## Sealed files — never read or modify during development
 - `docs/project/testing/BLIND_SCENARIOS.md`

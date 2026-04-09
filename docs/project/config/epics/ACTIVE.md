@@ -1,10 +1,10 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-4 — Transcript Stage (stories TBD — brainstorm required)
-- **File:** `docs/project/config/epics/epic-4/`
-- **Goal:** Handle the transcript stage of a call
-- **Modules touched:** TBD
+- **Story:** EPIC-4 / Story 4.1 — Local Transcription Server
+- **File:** `docs/project/config/epics/epic-4/story-4.1.md`
+- **Goal:** Local FastAPI server accepts MP3, runs Whisper + pyannote, returns formatted transcript
+- **Modules touched:** `transcription/main.py`, `transcription/transcribe.py`, `run_transcription.sh`
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
