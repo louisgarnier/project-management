@@ -83,3 +83,13 @@ def test_submit_transcript_returns_409_when_already_past_transcript_stage():
             json={"transcript": "duplicate submission"},
         )
     assert r.status_code == 409
+
+
+def test_submit_transcript_rejects_empty_string():
+    mc = _mock_client()
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.post(
+            f"/api/calls/{CALL_ID}/transcript",
+            json={"transcript": ""},
+        )
+    assert r.status_code == 422

@@ -1,7 +1,7 @@
 from backend.database.supabase_client import get_client
 from backend.utils.logger import db_logger
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api", tags=["calls"])
 
@@ -17,7 +17,7 @@ class StageAdvance(BaseModel):
 
 
 class TranscriptSubmit(BaseModel):
-    transcript: str
+    transcript: str = Field(min_length=1)
 
 
 @router.get("/projects/{project_id}/calls")
