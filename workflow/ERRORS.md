@@ -53,6 +53,7 @@
 |---|---|---|---|---|---|
 | ERR-001 | INTEGRATION | Frontend API client missing `/api` prefix on backend paths | Resolved | 2026-04-09 | EPIC-2 |
 | ERR-002 | DEPENDENCY | Tailwind v4 installed but configured with v3 syntax | Resolved | 2026-04-09 | EPIC-2 |
+| ERR-003 | INFRA | Transcription server fails on first run — venv never created | Resolved | 2026-04-09 | EPIC-4 |
 
 ---
 
@@ -117,28 +118,27 @@ All Tailwind CSS classes ignored — page renders as unstyled HTML
 
 ---
 
-### ERR-003: [Short Title]
-**Category:** [DATA / CONFIG / INTEGRATION / LOGIC / PERFORMANCE / DEPENDENCY / INFRA / UI]
-**Status:** `Open` → `Resolved` → `Recurring`
-**First seen:** [DATE] — EPIC-X / Story X.Y
+### ERR-003: Transcription server fails on first run — venv never created
+**Category:** INFRA
+**Status:** `Resolved`
+**First seen:** 2026-04-09 — EPIC-4 / Story 4.1
 
 #### Symptoms
 ```
-[Paste the exact error message]
+ModuleNotFoundError: No module named 'whisper'
+ERROR: Application startup failed. Exiting.
 ```
 
 #### Root Cause
-[Explain the root cause clearly.]
+`run_transcription.sh` assumed the venv at `transcription/.venv` already existed. Story 4.1 closed without ever running the server on a real machine — tests ran with mocked models, never with the actual venv.
 
 #### Fix Applied
-**Date fixed:** [DATE]
-**Commit:** `[hash]`
+**Date fixed:** 2026-04-09
+**Commit:** `2a77ca8`
+Updated `run_transcription.sh` to auto-create the venv and install deps on first run if `transcription/.venv` does not exist.
 
 #### Prevention Rule
-> 🔒 **RULE ERR-001:** [Write the rule as a clear instruction]
-
-#### Test Added
-- [ ] Regression test added: `tests/dev/test_[module].py::test_[name]`
+> 🔒 **RULE ERR-003:** When closing a story that involves a runnable server, verify it actually starts on a clean checkout before closing. If it requires a venv or any one-time setup, that setup must be automated in the launch script — not left as a manual step.
 
 ---
 
@@ -147,6 +147,7 @@ All Tailwind CSS classes ignored — page renders as unstyled HTML
 |---|---|---|
 | ERR-001 | `frontend/src/api/client.ts` | All `proxyFetch()` paths must include `/api` prefix |
 | ERR-002 | `frontend/` CSS + PostCSS | Tailwind v4: use `@import "tailwindcss"` + `@tailwindcss/postcss` |
+| ERR-003 | `run_transcription.sh` / any server script | Auto-create venv in launch script; verify server starts on clean checkout before closing story |
 
 ---
 
