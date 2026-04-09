@@ -5,7 +5,7 @@
 | ID | Epic | Status | Stories |
 |---|---|---|---|
 | EPIC-1 | Foundation & Logging | [x] Done | 3 |
-| EPIC-2 | Projects | [ ] in-progress | 3 |
+| EPIC-2 | Projects | [x] Done | 3 |
 | EPIC-3 | Kanban Board & Calls | [ ] | 2 |
 | EPIC-4 | Transcript Stage | [ ] | 3 |
 | EPIC-5 | Artifacts Stage | [ ] | 3 |
@@ -36,9 +36,9 @@ EPIC-1 (Foundation + Logging)
 ## 🚦 Status
 
 ```
-Working on : EPIC-2 / Story 2.3 — App Shell & Project List UI (Redesign)
+Working on : EPIC-3 / Story 3.1 — Calls API with Sequential Enforcement
 Blocked by : —
-Next up    : EPIC-3 / Story 3.1
+Next up    : EPIC-3 / Story 3.2
 ```
 
 ---

@@ -1,7 +1,7 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-2 / Story 2.3 — App Shell & Project List UI (Redesign)**
+**EPIC-3 / Story 3.1 — Calls API with Sequential Enforcement**
 - Status: not started
 - Blocked by: nothing
 
@@ -52,6 +52,27 @@
 
 **Verification:**
 - ESLint: 0 errors
+- 13/13 backend tests still passing
+- Manual browser test required before EPIC-3
+
+**Next session starts at:** EPIC-3 / Story 3.1 — Calls API with Sequential Enforcement
+
+### 2026-04-09 — EPIC-2 / Story 2.3 — App Shell & Project List UI (Redesign)
+**Completed:** Jira-like app shell — top nav, sidebar, per-project nav, placeholder pages
+**Built:**
+- `frontend/src/components/TopNav.tsx` — blue top nav (static server component)
+- `frontend/src/components/Sidebar.tsx` — client component, project list + per-project nav, create modal, hash-stable colours, error logging
+- `frontend/src/components/CallCard.tsx` — placeholder card component for EPIC-3
+- `frontend/app/layout.tsx` — root layout with shell (TopNav + Sidebar + main)
+- `frontend/app/page.tsx` — "select a project" landing
+- `frontend/app/projects/[id]/page.tsx` — redirects to /board
+- `frontend/app/projects/[id]/board/page.tsx` — 4-column kanban placeholder
+- `frontend/app/projects/[id]/topics/page.tsx` — placeholder
+- `frontend/app/projects/[id]/history/page.tsx` — placeholder
+- Deleted `frontend/src/components/ProjectList.tsx`
+
+**Verification:**
+- ESLint: 0 errors, 0 warnings
 - 13/13 backend tests still passing
 - Manual browser test required before EPIC-3
 
