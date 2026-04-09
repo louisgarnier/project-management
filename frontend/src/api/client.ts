@@ -46,6 +46,40 @@ export const callsAPI = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  getCall: (callId: string) => proxyFetch<Call>(`/api/calls/${callId}`),
+  submitTranscript: (callId: string, transcript: string) =>
+    proxyFetch<Call>(`/api/calls/${callId}/transcript`, {
+      method: "POST",
+      body: JSON.stringify({ transcript }),
+    }),
+};
+
+// transcriptionAPI — calls the local server directly from the browser (not via proxy)
+export const transcriptionAPI = {
+  health: async (): Promise<boolean> => {
+    try {
+      const r = await fetch("http://localhost:8001/health", {
+        signal: AbortSignal.timeout(2000),
+      });
+      return r.ok;
+    } catch {
+      return false;
+    }
+  },
+  transcribe: async (file: File): Promise<string> => {
+    const form = new FormData();
+    form.append("audio", file);
+    const r = await fetch("http://localhost:8001/transcribe", {
+      method: "POST",
+      body: form,
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: "Unknown error" }));
+      throw new Error(err.detail || `Transcription failed: ${r.status}`);
+    }
+    const data = await r.json();
+    return data.transcript as string;
+  },
 };
 
 // Further API modules added per epic (artifacts, topics)

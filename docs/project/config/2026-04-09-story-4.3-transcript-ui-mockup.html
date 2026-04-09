@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Story 4.3 — Transcript Stage UI Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f5f7; }
+
+  /* ─── App Shell ─── */
+  .topnav { height: 48px; background: #0052cc; display: flex; align-items: center; padding: 0 16px; gap: 10px; }
+  .topnav-logo { color: white; font-weight: 700; font-size: 15px; letter-spacing: -0.3px; }
+  .shell { display: flex; height: calc(100vh - 48px); }
+  .sidebar { width: 220px; background: #fff; border-right: 1px solid #dfe1e6; flex-shrink: 0; padding: 12px 8px; }
+  .sidebar-item { padding: 7px 10px; border-radius: 4px; font-size: 13px; color: #5e6c84; cursor: pointer; margin-bottom: 2px; }
+  .sidebar-item.active { background: #e9f0ff; color: #0052cc; font-weight: 500; }
+  .sidebar-sub { padding: 5px 10px 5px 22px; font-size: 12px; color: #5e6c84; cursor: pointer; border-radius: 4px; margin-bottom: 1px; }
+  .sidebar-sub:hover { background: #f4f5f7; }
+  .sidebar-sub.active { color: #0052cc; font-weight: 500; }
+  .main { flex: 1; overflow-y: auto; }
+
+  /* ─── Section labels ─── */
+  .section-label { background: #172b4d; color: white; font-size: 11px; font-weight: 600; padding: 6px 12px; letter-spacing: 0.5px; text-transform: uppercase; }
+
+  /* ─── Call Detail Page ─── */
+  .page { padding: 20px 24px; max-width: 760px; }
+  .breadcrumb { font-size: 12px; color: #5e6c84; margin-bottom: 12px; cursor: pointer; }
+  .breadcrumb:hover { color: #0052cc; text-decoration: underline; }
+  .page-title { font-size: 20px; font-weight: 700; color: #172b4d; margin-bottom: 4px; }
+  .page-subtitle { font-size: 13px; color: #5e6c84; margin-bottom: 20px; }
+
+  /* ─── Stage Progress ─── */
+  .stage-progress { display: flex; align-items: center; gap: 0; margin-bottom: 24px; }
+  .stage-step { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 4px; }
+  .stage-step.current { background: #e9f0ff; color: #0052cc; }
+  .stage-step.pending { color: #97a0af; }
+  .stage-step.done { color: #36b37e; }
+  .stage-arrow { color: #dfe1e6; font-size: 14px; margin: 0 2px; }
+
+  /* ─── Transcript Card ─── */
+  .card { background: white; border: 1px solid #dfe1e6; border-radius: 6px; overflow: hidden; margin-bottom: 16px; }
+  .card-header { padding: 14px 16px; border-bottom: 1px solid #dfe1e6; display: flex; align-items: center; justify-content: space-between; }
+  .card-title { font-size: 14px; font-weight: 600; color: #172b4d; }
+  .card-body { padding: 16px; }
+
+  /* ─── Status Badge ─── */
+  .badge-online { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; color: #006644; background: #e3fcef; padding: 3px 8px; border-radius: 12px; }
+  .badge-offline { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; color: #974f0c; background: #fff4e6; padding: 3px 8px; border-radius: 12px; }
+  .dot-green { width: 6px; height: 6px; background: #36b37e; border-radius: 50%; }
+  .dot-orange { width: 6px; height: 6px; background: #ff8b00; border-radius: 50%; }
+
+  /* ─── File Picker ─── */
+  .upload-area { border: 2px dashed #dfe1e6; border-radius: 6px; padding: 28px 20px; text-align: center; cursor: pointer; transition: border-color 0.15s; margin-bottom: 12px; }
+  .upload-area:hover { border-color: #0052cc; background: #f8f9ff; }
+  .upload-icon { font-size: 28px; margin-bottom: 8px; }
+  .upload-title { font-size: 14px; font-weight: 600; color: #172b4d; margin-bottom: 4px; }
+  .upload-hint { font-size: 12px; color: #5e6c84; }
+  .upload-btn { display: inline-block; background: #0052cc; color: white; font-size: 13px; font-weight: 500; padding: 7px 16px; border-radius: 4px; cursor: pointer; margin-top: 12px; }
+  .upload-btn:hover { background: #0065ff; }
+  .upload-btn-secondary { display: inline-block; background: white; color: #0052cc; border: 1px solid #0052cc; font-size: 13px; font-weight: 500; padding: 7px 16px; border-radius: 4px; cursor: pointer; margin-top: 12px; margin-left: 8px; }
+
+  /* ─── Divider ─── */
+  .or-divider { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+  .or-divider span { font-size: 11px; color: #97a0af; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+  .or-divider hr { flex: 1; border: none; border-top: 1px solid #dfe1e6; }
+
+  /* ─── In-progress state ─── */
+  .progress-bar-wrap { background: #f4f5f7; border-radius: 4px; height: 6px; margin: 10px 0; overflow: hidden; }
+  .progress-bar { height: 100%; background: #0052cc; border-radius: 4px; }
+  .status-text { font-size: 12px; color: #5e6c84; }
+
+  /* ─── OfflineModal ─── */
+  .modal-overlay { position: relative; background: rgba(9,30,66,0.54); border-radius: 6px; padding: 24px; }
+  .modal-box { background: white; border-radius: 8px; padding: 24px; max-width: 420px; margin: 0 auto; box-shadow: 0 8px 32px rgba(9,30,66,0.24); }
+  .modal-title { font-size: 16px; font-weight: 700; color: #172b4d; margin-bottom: 6px; }
+  .modal-desc { font-size: 13px; color: #5e6c84; margin-bottom: 18px; line-height: 1.5; }
+  .modal-steps { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  .modal-step { display: flex; gap: 10px; align-items: flex-start; }
+  .step-num { width: 22px; height: 22px; border-radius: 50%; background: #e9f0ff; color: #0052cc; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .step-text { font-size: 13px; color: #172b4d; }
+  .step-code { font-family: 'Menlo', monospace; font-size: 12px; background: #f4f5f7; padding: 2px 6px; border-radius: 3px; color: #172b4d; }
+  .modal-auto-dismiss { font-size: 11px; color: #36b37e; display: flex; align-items: center; gap: 5px; margin-bottom: 16px; }
+  .modal-footer { display: flex; justify-content: flex-end; }
+  .btn-dismiss { background: #f4f5f7; color: #5e6c84; border: none; font-size: 13px; padding: 7px 14px; border-radius: 4px; cursor: pointer; }
+
+  /* ─── Layout helper ─── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     STATE 1: Server Online — file picker
+════════════════════════════════════════════ -->
+<div class="section-label">State 1 — Transcript Stage (Server Online)</div>
+
+<!-- App Shell -->
+<div class="topnav"><span class="topnav-logo">Call Tracker</span></div>
+<div class="shell">
+  <div class="sidebar">
+    <div class="sidebar-item active">Acme Corp</div>
+    <div class="sidebar-sub active">Board</div>
+    <div class="sidebar-sub">Topics</div>
+    <div class="sidebar-sub">History</div>
+    <div style="height:16px;"></div>
+    <div class="sidebar-item">FactSet Q1</div>
+    <div class="sidebar-item">Bloomberg</div>
+  </div>
+  <div class="main">
+    <div class="page">
+      <div class="breadcrumb">← Board</div>
+      <div class="page-title">Q1 Review Call</div>
+
+      <!-- Stage progress -->
+      <div class="stage-progress">
+        <div class="stage-step current">● Transcript</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Artifacts</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Topics</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Done</div>
+      </div>
+
+      <!-- Transcript card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Get Transcript</span>
+          <span class="badge-online"><span class="dot-green"></span>Server online</span>
+        </div>
+        <div class="card-body">
+          <!-- MP3 upload -->
+          <div class="upload-area">
+            <div class="upload-icon">🎵</div>
+            <div class="upload-title">Upload MP3</div>
+            <div class="upload-hint">Transcribed locally via Whisper + pyannote</div>
+            <div class="upload-btn">Choose MP3 file</div>
+          </div>
+
+          <div class="or-divider">
+            <hr><span>or</span><hr>
+          </div>
+
+          <!-- TXT upload -->
+          <div class="upload-area">
+            <div class="upload-icon">📄</div>
+            <div class="upload-title">Upload transcript (.txt)</div>
+            <div class="upload-hint">Already have a transcript? Upload it directly.</div>
+            <div class="upload-btn-secondary">Choose .txt file</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     STATE 2: Transcription In Progress
+════════════════════════════════════════════ -->
+<div class="section-label">State 2 — Transcription In Progress</div>
+
+<div class="topnav"><span class="topnav-logo">Call Tracker</span></div>
+<div class="shell">
+  <div class="sidebar">
+    <div class="sidebar-item active">Acme Corp</div>
+    <div class="sidebar-sub active">Board</div>
+  </div>
+  <div class="main">
+    <div class="page">
+      <div class="breadcrumb">← Board</div>
+      <div class="page-title">Q1 Review Call</div>
+
+      <div class="stage-progress">
+        <div class="stage-step current">● Transcript</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Artifacts</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Topics</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Done</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Get Transcript</span>
+          <span class="badge-online"><span class="dot-green"></span>Server online</span>
+        </div>
+        <div class="card-body">
+          <div style="margin-bottom:8px;">
+            <div style="font-size:13px;font-weight:600;color:#172b4d;margin-bottom:4px;">Transcribing Q1_Review.mp3…</div>
+            <div class="status-text">Running Whisper + speaker diarization. This may take a few minutes.</div>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar" style="width:55%;"></div>
+          </div>
+          <div class="status-text" style="margin-top:4px;">Step 2 of 3 — Diarization</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     STATE 3: Server Offline — file picker
+════════════════════════════════════════════ -->
+<div class="section-label">State 3 — Server Offline (badge shows warning)</div>
+
+<div class="topnav"><span class="topnav-logo">Call Tracker</span></div>
+<div class="shell">
+  <div class="sidebar">
+    <div class="sidebar-item active">Acme Corp</div>
+    <div class="sidebar-sub active">Board</div>
+  </div>
+  <div class="main">
+    <div class="page">
+      <div class="breadcrumb">← Board</div>
+      <div class="page-title">Q1 Review Call</div>
+
+      <div class="stage-progress">
+        <div class="stage-step current">● Transcript</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Artifacts</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Topics</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Done</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Get Transcript</span>
+          <span class="badge-offline"><span class="dot-orange"></span>Server offline</span>
+        </div>
+        <div class="card-body">
+          <div class="upload-area">
+            <div class="upload-icon">🎵</div>
+            <div class="upload-title">Upload MP3</div>
+            <div class="upload-hint">Requires local transcription server</div>
+            <div class="upload-btn">Choose MP3 file</div>
+          </div>
+          <div class="or-divider"><hr><span>or</span><hr></div>
+          <div class="upload-area">
+            <div class="upload-icon">📄</div>
+            <div class="upload-title">Upload transcript (.txt)</div>
+            <div class="upload-hint">No server needed — uploads directly</div>
+            <div class="upload-btn-secondary">Choose .txt file</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     STATE 4: OfflineModal (user picked MP3 while offline)
+════════════════════════════════════════════ -->
+<div class="section-label">State 4 — OfflineModal (user clicked MP3 while server is offline)</div>
+
+<div class="topnav"><span class="topnav-logo">Call Tracker</span></div>
+<div class="shell">
+  <div class="sidebar">
+    <div class="sidebar-item active">Acme Corp</div>
+    <div class="sidebar-sub active">Board</div>
+  </div>
+  <div class="main">
+    <div class="page">
+      <div class="breadcrumb">← Board</div>
+      <div class="page-title">Q1 Review Call</div>
+
+      <div class="stage-progress">
+        <div class="stage-step current">● Transcript</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Artifacts</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Topics</div>
+        <div class="stage-arrow">›</div>
+        <div class="stage-step pending">Done</div>
+      </div>
+
+      <!-- Modal overlaid -->
+      <div class="modal-overlay">
+        <div class="modal-box">
+          <div class="modal-title">⚠️ Transcription server is offline</div>
+          <div class="modal-desc">To transcribe MP3 files, you need to start the local server on your machine.</div>
+
+          <div class="modal-steps">
+            <div class="modal-step">
+              <div class="step-num">1</div>
+              <div class="step-text">Open a terminal</div>
+            </div>
+            <div class="modal-step">
+              <div class="step-num">2</div>
+              <div class="step-text">Navigate to your Call Tracker folder:<br><span class="step-code">cd ~/Call\ Tracker</span></div>
+            </div>
+            <div class="modal-step">
+              <div class="step-num">3</div>
+              <div class="step-text">Run the transcription server:<br><span class="step-code">./run_transcription.sh</span></div>
+            </div>
+          </div>
+
+          <div class="modal-auto-dismiss">✅ This dialog will close automatically once the server is online.</div>
+
+          <div class="modal-footer">
+            <button class="btn-dismiss">Dismiss</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
