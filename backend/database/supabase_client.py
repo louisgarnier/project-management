@@ -1,10 +1,9 @@
 import os
 from functools import lru_cache
 
+from backend.utils.logger import db_logger
 from dotenv import load_dotenv
 from supabase import Client, create_client
-
-from backend.utils.logger import db_logger
 
 load_dotenv()
 

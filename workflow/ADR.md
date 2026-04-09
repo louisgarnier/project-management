@@ -11,7 +11,7 @@
 ## ADR Index
 | ID | Title | Status | Date | Epic |
 |---|---|---|---|---|
-| ADR-001 | [Decision title] | Accepted / Superseded | [DATE] | EPIC-X |
+| ADR-001 | Upgrade Next.js from 14 to 15 | Accepted | 2026-04-09 | EPIC-1 |
 
 ---
 
@@ -56,41 +56,40 @@ Most bugs happen at **integration seams** — where two systems meet. Every plan
 
 ---
 
-### ADR-001: [Decision Title]
-**Date:** [DATE]
-**Epic / Story:** EPIC-X / Story X.Y
-**Status:** `Proposed` → `Accepted` → `Superseded by ADR-XXX`
-**Decided by:** [Human / AI / Both]
+### ADR-001: Upgrade Next.js from 14 to 15
+**Date:** 2026-04-09
+**Epic / Story:** EPIC-1 / Story 1.1
+**Status:** `Accepted`
+**Decided by:** Both
 
 #### Context
-> What situation forced this decision? What constraints existed?
-
-[Describe the context in 2-4 sentences.]
+Architecture locked `next@14`. During EPIC-1 implementation, `next@16.0.3` was installed instead. `next@16.0.3` carries an active CVE (CVE-2025-66478). Downgrading to `next@14` would mean building on an aging major. `next@15` (stable since Oct 2024) is the standard production target with no known CVEs.
 
 #### Decision
-> What was decided? State it clearly and unambiguously.
-
-**We will [do X] using [approach Y].**
+**We will use `next@15.x` (latest stable patch) and `eslint@9.x` (flat config) instead of the originally approved `next@14` and `eslint@8.x`.**
 
 #### Alternatives Considered
 | Option | Pros | Cons | Reason Rejected |
 |---|---|---|---|
-| [Option A — chosen] | [pros] | [cons] | *Chosen* |
-| [Option B] | [pros] | [cons] | [Why rejected] |
+| next@15 (chosen) | Stable, no CVE, React 19, ESLint 9 | Breaking changes from 14 (minor) | *Chosen* |
+| next@14 | Matches original spec | Aging major, going stale | Starting a new project on old major is poor practice |
+| next@16.0.3 | Latest | Active CVE (CVE-2025-66478) | Security vulnerability unacceptable |
 
 #### Consequences
 **Positive:**
-- [What this decision enables or improves]
+- No active CVEs
+- ESLint 9 flat config is cleaner long-term
+- React 19 compatible
 
 **Negative / Trade-offs:**
-- [What this decision constrains or makes harder]
+- Minor Next.js 14→15 migration concerns (minimal for a new project with no existing pages)
 
 **What this decision affects:**
-- Files: `src/[file]`
-- Modules: [which modules are shaped by this choice]
+- `frontend/package.json` — `next`, `react`, `react-dom`, `eslint-config-next`
+- `frontend/eslint.config.mjs` — flat config replaces `.eslintrc.json`
 
 #### Review Triggers
-- [ ] If [condition]
+- [ ] If a CVE is reported against next@15
 
 ---
 

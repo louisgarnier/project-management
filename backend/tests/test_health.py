@@ -1,7 +1,5 @@
-from httpx import Client
-from starlette.testclient import TestClient
-
 from backend.main import app
+from starlette.testclient import TestClient
 
 client = TestClient(app)
 

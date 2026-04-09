@@ -2,7 +2,7 @@
 
 **Epic:** EPIC-1 — Foundation & Logging
 **Maps to plan:** Slice 1 (Foundation) + `docs/project/config/logging.md`
-**Status:** `pending`
+**Status:** `done — 2026-04-09`
 
 ---
 

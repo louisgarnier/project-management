@@ -1,10 +1,7 @@
 import logging
-import os
-
-from starlette.testclient import TestClient
 
 from backend.main import app
-from backend.utils.logger import get_logger
+from starlette.testclient import TestClient
 
 client = TestClient(app)
 

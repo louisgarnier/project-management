@@ -13,11 +13,11 @@
 | Language (backend) | Python | 3.11+ | FastAPI ecosystem, Whisper/pyannote compatibility |
 | Language (frontend) | TypeScript | 5.x | Type safety across Next.js app |
 | Framework (backend) | FastAPI | 0.111+ | Async support, SSE, Pydantic validation |
-| Framework (frontend) | Next.js | 14.x (App Router) | Vercel-native, React 18 |
+| Framework (frontend) | Next.js | 15.x (App Router) | Vercel-native, React 19 — see ADR-001 |
 | Testing (backend) | pytest | 8.x | Standard Python testing |
 | Testing (frontend) | Jest + Testing Library | 29.x | Matches existing template setup |
 | Linter (backend) | ruff | latest | Fast, replaces flake8 + isort |
-| Linter (frontend) | eslint | 8.x | Next.js default |
+| Linter (frontend) | eslint | 9.x | Next.js 15 default (flat config) — see ADR-001 |
 | Formatter (backend) | black | latest | Consistent Python formatting |
 | Formatter (frontend) | prettier | 3.x | Consistent TypeScript formatting |
 
