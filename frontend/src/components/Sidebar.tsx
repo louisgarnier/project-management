@@ -16,7 +16,11 @@ const PROJECT_COLORS = [
   "#ff8b00",
   "#00b8d9",
 ];
-const getColor = (i: number) => PROJECT_COLORS[i % PROJECT_COLORS.length];
+const getColor = (id: string) => {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
+  return PROJECT_COLORS[Math.abs(hash) % PROJECT_COLORS.length];
+};
 
 const NAV_ITEMS = [
   { key: "board", label: "Board", icon: "📋" },
@@ -50,10 +54,15 @@ export default function Sidebar() {
   }, []);
 
   async function handleCreate(name: string, description: string) {
-    const project = await projectsAPI.create({ name, description });
-    logger.info(`Created project: ${project.id}`, { component: "Sidebar" });
-    setProjects((prev) => [...prev, project]);
-    router.push(`/projects/${project.id}/board`);
+    try {
+      const project = await projectsAPI.create({ name, description });
+      logger.info(`Created project: ${project.id}`, { component: "Sidebar" });
+      setProjects((prev) => [...prev, project]);
+      router.push(`/projects/${project.id}/board`);
+    } catch (err) {
+      logger.error("Failed to create project", { component: "Sidebar", data: err });
+      throw err;
+    }
   }
 
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? null;
@@ -67,7 +76,7 @@ export default function Sidebar() {
             Projects
           </p>
 
-          {projects.map((project, i) => {
+          {projects.map((project) => {
             const isActive = project.id === activeProjectId;
             return (
               <Link
@@ -81,7 +90,7 @@ export default function Sidebar() {
               >
                 <span
                   className="w-[18px] h-[18px] rounded-[3px] flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-white"
-                  style={{ background: getColor(i) }}
+                  style={{ background: getColor(project.id) }}
                 >
                   {project.name[0].toUpperCase()}
                 </span>
