@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import "./globals.css";
 import TopNav from "@/components/TopNav";
 import Sidebar from "@/components/Sidebar";
@@ -8,7 +9,7 @@ export const metadata: Metadata = {
   description: "Turn client call recordings into structured artifacts and a living topic dashboard",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="h-full">
       <body suppressHydrationWarning className="h-full flex flex-col overflow-hidden">
