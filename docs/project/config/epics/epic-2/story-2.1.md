@@ -3,7 +3,7 @@
 **Epic:** EPIC-2 — Projects
 **Maps to plan:** Slice 2
 **Maps to PRD:** US-01, FR-01
-**Status:** `pending`
+**Status:** `done`
 
 ---
 
@@ -20,10 +20,10 @@ Railway FastAPI exposes CRUD for projects. Postman/curl can create, list, and de
 - [ ] Tests pass: happy path + missing project
 
 ## Tasks
-- [ ] Create `backend/routers/projects.py` with GET, POST, DELETE
-- [ ] Register router in `backend/main.py` with prefix `/api`
-- [ ] Add db_logger calls for each Supabase operation
-- [ ] Write tests: `backend/tests/test_projects.py`
+- [x] Create `backend/routers/projects.py` with GET, POST, DELETE
+- [x] Register router in `backend/main.py` with prefix `/api`
+- [x] Add db_logger calls for each Supabase operation
+- [x] Write tests: `backend/tests/test_projects.py`
 
 ## Dev Tests
 - `backend/tests/test_projects.py`:

@@ -2,6 +2,7 @@ import os
 from contextlib import asynccontextmanager
 
 from backend.middleware.logging_middleware import log_requests
+from backend.routers import projects
 from backend.utils.logger import get_logger
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -35,6 +36,8 @@ app.add_middleware(
 
 # Logging middleware — outermost so every request is captured
 app.add_middleware(BaseHTTPMiddleware, dispatch=log_requests)
+
+app.include_router(projects.router)
 
 
 @app.get("/health")

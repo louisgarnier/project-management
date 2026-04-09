@@ -1,7 +1,7 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-2 / Story 2.1 — Projects API**
+**EPIC-2 / Story 2.2 — Project List UI**
 - Status: not started
 - Blocked by: nothing
 
@@ -26,3 +26,17 @@
 - ESLint (frontend): 0 errors, 0 warnings
 
 **Next session starts at:** EPIC-2 / Story 2.1 — Projects API
+
+### 2026-04-09 — EPIC-2 / Story 2.1 — Projects API
+**Completed:** Projects CRUD API
+**Built:**
+- `backend/routers/projects.py` — GET /api/projects, POST /api/projects, DELETE /api/projects/{id}
+- `backend/main.py` — router registered with `/api` prefix
+- `backend/tests/test_projects.py` — 5 tests (TDD, all passing)
+
+**Verification:**
+- 13/13 backend tests pass
+- 404 on delete non-existent project (not 500)
+- db_logger on every Supabase operation
+
+**Next session starts at:** EPIC-2 / Story 2.2 — Project List UI

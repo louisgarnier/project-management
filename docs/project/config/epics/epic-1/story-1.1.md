@@ -10,28 +10,28 @@
 Project runs locally with one command per process: `uvicorn` for Railway backend, `uvicorn` for local transcription server, `npm run dev` for Next.js frontend.
 
 ## Acceptance Criteria
-- [ ] Folder structure matches architecture: `backend/`, `transcription/`, `frontend/`, `logs/`, `scripts/`, `docs/`
-- [ ] `backend/requirements.txt` lists all approved Python packages
-- [ ] `frontend/package.json` lists all approved Node packages
-- [ ] `.env.example` has every required variable with placeholder values
-- [ ] `logs/` exists and is in `.gitignore`
-- [ ] `ruff` + `black` pass on `backend/` with zero errors
-- [ ] `eslint` + `prettier` pass on `frontend/` with zero errors
-- [ ] Railway FastAPI starts and returns `{"status": "ok"}` at `GET /health`
-- [ ] Local transcription FastAPI starts and returns `{"status": "ok"}` at `GET /health`
-- [ ] Next.js dev server starts at `localhost:3000` without errors
+- [x] Folder structure matches architecture: `backend/`, `transcription/`, `frontend/`, `logs/`, `scripts/`, `docs/`
+- [x] `backend/requirements.txt` lists all approved Python packages
+- [x] `frontend/package.json` lists all approved Node packages
+- [x] `.env.example` has every required variable with placeholder values
+- [x] `logs/` exists and is in `.gitignore`
+- [x] `ruff` + `black` pass on `backend/` with zero errors
+- [x] `eslint` + `prettier` pass on `frontend/` with zero errors
+- [x] Railway FastAPI starts and returns `{"status": "ok"}` at `GET /health`
+- [x] Local transcription FastAPI starts and returns `{"status": "ok"}` at `GET /health`
+- [ ] Next.js dev server starts at `localhost:3000` without errors — not yet verified manually
 
 ## Tasks
-- [ ] Create folder structure: `backend/`, `transcription/`, `frontend/`, `logs/`, `scripts/`, `docs/`
-- [ ] Add `logs/` to `.gitignore`
-- [ ] Scaffold `backend/` FastAPI app with `main.py`, `requirements.txt`, `.env.example`
-- [ ] Scaffold `transcription/` FastAPI app with `main.py`, `requirements.txt`
-- [ ] Scaffold `frontend/` Next.js 14 app with App Router, TypeScript, Tailwind
-- [ ] Configure `ruff` + `black` in `backend/pyproject.toml`
-- [ ] Configure `eslint` + `prettier` in `frontend/.eslintrc.json` and `frontend/.prettierrc`
-- [ ] Add `GET /health` to both FastAPI instances
-- [ ] Write smoke test: `pytest backend/tests/test_health.py` → HTTP 200
-- [ ] Verify Next.js starts clean
+- [x] Create folder structure: `backend/`, `transcription/`, `frontend/`, `logs/`, `scripts/`, `docs/`
+- [x] Add `logs/` to `.gitignore`
+- [x] Scaffold `backend/` FastAPI app with `main.py`, `requirements.txt`, `.env.example`
+- [x] Scaffold `transcription/` FastAPI app with `main.py`, `requirements.txt`
+- [x] Scaffold `frontend/` Next.js 15 app with App Router, TypeScript, Tailwind
+- [x] Configure `ruff` + `black` in `backend/pyproject.toml`
+- [x] Configure `eslint` + `prettier` in `frontend/eslint.config.mjs`
+- [x] Add `GET /health` to both FastAPI instances
+- [x] Write smoke test: `pytest backend/tests/test_health.py` → HTTP 200
+- [ ] Verify Next.js starts clean — not yet verified manually
 
 ## Required packages (from architecture.md — no additions without ADR)
 

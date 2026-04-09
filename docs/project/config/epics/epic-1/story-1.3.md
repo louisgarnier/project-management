@@ -11,22 +11,22 @@
 All six tables exist in Supabase with correct constraints, indexes, and seed data (6 default artifact types). The app can connect and query without errors.
 
 ## Acceptance Criteria
-- [ ] Tables created: `projects`, `calls`, `artifact_types`, `artifacts`, `topics`, `topic_updates`
-- [ ] `calls.kanban_stage` CHECK constraint: `('transcript','artifacts','topics','done')`
-- [ ] `artifacts.mode` CHECK constraint: `('claude','manual')`
-- [ ] `artifacts.status` CHECK constraint: `('pending','generating','done','error')`
-- [ ] `topics.status` CHECK constraint: `('active','decision_made','on_hold','closed')`
-- [ ] `artifacts.prompt_used` column is NOT NULL (immutable snapshot enforced at app level)
-- [ ] 6 default artifact types seeded in `artifact_types` table
-- [ ] `backend/database/supabase_client.py` singleton connects successfully
-- [ ] `GET /health` returns `{"status":"ok","db":"connected"}` when Supabase is reachable
+- [x] Tables created: `projects`, `calls`, `artifact_types`, `artifacts`, `topics`, `topic_updates`
+- [x] `calls.kanban_stage` CHECK constraint: `('transcript','artifacts','topics','done')`
+- [x] `artifacts.mode` CHECK constraint: `('claude','manual')`
+- [x] `artifacts.status` CHECK constraint: `('pending','generating','done','error')`
+- [x] `topics.status` CHECK constraint: `('active','decision_made','on_hold','closed')`
+- [x] `artifacts.prompt_used` column is NOT NULL (immutable snapshot enforced at app level)
+- [x] 6 default artifact types seeded in `artifact_types` table
+- [x] `backend/database/supabase_client.py` singleton connects successfully
+- [x] `GET /health` returns `{"status":"ok","db":"connected"}` when Supabase is reachable
 
 ## Tasks
-- [ ] Run migration SQL in Supabase dashboard (copy from plan Slice 1)
-- [ ] Seed 6 default artifact types (copy from plan Slice 1 seed SQL)
-- [ ] Create `backend/database/supabase_client.py` with singleton `get_client()`
-- [ ] Update `GET /health` to ping Supabase and return db status
-- [ ] Write test: `backend/tests/test_db.py` — connect, insert dummy project, delete it
+- [x] Run migration SQL in Supabase dashboard (copy from plan Slice 1)
+- [x] Seed 6 default artifact types (copy from plan Slice 1 seed SQL)
+- [x] Create `backend/database/supabase_client.py` with singleton `get_client()`
+- [x] Update `GET /health` to ping Supabase and return db status
+- [x] Write test: `backend/tests/test_db.py` — connect, insert dummy project, delete it
 
 ## Schema (copy to Supabase SQL editor)
 
