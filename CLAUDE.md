@@ -17,5 +17,17 @@ Current stage: Step 1 — Brainstorm
 4. `workflow/ADR.md` — architectural decisions already made
 5. `docs/project/config/epics/ACTIVE.md` — current story (once epics are defined)
 
+## File locations — NEVER put files anywhere else
+
+| File type | Location | Example |
+|---|---|---|
+| Specs / design docs | `docs/project/config/` | `docs/project/config/2026-04-09-story-3.2-kanban-board-design.md` |
+| Implementation plans | `docs/project/config/` | `docs/project/config/2026-04-09-story-3.2-kanban-board-plan.md` |
+| Epic / story files | `docs/project/config/epics/` | `docs/project/config/epics/epic-3/story-3.2.md` |
+| Build log | `docs/project/config/build-log.md` | — |
+| Codebase map | `docs/project/config/codebase.md` | — |
+
+**NEVER save specs or plans to `docs/superpowers/` — that folder does not exist for this project.**
+
 ## Sealed files — never read or modify during development
 - `docs/project/testing/BLIND_SCENARIOS.md`
