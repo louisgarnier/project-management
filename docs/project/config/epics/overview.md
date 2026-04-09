@@ -6,7 +6,7 @@
 |---|---|---|---|
 | EPIC-1 | Foundation & Logging | [x] Done | 3 |
 | EPIC-2 | Projects | [x] Done | 3 |
-| EPIC-3 | Kanban Board & Calls | [ ] | 2 |
+| EPIC-3 | Kanban Board & Calls | [x] Done | 2 |
 | EPIC-4 | Transcript Stage | [ ] | 3 |
 | EPIC-5 | Artifacts Stage | [ ] | 3 |
 | EPIC-6 | Topics Stage | [ ] | 2 |
@@ -36,9 +36,9 @@ EPIC-1 (Foundation + Logging)
 ## 🚦 Status
 
 ```
-Working on : EPIC-3 / Story 3.1 — Calls API with Sequential Enforcement
+Working on : EPIC-4 — Transcript Stage
 Blocked by : —
-Next up    : EPIC-3 / Story 3.2
+Next up    : EPIC-4 / Story 4.1
 ```
 
 ---

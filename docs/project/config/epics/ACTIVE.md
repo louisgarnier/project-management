@@ -1,9 +1,9 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-3 / Story 3.3 — (next story)
-- **File:** `docs/project/config/epics/epic-3/story-3.3.md`
-- **Goal:** TBD
+- **Story:** EPIC-4 — Transcript Stage (stories TBD — brainstorm required)
+- **File:** `docs/project/config/epics/epic-4/`
+- **Goal:** Handle the transcript stage of a call
 - **Modules touched:** TBD
 
 ## Completed
