@@ -22,10 +22,12 @@ def get_pipeline():
     if _diarization_pipeline is None:
         from pyannote.audio import Pipeline
         hf_token = os.getenv("HF_TOKEN")
+        if not hf_token:
+            raise RuntimeError("HF_TOKEN environment variable is not set")
         logger.info("🔄 [Transcription] Loading pyannote diarization pipeline...")
         _diarization_pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=hf_token,
+            token=hf_token,
         )
         logger.info("✅ [Transcription] Diarization pipeline loaded")
     return _diarization_pipeline
@@ -56,7 +58,7 @@ def transcribe_audio(audio_path: str, filename: str) -> str:
         if not text:
             continue
 
-        best_speaker = "SPEAKER_00"
+        best_speaker = "SPEAKER_0"
         best_overlap = 0.0
         for t_start, t_end, speaker in speaker_turns:
             overlap = min(seg_end, t_end) - max(seg_start, t_start)
