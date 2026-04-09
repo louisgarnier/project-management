@@ -9,6 +9,21 @@
 
 ## Session History
 
+### 2026-04-09 — Story 4.4: Server Control UI
+- `frontend/app/api/local/process.ts` — ChildProcess singleton (getServerProcess / setServerProcess)
+- `frontend/app/api/local/start/route.ts` — POST: spawns run_transcription.sh, registers exit/error listeners
+- `frontend/app/api/local/stop/route.ts` — POST: SIGTERM with try/catch guard
+- `frontend/app/api/local/status/route.ts` — GET: health check + process-alive fallback → running / starting / offline
+- `frontend/src/api/client.ts` — added `localServerAPI` (status, start, stop)
+- `frontend/src/components/TranscriptionStatusBadge.tsx` — replaced with 4-state badge + Start/Stop buttons
+- `frontend/src/components/TranscriptStage.tsx` — removed OfflineModal, inline error on offline MP3
+- `frontend/src/components/OfflineModal.tsx` — deleted
+- EPIC-4 closed — all 4 stories done
+
+---
+
+## Session History
+
 ### 2026-04-09 — Story 4.3: Transcript Stage UI
 - `frontend/src/api/client.ts` — added `callsAPI.getCall`, `callsAPI.submitTranscript`, `transcriptionAPI` (health + transcribe, direct to localhost:8001)
 - `frontend/src/components/TranscriptionStatusBadge.tsx` — polls health every 30s, green/orange badge

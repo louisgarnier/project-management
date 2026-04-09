@@ -28,7 +28,12 @@ frontend/
 │       ├── board/page.tsx         → Kanban board (live calls) (EPIC-3 / Story 3.2)
 │       ├── topics/page.tsx        → Placeholder (EPIC-2 / Story 2.3)
 │       ├── history/page.tsx       → Placeholder (EPIC-2 / Story 2.3)
-│       └── calls/[call_id]/page.tsx → Call detail page: stage router, progress bar (EPIC-4 / Story 4.3)
+│       ├── calls/[call_id]/page.tsx → Call detail page: stage router, progress bar (EPIC-4 / Story 4.3)
+│       └── api/local/
+│           ├── process.ts             → ChildProcess singleton (EPIC-4 / Story 4.4)
+│           ├── start/route.ts         → POST: spawn run_transcription.sh (EPIC-4 / Story 4.4)
+│           ├── stop/route.ts          → POST: SIGTERM transcription process (EPIC-4 / Story 4.4)
+│           └── status/route.ts        → GET: running / starting / offline (EPIC-4 / Story 4.4)
 └── src/
     ├── api/client.ts              → proxyFetch, projectsAPI, callsAPI (getCall, submitTranscript), transcriptionAPI (EPIC-2/3/4)
     ├── utils/logger.ts            → Frontend console logger (EPIC-1 / Story 1.2)
@@ -38,8 +43,7 @@ frontend/
         ├── KanbanBoard.tsx        → 4-column kanban (EPIC-3 / Story 3.2)
         ├── CallCard.tsx           → Call card with stage badge (EPIC-3 / Story 3.2)
         ├── NewCallModal.tsx       → Create call form (EPIC-3 / Story 3.2)
-        ├── TranscriptionStatusBadge.tsx → Polls localhost:8001/health every 30s, green/orange badge (EPIC-4 / Story 4.3)
-        ├── OfflineModal.tsx       → Server offline instructions, auto-dismisses when online (EPIC-4 / Story 4.3)
+        ├── TranscriptionStatusBadge.tsx → 4-state badge (offline/starting/online/stopping) + Start/Stop buttons (EPIC-4 / Story 4.4)
         └── TranscriptStage.tsx    → MP3/TXT file pickers, transcription flow, uploading state (EPIC-4 / Story 4.3)
 
 transcription/
