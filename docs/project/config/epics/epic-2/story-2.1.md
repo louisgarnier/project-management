@@ -11,13 +11,13 @@
 Railway FastAPI exposes CRUD for projects. Postman/curl can create, list, and delete projects.
 
 ## Acceptance Criteria
-- [ ] `GET /api/projects` returns list of all projects (id, name, description, created_at)
-- [ ] `POST /api/projects` creates a project, returns the created row
-- [ ] `DELETE /api/projects/{id}` deletes project and cascades to calls/artifacts/topics
-- [ ] All endpoints log requests via logging middleware (from Story 1.2)
-- [ ] Supabase operations logged via `db_logger`
-- [ ] 404 returned (not 500) when deleting a non-existent project
-- [ ] Tests pass: happy path + missing project
+- [x] `GET /api/projects` returns list of all projects (id, name, description, created_at)
+- [x] `POST /api/projects` creates a project, returns the created row
+- [x] `DELETE /api/projects/{id}` deletes project and cascades to calls/artifacts/topics
+- [x] All endpoints log requests via logging middleware (from Story 1.2)
+- [x] Supabase operations logged via `db_logger`
+- [x] 404 returned (not 500) when deleting a non-existent project
+- [x] Tests pass: happy path + missing project
 
 ## Tasks
 - [x] Create `backend/routers/projects.py` with GET, POST, DELETE

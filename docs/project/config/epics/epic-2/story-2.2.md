@@ -3,7 +3,7 @@
 **Epic:** EPIC-2 — Projects
 **Maps to plan:** Slice 2
 **Maps to PRD:** US-01
-**Status:** `done`
+**Status:** `superseded` — UI design rejected; replaced by Story 2.3
 
 ---
 
