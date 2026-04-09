@@ -1,13 +1,20 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-3 / Story 3.1 — Calls API with Sequential Enforcement**
+**EPIC-3 / Story 3.2 — Kanban Board UI**
 - Status: not started
 - Blocked by: nothing
 
 ---
 
 ## Session History
+
+### 2026-04-09 — Story 3.1: Calls API
+- Implemented GET /api/projects/{id}/calls, POST /api/projects/{id}/calls, GET /api/calls/{id}, PATCH /api/calls/{id}/stage
+- 409 sequential enforcement: only one active call per project
+- Stage transitions: transcript → artifacts → topics → done (422 on skip)
+- 9 new tests, 22 total passing
+- ruff + black clean
 
 ### 2026-04-09 — EPIC-1 wrap-up + next@15 upgrade
 **Completed:** EPIC-1 (Stories 1.1, 1.2, 1.3) verified and closed
