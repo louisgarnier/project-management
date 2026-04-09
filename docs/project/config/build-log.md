@@ -1,13 +1,21 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-4 / Story 4.3 — Transcript Stage UI**
+**EPIC-5 / Story 5.0 — Transcript Review & Redo**
 - Status: not started
 - Blocked by: nothing
 
 ---
 
 ## Session History
+
+### 2026-04-09 — Story 4.3: Transcript Stage UI
+- `frontend/src/api/client.ts` — added `callsAPI.getCall`, `callsAPI.submitTranscript`, `transcriptionAPI` (health + transcribe, direct to localhost:8001)
+- `frontend/src/components/TranscriptionStatusBadge.tsx` — polls health every 30s, green/orange badge
+- `frontend/src/components/OfflineModal.tsx` — startup instructions, polls every 3s, auto-dismisses on server online
+- `frontend/src/components/TranscriptStage.tsx` — MP3 and .txt file pickers, health check before MP3, uploading state + `beforeunload` guard, error state
+- `frontend/app/projects/[id]/calls/[call_id]/page.tsx` — fetches call, stage progress bar, routes to TranscriptStage for transcript stage
+- EPIC-4 closed — all 3 stories done
 
 ### 2026-04-09 — Story 4.2: Transcript Stage Backend
 - `POST /api/calls/{call_id}/transcript` added to `backend/routers/calls.py`

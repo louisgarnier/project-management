@@ -1,10 +1,10 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-4 / Story 4.3 — Transcript Stage UI
-- **File:** `docs/project/config/epics/epic-4/story-4.3.md`
-- **Goal:** Call detail page: "Get Transcript" button → triggers local server → stores result → advances card
-- **Modules touched:** `frontend/app/projects/[id]/calls/[call_id]/page.tsx`, `frontend/src/api/client.ts`
+- **Story:** EPIC-5 / Story 5.0 — Transcript Review & Redo
+- **File:** `docs/project/config/epics/epic-5/story-5.0.md`
+- **Goal:** Artifacts stage shows full transcript for validation; "Redo transcript" button clears it and sends card back to Get Transcript
+- **Modules touched:** `backend/routers/calls.py`, `frontend/app/projects/[id]/calls/[call_id]/page.tsx`, new Artifacts stage component
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
@@ -17,3 +17,4 @@
 - [x] EPIC-3 / Story 3.2 — Kanban Board UI — 2026-04-09
 - [x] EPIC-4 / Story 4.1 — Local Transcription Server — 2026-04-09
 - [x] EPIC-4 / Story 4.2 — Transcript Stage Backend — 2026-04-09
+- [x] EPIC-4 / Story 4.3 — Transcript Stage UI — 2026-04-09

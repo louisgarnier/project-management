@@ -1,6 +1,6 @@
 # Codebase Map — Call Tracker
 > Updated after every story. Read this before touching any existing module.
-> Last updated: EPIC-4 / Story 4.1
+> Last updated: EPIC-4 / Story 4.3
 
 ---
 
@@ -13,10 +13,11 @@ backend/
 ├── logger.py                      → Backend logger (EPIC-1 / Story 1.2)
 ├── routers/
 │   ├── projects.py                → GET/POST/DELETE /api/projects (EPIC-2 / Story 2.1)
-│   └── calls.py                   → GET/POST /api/projects/{id}/calls, PATCH /api/calls/{id}/stage (EPIC-3 / Story 3.1)
+│   └── calls.py                   → GET/POST /api/projects/{id}/calls, PATCH /api/calls/{id}/stage, POST /api/calls/{id}/transcript (EPIC-3/4)
 └── tests/
     ├── test_projects.py           → 5 tests for projects API (EPIC-2 / Story 2.1)
-    └── test_calls.py              → 9 tests for calls API (EPIC-3 / Story 3.1)
+    ├── test_calls.py              → 9 tests for calls API (EPIC-3 / Story 3.1)
+    └── test_transcript.py         → 5 tests: happy path, exact text, 404, 409, 422 (EPIC-4 / Story 4.2)
 
 frontend/
 ├── app/
@@ -27,16 +28,19 @@ frontend/
 │       ├── board/page.tsx         → Kanban board (live calls) (EPIC-3 / Story 3.2)
 │       ├── topics/page.tsx        → Placeholder (EPIC-2 / Story 2.3)
 │       ├── history/page.tsx       → Placeholder (EPIC-2 / Story 2.3)
-│       └── calls/[call_id]/page.tsx → Call detail placeholder (EPIC-3 / Story 3.2)
+│       └── calls/[call_id]/page.tsx → Call detail page: stage router, progress bar (EPIC-4 / Story 4.3)
 └── src/
-    ├── api/client.ts              → proxyFetch, projectsAPI, callsAPI (EPIC-2/3)
+    ├── api/client.ts              → proxyFetch, projectsAPI, callsAPI (getCall, submitTranscript), transcriptionAPI (EPIC-2/3/4)
     ├── utils/logger.ts            → Frontend console logger (EPIC-1 / Story 1.2)
     └── components/
         ├── TopNav.tsx             → Blue top nav bar (EPIC-2 / Story 2.3)
         ├── Sidebar.tsx            → Project list + per-project nav (EPIC-2 / Story 2.3)
         ├── KanbanBoard.tsx        → 4-column kanban (EPIC-3 / Story 3.2)
         ├── CallCard.tsx           → Call card with stage badge (EPIC-3 / Story 3.2)
-        └── NewCallModal.tsx       → Create call form (EPIC-3 / Story 3.2)
+        ├── NewCallModal.tsx       → Create call form (EPIC-3 / Story 3.2)
+        ├── TranscriptionStatusBadge.tsx → Polls localhost:8001/health every 30s, green/orange badge (EPIC-4 / Story 4.3)
+        ├── OfflineModal.tsx       → Server offline instructions, auto-dismisses when online (EPIC-4 / Story 4.3)
+        └── TranscriptStage.tsx    → MP3/TXT file pickers, transcription flow, uploading state (EPIC-4 / Story 4.3)
 
 transcription/
 ├── main.py                        → FastAPI local server: /health, /transcribe (EPIC-4 / Story 4.1)
