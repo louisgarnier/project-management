@@ -3,6 +3,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../"))
 
 import pytest
 from unittest.mock import MagicMock, patch
+from starlette.testclient import TestClient
 
 
 def test_transcribe_audio_formats_lines_correctly():
@@ -35,3 +36,41 @@ def test_transcribe_audio_formats_lines_correctly():
 
     assert "[00:00] SPEAKER_0: Hello world" in result
     assert "[01:05] SPEAKER_1: Good morning" in result
+
+
+@pytest.fixture
+def client():
+    """TestClient with model loading mocked — lifespan won't touch GPU/disk."""
+    with patch("transcription.main.get_whisper"), \
+         patch("transcription.main.get_pipeline"):
+        from transcription.main import app
+        with TestClient(app) as c:
+            yield c
+
+
+def test_health_returns_ok_and_loaded(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok", "models": "loaded"}
+
+
+def test_transcribe_rejects_non_mp3(client):
+    r = client.post(
+        "/transcribe",
+        files={"audio": ("notes.txt", b"hello", "text/plain")},
+    )
+    assert r.status_code == 422
+    assert "mp3" in r.json()["detail"].lower()
+
+
+def test_transcribe_mp3_returns_formatted_transcript(client):
+    fake = "[00:00] SPEAKER_0: Hello world\n[00:05] SPEAKER_1: How are you"
+    with patch("transcription.main.transcribe_audio", return_value=fake):
+        r = client.post(
+            "/transcribe",
+            files={"audio": ("call.mp3", b"fake-audio", "audio/mpeg")},
+        )
+    assert r.status_code == 200
+    data = r.json()
+    assert "[00:" in data["transcript"]
+    assert "SPEAKER_" in data["transcript"]
