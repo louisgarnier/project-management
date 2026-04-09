@@ -44,8 +44,10 @@ export default function TranscriptionStatusBadge() {
       await localServerAPI.stop();
     } catch (err) {
       logger.error("Failed to stop server", { component: "TranscriptionStatusBadge", data: err });
+      setState("online");
+      return;
     }
-    poll();
+    await poll();
   }
 
   if (state === null) return null;
