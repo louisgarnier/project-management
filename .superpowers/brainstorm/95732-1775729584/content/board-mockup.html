@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Story 3.2 — Kanban Board Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f5f7; }
+
+  /* Shell chrome */
+  .top-nav {
+    height: 44px; background: #0052cc; display: flex; align-items: center;
+    padding: 0 16px; gap: 12px; flex-shrink: 0;
+  }
+  .nav-logo { width: 24px; height: 24px; background: white; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; color: #0052cc; flex-shrink: 0; }
+  .nav-title { color: white; font-weight: 600; font-size: 13px; }
+  .nav-spacer { flex: 1; }
+  .nav-avatar { width: 28px; height: 28px; border-radius: 50%; background: #0065ff;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 11px; font-weight: 600; }
+
+  .app-body { display: flex; height: calc(100vh - 44px); overflow: hidden; }
+
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: #fafbfc; border-right: 1px solid #dfe1e6;
+    display: flex; flex-direction: column; overflow-y: auto; padding: 12px 0;
+  }
+  .sidebar-section { padding: 0 8px 12px; }
+  .sidebar-label { font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: #5e6c84; padding: 4px 8px 6px; }
+  .project-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+    border-radius: 4px; cursor: pointer; color: #172b4d; font-size: 13px; }
+  .project-item.active { background: #e9f0ff; color: #0052cc; }
+  .project-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .project-sub { display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 32px;
+    border-radius: 4px; cursor: pointer; color: #5e6c84; font-size: 12px; }
+  .project-sub.active { background: #e9f0ff; color: #0052cc; font-weight: 600; }
+
+  /* Main content */
+  .main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+  .board-header {
+    padding: 16px 20px 12px; background: white; border-bottom: 1px solid #dfe1e6;
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .board-title { font-size: 18px; font-weight: 700; color: #172b4d; }
+
+  .new-call-btn {
+    background: #0052cc; color: white; border: none; padding: 6px 14px;
+    border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer;
+  }
+  .new-call-btn.disabled {
+    background: #97a0af; cursor: not-allowed; position: relative;
+  }
+  .new-call-btn .tooltip {
+    display: none; position: absolute; bottom: calc(100% + 6px); right: 0;
+    background: #172b4d; color: white; font-size: 11px; padding: 4px 8px;
+    border-radius: 4px; white-space: nowrap; font-weight: 400;
+  }
+  .new-call-btn.disabled:hover .tooltip { display: block; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; padding: 0 20px; background: white; border-bottom: 1px solid #dfe1e6; }
+  .tab { padding: 10px 16px; font-size: 13px; font-weight: 500; color: #5e6c84;
+    cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: #0052cc; border-bottom-color: #0052cc; }
+
+  /* Kanban board */
+  .board { flex: 1; overflow-x: auto; padding: 16px 20px; display: flex; gap: 12px; }
+
+  .column { width: 230px; flex-shrink: 0; display: flex; flex-direction: column; }
+  .col-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .col-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: #5e6c84; }
+  .col-count { background: #dfe1e6; color: #5e6c84; font-size: 10px; font-weight: 600;
+    border-radius: 10px; padding: 1px 7px; }
+
+  .col-body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+
+  /* Call card */
+  .call-card {
+    background: white; border-radius: 4px; padding: 10px 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12); cursor: pointer;
+    border-left: 3px solid transparent; transition: box-shadow .15s;
+  }
+  .call-card:hover { box-shadow: 0 3px 8px rgba(0,0,0,.16); }
+  .call-card-title { font-size: 13px; font-weight: 500; color: #172b4d; line-height: 1.4; margin-bottom: 8px; }
+  .call-card-footer { display: flex; align-items: center; justify-content: space-between; }
+  .stage-badge {
+    font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 3px;
+    text-transform: uppercase; letter-spacing: .04em;
+  }
+  .call-date { font-size: 10px; color: #97a0af; }
+
+  /* Done column cards */
+  .call-card.done { opacity: .7; }
+
+  /* Empty column */
+  .col-empty { border: 2px dashed #dfe1e6; border-radius: 4px; padding: 24px 16px;
+    text-align: center; flex: 1; }
+  .col-empty p { font-size: 11px; color: #b3bac5; }
+
+  /* Modal overlay */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(9,30,66,.54);
+    display: flex; align-items: center; justify-content: center; z-index: 100;
+  }
+  .modal {
+    background: white; border-radius: 6px; width: 400px; padding: 24px;
+    box-shadow: 0 8px 32px rgba(9,30,66,.32);
+  }
+  .modal h3 { font-size: 16px; font-weight: 600; color: #172b4d; margin-bottom: 16px; }
+  .modal label { font-size: 12px; font-weight: 600; color: #5e6c84; display: block; margin-bottom: 4px; }
+  .modal input {
+    width: 100%; border: 2px solid #dfe1e6; border-radius: 4px; padding: 8px 10px;
+    font-size: 14px; color: #172b4d; outline: none;
+  }
+  .modal input:focus { border-color: #4c9aff; }
+  .modal-note { font-size: 11px; color: #5e6c84; margin-top: 6px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  .btn-cancel { background: none; border: none; padding: 6px 14px; font-size: 13px;
+    color: #5e6c84; cursor: pointer; font-weight: 500; }
+  .btn-create { background: #0052cc; color: white; border: none; padding: 6px 14px;
+    border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; }
+
+  .label-tag { font-size: 10px; background: #e3fcef; color: #006644; padding: 2px 6px;
+    border-radius: 3px; font-weight: 600; }
+
+  /* Section heading */
+  h2.section-heading {
+    font-size: 14px; color: #172b4d; font-weight: 600; padding: 12px 0 8px;
+    border-bottom: 1px solid #dfe1e6; margin-bottom: 12px;
+  }
+  .note-box {
+    background: #fffae6; border: 1px solid #ffe380; border-radius: 4px;
+    padding: 10px 14px; font-size: 12px; color: #172b4d; margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<div class="top-nav">
+  <div class="nav-logo">CT</div>
+  <span class="nav-title">Call Tracker</span>
+  <div class="nav-spacer"></div>
+  <div class="nav-avatar">LG</div>
+</div>
+
+<div class="app-body">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Projects</div>
+      <div class="project-item active">
+        <div class="project-dot" style="background:#0052cc"></div>
+        Factset Risk
+      </div>
+      <div class="project-sub active">📋 Board</div>
+      <div class="project-sub">🗺️ Topics</div>
+      <div class="project-sub">📁 File History</div>
+      <div class="project-item" style="margin-top:4px">
+        <div class="project-dot" style="background:#36b37e"></div>
+        RAM
+      </div>
+      <div class="project-sub">📋 Board</div>
+      <div class="project-sub">🗺️ Topics</div>
+      <div class="project-sub">📁 File History</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="board-header">
+      <div class="board-title">Factset Risk</div>
+      <button class="new-call-btn">+ New Call</button>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active">Kanban</div>
+      <div class="tab">Topics</div>
+    </div>
+
+    <div class="board">
+
+      <!-- TRANSCRIPT -->
+      <div class="column">
+        <div class="col-header">
+          <span class="col-label">Get Transcript</span>
+          <span class="col-count">1</span>
+        </div>
+        <div class="col-body">
+          <div class="call-card" style="border-left-color:#0052cc">
+            <div class="call-card-title">Q1 Earnings Review</div>
+            <div class="call-card-footer">
+              <span class="stage-badge" style="background:#e9f0ff;color:#0052cc">Transcript</span>
+              <span class="call-date">Apr 9</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ARTIFACTS -->
+      <div class="column">
+        <div class="col-header">
+          <span class="col-label">Artifacts</span>
+          <span class="col-count">1</span>
+        </div>
+        <div class="col-body">
+          <div class="call-card" style="border-left-color:#ff8b00">
+            <div class="call-card-title">Risk Model Deep Dive</div>
+            <div class="call-card-footer">
+              <span class="stage-badge" style="background:#fff4e6;color:#974f0c">Artifacts</span>
+              <span class="call-date">Apr 7</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TOPICS -->
+      <div class="column">
+        <div class="col-header">
+          <span class="col-label">Topics</span>
+          <span class="col-count">0</span>
+        </div>
+        <div class="col-body">
+          <div class="col-empty"><p>No calls yet</p></div>
+        </div>
+      </div>
+
+      <!-- DONE -->
+      <div class="column">
+        <div class="col-header">
+          <span class="col-label">Done</span>
+          <span class="col-count">2</span>
+        </div>
+        <div class="col-body">
+          <div class="call-card done" style="border-left-color:#36b37e">
+            <div class="call-card-title">Portfolio Attribution Call</div>
+            <div class="call-card-footer">
+              <span class="stage-badge" style="background:#e3fcef;color:#006644">Done</span>
+              <span class="call-date">Apr 2</span>
+            </div>
+          </div>
+          <div class="call-card done" style="border-left-color:#36b37e">
+            <div class="call-card-title">Benchmark Methodology</div>
+            <div class="call-card-footer">
+              <span class="stage-badge" style="background:#e3fcef;color:#006644">Done</span>
+              <span class="call-date">Mar 28</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /board -->
+  </div><!-- /main -->
+</div>
+
+<!-- SECTION BELOW THE APP: Design notes + second state -->
+<div style="background:white;border-top:2px solid #dfe1e6;padding:24px 32px">
+
+  <h2 class="section-heading">Two states to review</h2>
+
+  <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+
+    <!-- State A: New Call button ENABLED -->
+    <div style="flex:1;min-width:280px">
+      <div class="label-tag" style="margin-bottom:8px;display:inline-block">State A — No active calls (button enabled)</div>
+      <div style="border:1px solid #dfe1e6;border-radius:4px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;color:#172b4d">All calls are done</span>
+        <button class="new-call-btn">+ New Call</button>
+      </div>
+    </div>
+
+    <!-- State B: New Call button DISABLED -->
+    <div style="flex:1;min-width:280px">
+      <div class="label-tag" style="background:#fff4e6;color:#974f0c;border-color:#ffe380;margin-bottom:8px;display:inline-block">State B — Active call exists (button disabled)</div>
+      <div style="border:1px solid #dfe1e6;border-radius:4px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;color:#172b4d">1 active call in progress</span>
+        <div style="position:relative">
+          <button class="new-call-btn disabled" style="cursor:default">
+            + New Call
+            <span class="tooltip" style="display:inline;position:static;background:none;color:#5e6c84;font-size:11px;padding:0 0 0 6px">🔒 Complete the active call first</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <h2 class="section-heading" style="margin-top:24px">New Call modal</h2>
+  <div style="max-width:420px">
+    <div class="modal" style="position:static;box-shadow:0 2px 8px rgba(9,30,66,.16)">
+      <h3>New Call</h3>
+      <label>Call title</label>
+      <input type="text" value="Q2 Earnings Review" />
+      <div class="modal-note">The call will start in the "Get Transcript" stage.</div>
+      <div class="modal-actions">
+        <button class="btn-cancel">Cancel</button>
+        <button class="btn-create">Create</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
