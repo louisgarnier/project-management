@@ -1,7 +1,7 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-3 / Story 3.1 — Calls API with Sequential Enforcement**
+**EPIC-2 / Story 2.3 — App Shell & Project List UI (Redesign)**
 - Status: not started
 - Blocked by: nothing
 
