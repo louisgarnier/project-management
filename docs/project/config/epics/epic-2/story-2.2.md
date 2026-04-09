@@ -3,7 +3,7 @@
 **Epic:** EPIC-2 — Projects
 **Maps to plan:** Slice 2
 **Maps to PRD:** US-01
-**Status:** `superseded` — UI design rejected; replaced by Story 2.3
+**Status:** `done` — superseded by Story 2.3 which delivered all AC. Validated 2026-04-09.
 
 ---
 
@@ -11,12 +11,12 @@
 The app opens to a project list. User can create a project and click into it. Testable in browser.
 
 ## Acceptance Criteria
-- [ ] `/` (home) shows list of all projects, each with name + description
-- [ ] "New Project" button opens a create form (name + description)
-- [ ] Submitting the form calls `POST /api/projects` via proxy and adds the project to the list
-- [ ] Clicking a project navigates to `/projects/[id]` (placeholder page for now — just shows project name)
-- [ ] All API calls log via `frontend/src/utils/logger.ts` (browser console + proxy terminal)
-- [ ] Empty state: "No projects yet — create your first one" shown when list is empty
+- [x] `/` (home) shows list of all projects, each with name + description
+- [x] "New Project" button opens a create form (name + description)
+- [x] Submitting the form calls `POST /api/projects` via proxy and adds the project to the list
+- [x] Clicking a project navigates to `/projects/[id]` (placeholder page for now — just shows project name)
+- [x] All API calls log via `frontend/src/utils/logger.ts` (browser console + proxy terminal)
+- [x] Empty state: "No projects yet — create your first one" shown when list is empty
 
 ## Tasks
 - [x] Create `frontend/app/page.tsx` — project list with fetch from `/api/proxy/projects`
