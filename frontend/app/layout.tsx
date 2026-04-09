@@ -1,30 +1,15 @@
-/**
- * Root layout for Next.js app
- * 
- * ⚠️ Before making changes, read: ../../docs/workflow/BEST_PRACTICES.md
- * Always check with the user before modifying this file.
- */
-
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'Template Project',
-  description: 'Template Next.js application',
+  title: "Call Tracker",
+  description: "Turn client call recordings into structured artifacts and a living topic dashboard",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>{children}</body>
     </html>
   );
 }
-
-
-
-
