@@ -90,10 +90,4 @@ Call Tracker is a solo-use web app that turns raw client call recordings into st
 
 ## Outputs for 2-PRD.md
 
-| Brainstorm | → PRD input |
-|---|---|
-| "Solo-use web app that turns raw client call recordings into structured artifacts and a living topic dashboard" | Project Summary |
-| Solo consultant with recurring client calls, no structured pipeline today | Context & user story seeds |
-| Claude reliability, topic drift, cold starts | Open Questions & Constraints |
-| Medium complexity, 3–4 weeks, no skills gap | Non-functional requirements |
-| GO — real problem, scoped solution, familiar stack | Goals framing |
+on, familiar stack | Goals framing |
