@@ -3,7 +3,7 @@
 **Epic:** EPIC-4 — Transcript Stage
 **Maps to plan:** Slice 4
 **Maps to PRD:** US-02, FR-02, NG-03
-**Status:** `pending`
+**Status:** `done`
 
 ---
 
@@ -11,23 +11,23 @@
 The local FastAPI transcription server accepts an MP3, runs Whisper + pyannote (exact port of `transcribe_watcher.py`), and returns the formatted transcript. The server runs on the user's machine at `localhost:8001`.
 
 ## Acceptance Criteria
-- [ ] `GET /health` returns `{"status":"ok","models":"loaded"}` once Whisper + pyannote are loaded
-- [ ] `POST /transcribe` accepts `multipart/form-data` with an `audio` file field
-- [ ] Output format matches `transcribe_watcher.py`: `[MM:SS] SPEAKER_X: text` per line
-- [ ] Whisper model: `medium`
-- [ ] Pyannote pipeline: `pyannote/speaker-diarization-3.1`
-- [ ] Models loaded once at startup (not per request)
-- [ ] CORS set to `allow_origins=["*"]` (browser calls from HTTPS Vercel)
-- [ ] All transcription steps logged via `transcription/logger.py`: start, whisper done, diarization done, merge done, output length
-- [ ] Error: unsupported file type → 422 with clear message
-- [ ] `run_transcription.sh` script starts the server with one command
+- [x] `GET /health` returns `{"status":"ok","models":"loaded"}` once Whisper + pyannote are loaded
+- [x] `POST /transcribe` accepts `multipart/form-data` with an `audio` file field
+- [x] Output format matches `transcribe_watcher.py`: `[MM:SS] SPEAKER_X: text` per line
+- [x] Whisper model: `medium`
+- [x] Pyannote pipeline: `pyannote/speaker-diarization-3.1`
+- [x] Models loaded once at startup (not per request)
+- [x] CORS set to `allow_origins=["*"]` (browser calls from HTTPS Vercel)
+- [x] All transcription steps logged via `transcription/logger.py`: start, whisper done, diarization done, merge done, output length
+- [x] Error: unsupported file type → 422 with clear message
+- [x] `run_transcription.sh` script starts the server with one command
 
 ## Tasks
-- [ ] Port `transcribe_watcher.py` to `transcription/transcribe.py` (see reference at `/Users/louisgarnier/Claude/PM/transcribe_watcher.py`)
-- [ ] Refactor into functions: `get_whisper()`, `get_pipeline()`, `transcribe_audio(path, filename) → str`
-- [ ] Create `transcription/main.py` — FastAPI with startup model loading, CORS, `/health`, `/transcribe`
-- [ ] Create `run_transcription.sh` in project root
-- [ ] Write test: `transcription/tests/test_transcribe.py` with a short MP3 fixture
+- [x] Port `transcribe_watcher.py` to `transcription/transcribe.py` (see reference at `/Users/louisgarnier/Claude/PM/transcribe_watcher.py`)
+- [x] Refactor into functions: `get_whisper()`, `get_pipeline()`, `transcribe_audio(path, filename) → str`
+- [x] Create `transcription/main.py` — FastAPI with startup model loading, CORS, `/health`, `/transcribe`
+- [x] Create `run_transcription.sh` in project root
+- [x] Write test: `transcription/tests/test_transcribe.py` with a short MP3 fixture
 
 ## Reference
 - Source to replicate: `/Users/louisgarnier/Claude/PM/transcribe_watcher.py`

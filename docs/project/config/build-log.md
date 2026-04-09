@@ -1,13 +1,23 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-3 / Story 3.3 — (next story)**
+**EPIC-4 / Story 4.2 — Transcript Stage Backend**
 - Status: not started
 - Blocked by: nothing
 
 ---
 
 ## Session History
+
+### 2026-04-09 — Story 4.1: Local Transcription Server
+- `transcription/transcribe.py` — `get_whisper()`, `get_pipeline()` (with HF_TOKEN guard), `transcribe_audio(path, filename) → str`
+- `transcription/main.py` — refactored to import from transcribe.py; lifespan preloads both models at startup; `/health` returns `{"status":"ok","models":"loaded"}`; `/transcribe` mp3-only, 422 for other types
+- `transcription/tests/test_transcribe.py` — 4 tests: unit test for transcribe_audio + 3 API tests (health, mp3-only guard, formatted transcript)
+- `transcription/tests/test_health.py` — updated to use fixture-based mocking (lifespan now loads models)
+- `run_transcription.sh` — already existed, unchanged
+- 28/28 tests passing (6 transcription + 22 backend)
+
+
 
 ### 2026-04-09 — Story 3.2: Kanban Board UI
 - Live BoardPage fetching calls from GET /api/projects/{id}/calls
