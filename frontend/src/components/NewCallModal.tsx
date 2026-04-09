@@ -30,9 +30,7 @@ export default function NewCallModal({ onClose, onCreate }: Props) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
-        <h2 className="text-[16px] font-semibold text-[#172b4d] mb-4">
-          New Call
-        </h2>
+        <h2 className="text-[16px] font-semibold text-[#172b4d] mb-4">New Call</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-[12px] font-semibold text-[#5e6c84] mb-1">

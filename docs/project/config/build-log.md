@@ -1,13 +1,23 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-3 / Story 3.2 — Kanban Board UI**
+**EPIC-3 / Story 3.3 — (next story)**
 - Status: not started
 - Blocked by: nothing
 
 ---
 
 ## Session History
+
+### 2026-04-09 — Story 3.2: Kanban Board UI
+- Live BoardPage fetching calls from GET /api/projects/{id}/calls
+- KanbanBoard: 4 columns (Get Transcript / Artifacts / Topics / Done) with CallCard per call
+- CallCard: colored left border, stage badge, date, hover shadow, done opacity 0.65
+- NewCallModal: title input, POST on submit, reloads board on success
+- "+ New Call" disabled with tooltip when active call exists (hasActiveCall guard)
+- Placeholder call detail page at /projects/[id]/calls/[call_id]
+- Tabs: Kanban (live) + Topics (placeholder)
+- TypeScript clean, ESLint clean, Prettier clean
 
 ### 2026-04-09 — Story 3.1: Calls API
 - Implemented GET /api/projects/{id}/calls, POST /api/projects/{id}/calls, GET /api/calls/{id}, PATCH /api/calls/{id}/stage

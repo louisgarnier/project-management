@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { callsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
@@ -20,7 +20,7 @@ export default function BoardPage() {
 
   const hasActiveCall = calls.some((c) => c.kanban_stage !== "done");
 
-  async function loadCalls() {
+  const loadCalls = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -34,11 +34,11 @@ export default function BoardPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [projectId]);
 
   useEffect(() => {
     loadCalls();
-  }, [projectId]);
+  }, [loadCalls]);
 
   async function handleCreate(title: string) {
     await callsAPI.create(projectId, { title });
@@ -104,10 +104,7 @@ export default function BoardPage() {
       ) : error ? (
         <div className="flex-1 flex items-center justify-center flex-col gap-3">
           <p className="text-[13px] text-red-600">{error}</p>
-          <button
-            onClick={loadCalls}
-            className="text-[13px] text-[#0052cc] underline"
-          >
+          <button onClick={loadCalls} className="text-[13px] text-[#0052cc] underline">
             Retry
           </button>
         </div>
@@ -115,12 +112,7 @@ export default function BoardPage() {
         <KanbanBoard calls={calls} />
       )}
 
-      {showModal && (
-        <NewCallModal
-          onClose={() => setShowModal(false)}
-          onCreate={handleCreate}
-        />
-      )}
+      {showModal && <NewCallModal onClose={() => setShowModal(false)} onCreate={handleCreate} />}
     </div>
   );
 }

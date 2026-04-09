@@ -48,9 +48,7 @@ export default function CallCard({ call, onClick }: Props) {
         opacity: isDone ? 0.65 : 1,
       }}
     >
-      <p className="text-[13px] font-medium text-[#172b4d] leading-snug mb-2">
-        {call.title}
-      </p>
+      <p className="text-[13px] font-medium text-[#172b4d] leading-snug mb-2">{call.title}</p>
       <div className="flex items-center justify-between">
         <span
           className="text-[10px] font-semibold px-[7px] py-[2px] rounded-[3px] uppercase tracking-[0.04em]"

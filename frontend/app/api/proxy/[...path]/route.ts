@@ -4,10 +4,7 @@ const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
 const ts = () => new Date().toISOString().replace("T", " ").substring(0, 23);
 
-async function proxy(
-  request: NextRequest,
-  params: { path: string[] }
-): Promise<NextResponse> {
+async function proxy(request: NextRequest, params: { path: string[] }): Promise<NextResponse> {
   const endpoint = "/" + params.path.join("/");
   const searchParams = request.nextUrl.searchParams.toString();
   const fullPath = searchParams ? `${endpoint}?${searchParams}` : endpoint;
@@ -32,9 +29,7 @@ async function proxy(
     });
 
     const data = await response.json().catch(() => null);
-    console.log(
-      `${ts()} ✅ [Frontend→API] ${method} ${fullPath} → ${response.status}`
-    );
+    console.log(`${ts()} ✅ [Frontend→API] ${method} ${fullPath} → ${response.status}`);
     return NextResponse.json(data, { status: response.status });
   } catch (error) {
     console.error(`${ts()} ❌ [Frontend→API] ${method} ${fullPath} error:`, error);

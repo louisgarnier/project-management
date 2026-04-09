@@ -6,10 +6,7 @@ import type { Project, Call } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
-async function proxyFetch<T>(
-  path: string,
-  options?: RequestInit
-): Promise<T> {
+async function proxyFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${PROXY_BASE}${path}`;
   const response = await fetch(url, {
     ...options,
@@ -39,13 +36,11 @@ export const projectsAPI = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  delete: (id: string) =>
-    proxyFetch<void>(`/api/projects/${id}`, { method: "DELETE" }),
+  delete: (id: string) => proxyFetch<void>(`/api/projects/${id}`, { method: "DELETE" }),
 };
 
 export const callsAPI = {
-  list: (projectId: string) =>
-    proxyFetch<Call[]>(`/api/projects/${projectId}/calls`),
+  list: (projectId: string) => proxyFetch<Call[]>(`/api/projects/${projectId}/calls`),
   create: (projectId: string, data: { title: string }) =>
     proxyFetch<Call>(`/api/projects/${projectId}/calls`, {
       method: "POST",

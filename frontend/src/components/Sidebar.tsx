@@ -8,14 +8,7 @@ import { logger } from "@/utils/logger";
 import type { Project } from "@/types";
 import CreateProjectModal from "@/components/CreateProjectModal";
 
-const PROJECT_COLORS = [
-  "#36b37e",
-  "#0052cc",
-  "#ff5630",
-  "#6554c0",
-  "#ff8b00",
-  "#00b8d9",
-];
+const PROJECT_COLORS = ["#36b37e", "#0052cc", "#ff5630", "#6554c0", "#ff8b00", "#00b8d9"];
 const getColor = (id: string) => {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
@@ -83,9 +76,7 @@ export default function Sidebar() {
                 key={project.id}
                 href={`/projects/${project.id}/board`}
                 className={`flex items-center gap-2 px-2 py-1.5 rounded mb-0.5 text-[11px] font-medium transition-colors ${
-                  isActive
-                    ? "bg-[#0052cc] text-white"
-                    : "text-[#172b4d] hover:bg-white"
+                  isActive ? "bg-[#0052cc] text-white" : "text-[#172b4d] hover:bg-white"
                 }`}
               >
                 <span
@@ -141,10 +132,7 @@ export default function Sidebar() {
       </aside>
 
       {showModal && (
-        <CreateProjectModal
-          onClose={() => setShowModal(false)}
-          onCreate={handleCreate}
-        />
+        <CreateProjectModal onClose={() => setShowModal(false)} onCreate={handleCreate} />
       )}
     </>
   );

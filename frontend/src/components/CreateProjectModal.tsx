@@ -31,14 +31,10 @@ export default function CreateProjectModal({ onClose, onCreate }: Props) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          New Project
-        </h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">New Project</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Name
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
             <input
               type="text"
               value={name}
@@ -49,9 +45,7 @@ export default function CreateProjectModal({ onClose, onCreate }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Description
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}

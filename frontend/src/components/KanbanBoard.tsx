@@ -42,9 +42,7 @@ export default function KanbanBoard({ calls }: Props) {
                   <CallCard
                     key={call.id}
                     call={call}
-                    onClick={() =>
-                      router.push(`/projects/${projectId}/calls/${call.id}`)
-                    }
+                    onClick={() => router.push(`/projects/${projectId}/calls/${call.id}`)}
                   />
                 ))
               )}
