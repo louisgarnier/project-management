@@ -16,6 +16,10 @@ class StageAdvance(BaseModel):
     new_stage: str
 
 
+class TranscriptSubmit(BaseModel):
+    transcript: str
+
+
 @router.get("/projects/{project_id}/calls")
 def list_calls(project_id: str):
     client = get_client()
@@ -105,4 +109,30 @@ def advance_stage(call_id: str, payload: StageAdvance):
         .execute()
     )
     db_logger.info(f"✅ [DB] Advanced stage: {call_id}")
+    return update_result.data[0]
+
+
+@router.post("/calls/{call_id}/transcript")
+def submit_transcript(call_id: str, payload: TranscriptSubmit):
+    client = get_client()
+    db_logger.info(f"🗄️ [DB] Fetching call for transcript submission: {call_id}")
+    result = client.table("calls").select("kanban_stage").eq("id", call_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Call not found")
+
+    current_stage = result.data[0]["kanban_stage"]
+    if current_stage != "transcript":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Call is already past the transcript stage (current: {current_stage})",
+        )
+
+    db_logger.info(f"🗄️ [DB] Storing transcript and advancing call: {call_id}")
+    update_result = (
+        client.table("calls")
+        .update({"transcript": payload.transcript, "kanban_stage": "artifacts"})
+        .eq("id", call_id)
+        .execute()
+    )
+    db_logger.info(f"✅ [DB] Transcript stored, advanced to artifacts: {call_id}")
     return update_result.data[0]
