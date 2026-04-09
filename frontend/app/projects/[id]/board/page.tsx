@@ -1,43 +1,126 @@
-const STAGES = [
-  { key: "transcript", label: "Transcript", color: "#0052cc" },
-  { key: "artifacts", label: "Artifacts", color: "#ff8b00" },
-  { key: "topics", label: "Topics", color: "#6554c0" },
-  { key: "done", label: "Done", color: "#36b37e" },
-];
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { callsAPI } from "@/api/client";
+import { logger } from "@/utils/logger";
+import type { Call } from "@/types";
+import KanbanBoard from "@/components/KanbanBoard";
+import NewCallModal from "@/components/NewCallModal";
 
 export default function BoardPage() {
+  const params = useParams<{ id: string }>();
+  const projectId = params.id;
+
+  const [calls, setCalls] = useState<Call[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<"kanban" | "topics">("kanban");
+
+  const hasActiveCall = calls.some((c) => c.kanban_stage !== "done");
+
+  async function loadCalls() {
+    setLoading(true);
+    setError(null);
+    try {
+      logger.info("Fetching calls", { component: "BoardPage", data: { projectId } });
+      const data = await callsAPI.list(projectId);
+      logger.info(`Loaded ${data.length} calls`, { component: "BoardPage" });
+      setCalls(data);
+    } catch (err) {
+      logger.error("Failed to load calls", { component: "BoardPage", data: err });
+      setError("Failed to load calls. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadCalls();
+  }, [projectId]);
+
+  async function handleCreate(title: string) {
+    await callsAPI.create(projectId, { title });
+    await loadCalls();
+  }
+
   return (
-    <div className="p-6 h-full flex flex-col">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6 flex-shrink-0">
-        <h1 className="text-xl font-semibold text-[#172b4d]">Board</h1>
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
+        <h1 className="text-[18px] font-bold text-[#172b4d]">Board</h1>
+        <div className="relative group">
+          <button
+            disabled={hasActiveCall}
+            onClick={() => setShowModal(true)}
+            className="bg-[#0052cc] text-white px-4 py-[6px] rounded text-[13px] font-medium hover:bg-[#0065ff] disabled:bg-[#97a0af] disabled:cursor-not-allowed"
+          >
+            + New Call
+          </button>
+          {hasActiveCall && (
+            <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block">
+              <div className="bg-[#172b4d] text-white text-[11px] px-2 py-1 rounded whitespace-nowrap">
+                Complete the active call first
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex px-5 bg-white border-b border-[#dfe1e6] flex-shrink-0">
         <button
-          disabled
-          className="bg-[#0052cc] text-white px-4 py-1.5 rounded text-sm font-medium opacity-50 cursor-not-allowed"
-          title="Available in EPIC-3"
+          onClick={() => setActiveTab("kanban")}
+          className={`px-4 py-[9px] text-[13px] font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === "kanban"
+              ? "text-[#0052cc] border-[#0052cc]"
+              : "text-[#5e6c84] border-transparent hover:text-[#172b4d]"
+          }`}
         >
-          + New Call
+          Kanban
+        </button>
+        <button
+          onClick={() => setActiveTab("topics")}
+          className={`px-4 py-[9px] text-[13px] font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === "topics"
+              ? "text-[#0052cc] border-[#0052cc]"
+              : "text-[#5e6c84] border-transparent hover:text-[#172b4d]"
+          }`}
+        >
+          Topics
         </button>
       </div>
 
-      {/* Kanban columns */}
-      <div className="flex gap-3 flex-1 overflow-x-auto">
-        {STAGES.map((stage) => (
-          <div key={stage.key} className="w-[220px] flex-shrink-0">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-semibold text-[#5e6c84] uppercase tracking-wide">
-                {stage.label}
-              </span>
-              <span className="bg-[#dfe1e6] text-[#5e6c84] text-[10px] rounded-full px-1.5 py-0.5">
-                0
-              </span>
-            </div>
-            <div className="border-2 border-dashed border-[#dfe1e6] rounded p-6 text-center">
-              <p className="text-[10px] text-[#b3bac5]">No calls yet</p>
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* Content */}
+      {activeTab === "topics" ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-[13px] text-[#5e6c84]">Topics view coming soon.</p>
+        </div>
+      ) : loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-[13px] text-[#5e6c84]">Loading…</p>
+        </div>
+      ) : error ? (
+        <div className="flex-1 flex items-center justify-center flex-col gap-3">
+          <p className="text-[13px] text-red-600">{error}</p>
+          <button
+            onClick={loadCalls}
+            className="text-[13px] text-[#0052cc] underline"
+          >
+            Retry
+          </button>
+        </div>
+      ) : (
+        <KanbanBoard calls={calls} />
+      )}
+
+      {showModal && (
+        <NewCallModal
+          onClose={() => setShowModal(false)}
+          onCreate={handleCreate}
+        />
+      )}
     </div>
   );
 }
