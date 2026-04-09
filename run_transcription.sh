@@ -11,12 +11,13 @@ cd "$SCRIPT_DIR"
 VENV="$SCRIPT_DIR/transcription/.venv"
 
 # First-time setup: create venv and install dependencies
-if [ ! -f "$VENV/bin/activate" ]; then
-  echo "First-time setup: creating virtual environment..."
+# Check for whisper package specifically — not just the activate file —
+# to handle the case where venv was created but pip install was interrupted.
+if [ ! -f "$VENV/bin/activate" ] || ! "$VENV/bin/python" -c "import whisper" 2>/dev/null; then
+  echo "Setup required: installing dependencies (this takes ~10 minutes on first run)..."
   python3 -m venv "$VENV"
   source "$VENV/bin/activate"
-  echo "Installing dependencies (this takes ~10 minutes on first run)..."
-  pip install --quiet -r transcription/requirements.txt
+  pip install -r transcription/requirements.txt
   echo "Setup complete."
   echo ""
 else
