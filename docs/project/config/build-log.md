@@ -1,13 +1,21 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-4 / Story 4.2 — Transcript Stage Backend**
+**EPIC-4 / Story 4.3 — Transcript Stage UI**
 - Status: not started
 - Blocked by: nothing
 
 ---
 
 ## Session History
+
+### 2026-04-09 — Story 4.2: Transcript Stage Backend
+- `POST /api/calls/{call_id}/transcript` added to `backend/routers/calls.py`
+- `TranscriptSubmit` Pydantic model: `transcript: str = Field(min_length=1)`
+- Guards: 404 if call not found, 409 if not at transcript stage, 422 if empty string
+- Single DB update: sets `transcript` + advances `kanban_stage` to `artifacts`
+- `backend/tests/test_transcript.py` — 5 tests (happy path, exact text, 404, 409, 422)
+- 27/27 backend tests passing
 
 ### 2026-04-09 — Story 4.1: Local Transcription Server
 - `transcription/transcribe.py` — `get_whisper()`, `get_pipeline()` (with HF_TOKEN guard), `transcribe_audio(path, filename) → str`

@@ -3,7 +3,7 @@
 **Epic:** EPIC-4 — Transcript Stage
 **Maps to plan:** Slice 4
 **Maps to PRD:** US-02, FR-02, FR-02b
-**Status:** `pending`
+**Status:** `done`
 
 ---
 
@@ -20,10 +20,10 @@ Railway FastAPI receives transcripts (either from the local transcription server
 - [ ] All operations logged
 
 ## Tasks
-- [ ] Add `POST /api/calls/{call_id}/transcript` to `backend/routers/calls.py`
-- [ ] Update call row: set `transcript`, set `kanban_stage = 'artifacts'`
-- [ ] Add guard: reject if `kanban_stage != 'transcript'`
-- [ ] Write tests: `backend/tests/test_transcript.py`
+- [x] Add `POST /api/calls/{call_id}/transcript` to `backend/routers/calls.py`
+- [x] Update call row: set `transcript`, set `kanban_stage = 'artifacts'`
+- [x] Add guard: reject if `kanban_stage != 'transcript'`
+- [x] Write tests: `backend/tests/test_transcript.py`
 
 ## Dev Tests
 - `backend/tests/test_transcript.py`:
