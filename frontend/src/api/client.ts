@@ -33,14 +33,14 @@ export const healthAPI = {
 };
 
 export const projectsAPI = {
-  list: () => proxyFetch<Project[]>("/projects"),
+  list: () => proxyFetch<Project[]>("/api/projects"),
   create: (data: { name: string; description: string }) =>
-    proxyFetch<Project>("/projects", {
+    proxyFetch<Project>("/api/projects", {
       method: "POST",
       body: JSON.stringify(data),
     }),
   delete: (id: string) =>
-    proxyFetch<void>(`/projects/${id}`, { method: "DELETE" }),
+    proxyFetch<void>(`/api/projects/${id}`, { method: "DELETE" }),
 };
 
 // Further API modules added per epic (calls, artifacts, topics)
