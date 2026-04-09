@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { callsAPI, transcriptionAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { Call } from "@/types";
@@ -20,6 +20,13 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
   const mp3Ref = useRef<HTMLInputElement>(null);
   const txtRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (!uploading) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [uploading]);
+
   async function handleMp3Change(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -34,6 +41,7 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
 
     setUploading(true);
     setError(null);
+    let success = false;
     try {
       setStatusMsg("Transcribing… this may take a few minutes.");
       logger.info("Starting MP3 transcription", { component: "TranscriptStage", data: { callId: call.id } });
@@ -41,7 +49,7 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
       setStatusMsg("Saving transcript…");
       await callsAPI.submitTranscript(call.id, transcript);
       logger.info("Transcript submitted", { component: "TranscriptStage", data: { callId: call.id } });
-      onAdvance();
+      success = true;
     } catch (err) {
       logger.error("Transcription failed", { component: "TranscriptStage", data: err });
       setError(err instanceof Error ? err.message : "Transcription failed. Please try again.");
@@ -49,6 +57,7 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
       setUploading(false);
       setStatusMsg(null);
     }
+    if (success) onAdvance();
   }
 
   async function handleTxtChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -58,6 +67,7 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
 
     setUploading(true);
     setError(null);
+    let success = false;
     try {
       setStatusMsg("Reading file…");
       logger.info("Submitting .txt transcript", { component: "TranscriptStage", data: { callId: call.id } });
@@ -65,7 +75,7 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
       setStatusMsg("Saving transcript…");
       await callsAPI.submitTranscript(call.id, transcript);
       logger.info("Transcript submitted", { component: "TranscriptStage", data: { callId: call.id } });
-      onAdvance();
+      success = true;
     } catch (err) {
       logger.error("TXT upload failed", { component: "TranscriptStage", data: err });
       setError(err instanceof Error ? err.message : "Upload failed. Please try again.");
@@ -73,6 +83,7 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
       setUploading(false);
       setStatusMsg(null);
     }
+    if (success) onAdvance();
   }
 
   if (uploading) {

@@ -51,7 +51,7 @@ export default function CallDetailPage() {
     );
   }
 
-  const currentIdx = STAGES.indexOf(call.kanban_stage as (typeof STAGES)[number]);
+  const currentIdx = STAGES.indexOf(call.kanban_stage);
 
   return (
     <div className="h-full flex flex-col">
