@@ -1,0 +1,134 @@
+<h2>App Layout — Which direction?</h2>
+<p class="subtitle">You want something Jira-like. Here are 3 interpretations for Call Tracker.</p>
+
+<div class="cards">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f8fafc;padding:12px;border-radius:6px;font-size:11px;">
+      <div style="display:flex;height:180px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;">
+        <div style="width:48px;background:#1e293b;display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:12px;">
+          <div style="width:24px;height:24px;background:#3b82f6;border-radius:4px;"></div>
+          <div style="width:18px;height:3px;background:#475569;border-radius:2px;"></div>
+          <div style="width:18px;height:3px;background:#475569;border-radius:2px;"></div>
+          <div style="width:18px;height:3px;background:#475569;border-radius:2px;"></div>
+        </div>
+        <div style="width:140px;background:#f1f5f9;padding:10px;border-right:1px solid #e2e8f0;">
+          <div style="font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Projects</div>
+          <div style="background:#fff;border-radius:3px;padding:4px 6px;margin-bottom:4px;font-size:9px;border:1px solid #e2e8f0;">Acme Corp</div>
+          <div style="background:#3b82f6;border-radius:3px;padding:4px 6px;margin-bottom:4px;font-size:9px;color:#fff;">Beta Inc</div>
+          <div style="background:#fff;border-radius:3px;padding:4px 6px;font-size:9px;border:1px solid #e2e8f0;">Gamma Ltd</div>
+        </div>
+        <div style="flex:1;padding:10px;">
+          <div style="font-size:10px;font-weight:600;color:#1e293b;margin-bottom:8px;">Beta Inc — Board</div>
+          <div style="display:flex;gap:6px;">
+            <div style="flex:1;background:#f1f5f9;border-radius:3px;padding:4px;">
+              <div style="font-size:8px;color:#64748b;margin-bottom:4px;">TRANSCRIPT</div>
+              <div style="background:#fff;border-radius:2px;padding:3px;font-size:7px;margin-bottom:2px;">Call 1</div>
+            </div>
+            <div style="flex:1;background:#f1f5f9;border-radius:3px;padding:4px;">
+              <div style="font-size:8px;color:#64748b;margin-bottom:4px;">ARTIFACTS</div>
+            </div>
+            <div style="flex:1;background:#f1f5f9;border-radius:3px;padding:4px;">
+              <div style="font-size:8px;color:#64748b;margin-bottom:4px;">DONE</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Jira-style (icon rail + project sidebar + board)</h3>
+      <p>Narrow icon rail on far left, project list in a sidebar, kanban board in main area. Closest to what you showed.</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f8fafc;padding:12px;border-radius:6px;font-size:11px;">
+      <div style="display:flex;flex-direction:column;height:180px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;">
+        <div style="background:#1e293b;padding:6px 12px;display:flex;align-items:center;gap:12px;">
+          <div style="color:#fff;font-size:9px;font-weight:600;">Call Tracker</div>
+          <div style="color:#94a3b8;font-size:8px;">Projects</div>
+          <div style="color:#94a3b8;font-size:8px;">Board</div>
+          <div style="color:#94a3b8;font-size:8px;">Topics</div>
+        </div>
+        <div style="display:flex;flex:1;">
+          <div style="width:130px;background:#f8fafc;padding:8px;border-right:1px solid #e2e8f0;">
+            <div style="font-size:8px;font-weight:600;color:#64748b;margin-bottom:6px;">MY PROJECTS</div>
+            <div style="background:#eff6ff;border-radius:3px;padding:3px 6px;margin-bottom:3px;font-size:8px;color:#3b82f6;">Acme Corp</div>
+            <div style="padding:3px 6px;margin-bottom:3px;font-size:8px;color:#64748b;">Beta Inc</div>
+            <div style="padding:3px 6px;font-size:8px;color:#64748b;">Gamma Ltd</div>
+          </div>
+          <div style="flex:1;padding:8px;">
+            <div style="display:flex;gap:6px;height:100%;">
+              <div style="flex:1;background:#fef9c3;border-radius:3px;padding:4px;">
+                <div style="font-size:8px;font-weight:600;color:#854d0e;margin-bottom:3px;">TRANSCRIPT</div>
+                <div style="background:#fff;border-radius:2px;padding:3px;font-size:7px;">Call 1</div>
+              </div>
+              <div style="flex:1;background:#f0fdf4;border-radius:3px;padding:4px;">
+                <div style="font-size:8px;font-weight:600;color:#166534;margin-bottom:3px;">ARTIFACTS</div>
+              </div>
+              <div style="flex:1;background:#f0f9ff;border-radius:3px;padding:4px;">
+                <div style="font-size:8px;font-weight:600;color:#0c4a6e;margin-bottom:3px;">DONE</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Top nav + left sidebar</h3>
+      <p>Horizontal top nav with section links, project list in sidebar, colored kanban columns. More Linear/Notion-ish.</p>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f8fafc;padding:12px;border-radius:6px;font-size:11px;">
+      <div style="display:flex;flex-direction:column;height:180px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;">
+        <div style="background:#fff;border-bottom:1px solid #e2e8f0;padding:6px 12px;display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-size:9px;font-weight:700;color:#1e293b;">📞 Call Tracker</div>
+          <div style="font-size:8px;color:#64748b;">+ New Project</div>
+        </div>
+        <div style="display:flex;flex:1;">
+          <div style="width:160px;background:#fff;padding:8px;border-right:1px solid #f1f5f9;">
+            <div style="font-size:7px;font-weight:600;color:#94a3b8;text-transform:uppercase;margin-bottom:6px;">Projects</div>
+            <div style="display:flex;align-items:center;gap:4px;padding:4px;border-radius:3px;background:#f8fafc;margin-bottom:3px;">
+              <div style="width:8px;height:8px;background:#3b82f6;border-radius:2px;"></div>
+              <div style="font-size:8px;font-weight:500;">Acme Corp</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;padding:4px;margin-bottom:3px;">
+              <div style="width:8px;height:8px;background:#8b5cf6;border-radius:2px;"></div>
+              <div style="font-size:8px;color:#64748b;">Beta Inc</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;padding:4px;">
+              <div style="width:8px;height:8px;background:#10b981;border-radius:2px;"></div>
+              <div style="font-size:8px;color:#64748b;">Gamma Ltd</div>
+            </div>
+          </div>
+          <div style="flex:1;padding:8px;">
+            <div style="font-size:9px;font-weight:600;margin-bottom:6px;">Acme Corp</div>
+            <div style="display:flex;gap:5px;">
+              <div style="flex:1;border:1px solid #e2e8f0;border-radius:3px;padding:4px;">
+                <div style="font-size:7px;font-weight:600;color:#6b7280;margin-bottom:3px;">TRANSCRIPT 1</div>
+                <div style="background:#f9fafb;border-radius:2px;padding:3px;font-size:7px;border:1px solid #e5e7eb;">Jan 15 call</div>
+              </div>
+              <div style="flex:1;border:1px solid #e2e8f0;border-radius:3px;padding:4px;">
+                <div style="font-size:7px;font-weight:600;color:#6b7280;margin-bottom:3px;">ARTIFACTS 0</div>
+              </div>
+              <div style="flex:1;border:1px solid #e2e8f0;border-radius:3px;padding:4px;">
+                <div style="font-size:7px;font-weight:600;color:#6b7280;margin-bottom:3px;">DONE 3</div>
+                <div style="background:#f0fdf4;border-radius:2px;padding:3px;font-size:7px;border:1px solid #bbf7d0;">Oct call</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Clean sidebar (no icon rail)</h3>
+      <p>White sidebar with colored project dots, minimal top bar, neutral kanban columns with counts. GitHub Projects feel.</p>
+    </div>
+  </div>
+
+</div>

@@ -1,0 +1,142 @@
+<h2>App Shell — Full Layout Mockup</h2>
+<p class="subtitle">Dark top nav · Light sidebar · Project nav with Board, Topics, File History</p>
+
+<div class="mockup">
+  <div class="mockup-header">Call Tracker — Project selected view</div>
+  <div class="mockup-body" style="padding:0;">
+
+    <!-- Full app shell -->
+    <div style="display:flex;flex-direction:column;height:480px;font-size:12px;font-family:-apple-system,sans-serif;">
+
+      <!-- TOP NAV -->
+      <div style="background:#0052cc;height:44px;display:flex;align-items:center;padding:0 16px;gap:16px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:24px;height:24px;background:#fff;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0052cc;">CT</div>
+          <span style="color:#fff;font-weight:600;font-size:13px;">Call Tracker</span>
+        </div>
+        <div style="flex:1;"></div>
+        <div style="background:#0065ff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600;">LG</div>
+      </div>
+
+      <!-- BODY -->
+      <div style="display:flex;flex:1;overflow:hidden;">
+
+        <!-- SIDEBAR -->
+        <div style="width:220px;background:#f4f5f7;border-right:1px solid #dfe1e6;display:flex;flex-direction:column;flex-shrink:0;">
+
+          <!-- Projects section -->
+          <div style="padding:12px 12px 4px;">
+            <div style="font-size:10px;font-weight:600;color:#5e6c84;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Projects</div>
+            <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:3px;background:#fff;margin-bottom:2px;border:1px solid #dfe1e6;">
+              <div style="width:18px;height:18px;background:#36b37e;border-radius:3px;flex-shrink:0;"></div>
+              <span style="font-size:11px;color:#172b4d;">Acme Corp</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:3px;background:#0052cc;margin-bottom:2px;">
+              <div style="width:18px;height:18px;background:#0065ff;border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;">B</div>
+              <span style="font-size:11px;color:#fff;font-weight:500;">Beta Inc</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:3px;margin-bottom:2px;">
+              <div style="width:18px;height:18px;background:#ff5630;border-radius:3px;flex-shrink:0;"></div>
+              <span style="font-size:11px;color:#172b4d;">Gamma Ltd</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:3px;cursor:pointer;">
+              <div style="width:18px;height:18px;border:1.5px dashed #b3bac5;border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:#5e6c84;">+</div>
+              <span style="font-size:11px;color:#5e6c84;">New project</span>
+            </div>
+          </div>
+
+          <div style="height:1px;background:#dfe1e6;margin:8px 0;"></div>
+
+          <!-- Selected project nav -->
+          <div style="padding:0 12px;">
+            <div style="font-size:10px;font-weight:600;color:#5e6c84;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Beta Inc</div>
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:3px;background:#e3f2fd;margin-bottom:1px;">
+              <span style="font-size:13px;">📋</span>
+              <span style="font-size:11px;font-weight:600;color:#0052cc;">Board</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:3px;margin-bottom:1px;">
+              <span style="font-size:13px;">🗺️</span>
+              <span style="font-size:11px;color:#172b4d;">Topics</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:3px;">
+              <span style="font-size:13px;">📁</span>
+              <span style="font-size:11px;color:#172b4d;">File History</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- MAIN CONTENT — Board view -->
+        <div style="flex:1;display:flex;flex-direction:column;background:#fff;overflow:hidden;">
+
+          <!-- Page header -->
+          <div style="padding:16px 20px 12px;border-bottom:1px solid #dfe1e6;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-size:10px;color:#5e6c84;margin-bottom:2px;">Beta Inc</div>
+              <div style="font-size:18px;font-weight:600;color:#172b4d;">Board</div>
+            </div>
+            <button style="background:#0052cc;color:#fff;border:none;border-radius:3px;padding:6px 14px;font-size:12px;font-weight:500;cursor:pointer;">+ New Call</button>
+          </div>
+
+          <!-- Kanban columns -->
+          <div style="display:flex;gap:12px;padding:16px 20px;flex:1;overflow-x:auto;">
+
+            <!-- Transcript -->
+            <div style="width:200px;flex-shrink:0;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-size:11px;font-weight:600;color:#5e6c84;text-transform:uppercase;letter-spacing:.06em;">Transcript</span>
+                <span style="background:#dfe1e6;color:#5e6c84;font-size:10px;border-radius:10px;padding:1px 6px;">1</span>
+              </div>
+              <div style="background:#f4f5f7;border-radius:3px;padding:8px;margin-bottom:6px;border-left:3px solid #0052cc;">
+                <div style="font-size:11px;font-weight:500;color:#172b4d;margin-bottom:4px;">Jan 15 — Quarterly Review</div>
+                <div style="font-size:10px;color:#5e6c84;">Added 2h ago</div>
+              </div>
+            </div>
+
+            <!-- Artifacts -->
+            <div style="width:200px;flex-shrink:0;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-size:11px;font-weight:600;color:#5e6c84;text-transform:uppercase;letter-spacing:.06em;">Artifacts</span>
+                <span style="background:#dfe1e6;color:#5e6c84;font-size:10px;border-radius:10px;padding:1px 6px;">0</span>
+              </div>
+              <div style="border:2px dashed #dfe1e6;border-radius:3px;padding:16px;text-align:center;">
+                <div style="font-size:10px;color:#b3bac5;">No calls here yet</div>
+              </div>
+            </div>
+
+            <!-- Topics -->
+            <div style="width:200px;flex-shrink:0;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-size:11px;font-weight:600;color:#5e6c84;text-transform:uppercase;letter-spacing:.06em;">Topics</span>
+                <span style="background:#dfe1e6;color:#5e6c84;font-size:10px;border-radius:10px;padding:1px 6px;">0</span>
+              </div>
+              <div style="border:2px dashed #dfe1e6;border-radius:3px;padding:16px;text-align:center;">
+                <div style="font-size:10px;color:#b3bac5;">No calls here yet</div>
+              </div>
+            </div>
+
+            <!-- Done -->
+            <div style="width:200px;flex-shrink:0;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-size:11px;font-weight:600;color:#5e6c84;text-transform:uppercase;letter-spacing:.06em;">Done</span>
+                <span style="background:#dfe1e6;color:#5e6c84;font-size:10px;border-radius:10px;padding:1px 6px;">2</span>
+              </div>
+              <div style="background:#f4f5f7;border-radius:3px;padding:8px;margin-bottom:6px;border-left:3px solid #36b37e;">
+                <div style="font-size:11px;font-weight:500;color:#172b4d;margin-bottom:4px;">Dec 10 — Strategy call</div>
+                <div style="font-size:10px;color:#5e6c84;">3 artifacts · 2 topics</div>
+              </div>
+              <div style="background:#f4f5f7;border-radius:3px;padding:8px;border-left:3px solid #36b37e;">
+                <div style="font-size:11px;font-weight:500;color:#172b4d;margin-bottom:4px;">Nov 28 — Onboarding</div>
+                <div style="font-size:10px;color:#5e6c84;">1 artifact · 1 topic</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Does this feel right? Let me know what to adjust — colors, spacing, sidebar structure, anything.</p>
