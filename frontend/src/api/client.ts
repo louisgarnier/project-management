@@ -82,4 +82,26 @@ export const transcriptionAPI = {
   },
 };
 
+// localServerAPI — calls Next.js local routes (not proxied, not Railway)
+// These run on the local Node.js server and manage the transcription process.
+export const localServerAPI = {
+  status: async (): Promise<{ running: boolean; starting: boolean }> => {
+    try {
+      const r = await fetch("/api/local/status");
+      if (!r.ok) return { running: false, starting: false };
+      return r.json();
+    } catch {
+      return { running: false, starting: false };
+    }
+  },
+  start: async (): Promise<void> => {
+    const r = await fetch("/api/local/start", { method: "POST" });
+    if (!r.ok) throw new Error("Failed to start server");
+  },
+  stop: async (): Promise<void> => {
+    const r = await fetch("/api/local/stop", { method: "POST" });
+    if (!r.ok) throw new Error("Failed to stop server");
+  },
+};
+
 // Further API modules added per epic (artifacts, topics)
