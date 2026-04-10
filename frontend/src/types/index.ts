@@ -15,6 +15,7 @@ export interface Call {
   project_id: string;
   title: string;
   transcript: string | null;
+  transcript_source: string | null;
   kanban_stage: KanbanStage;
   created_at: string;
 }
