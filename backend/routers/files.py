@@ -20,10 +20,12 @@ MIME_TYPES = {
 
 @router.post("/calls/{call_id}/files", status_code=201)
 async def upload_file(call_id: str, file: UploadFile = File(...)):
+    db_logger.info(f"📥 [Files] Received: upload_file call_id={call_id} filename={file.filename}")
     client = get_client()
 
     result = client.table("calls").select("id").eq("id", call_id).execute()
     if not result.data:
+        db_logger.error(f"❌ [Files] Not found: call_id={call_id}")
         raise HTTPException(status_code=404, detail="Call not found")
 
     ext = os.path.splitext(file.filename or "")[1].lower()
@@ -68,6 +70,7 @@ async def upload_file(call_id: str, file: UploadFile = File(...)):
 
 @router.get("/calls/{call_id}/files")
 def list_files(call_id: str):
+    db_logger.info(f"📥 [Files] Received: list_files call_id={call_id}")
     client = get_client()
     db_logger.info(f"🗄️ [DB] Fetching files for call: {call_id}")
     result = (
@@ -83,6 +86,7 @@ def list_files(call_id: str):
 
 @router.delete("/calls/{call_id}/files/{file_id}", status_code=204)
 def delete_file(call_id: str, file_id: str):
+    db_logger.info(f"📥 [Files] Received: delete_file call_id={call_id} file_id={file_id}")
     client = get_client()
     db_logger.info(f"🗄️ [DB] Fetching file: {file_id}")
     result = (
@@ -93,6 +97,7 @@ def delete_file(call_id: str, file_id: str):
         .execute()
     )
     if not result.data:
+        db_logger.error(f"❌ [Files] Not found: file_id={file_id} call_id={call_id}")
         raise HTTPException(status_code=404, detail="File not found")
 
     storage_path = result.data[0]["storage_path"]
@@ -106,6 +111,7 @@ def delete_file(call_id: str, file_id: str):
 
 @router.get("/calls/{call_id}/files/{file_id}/download")
 def get_download_url(call_id: str, file_id: str):
+    db_logger.info(f"📥 [Files] Received: get_download_url call_id={call_id} file_id={file_id}")
     client = get_client()
     db_logger.info(f"🗄️ [DB] Fetching file for signed URL: {file_id}")
     result = (
@@ -116,6 +122,7 @@ def get_download_url(call_id: str, file_id: str):
         .execute()
     )
     if not result.data:
+        db_logger.error(f"❌ [Files] Not found: file_id={file_id} call_id={call_id}")
         raise HTTPException(status_code=404, detail="File not found")
 
     storage_path = result.data[0]["storage_path"]
