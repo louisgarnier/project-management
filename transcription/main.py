@@ -8,6 +8,7 @@ import os
 import tempfile
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -18,7 +19,7 @@ from starlette.requests import Request
 from transcription.logger import get_transcription_logger
 from transcription.transcribe import get_pipeline, get_whisper, transcribe_audio
 
-load_dotenv()
+load_dotenv(Path(__file__).parent / ".env")
 
 logger = get_transcription_logger("server")
 request_logger = get_transcription_logger("requests")

@@ -15,8 +15,15 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
   const [uploading, setUploading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
   const mp3Ref = useRef<HTMLInputElement>(null);
   const txtRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!uploading) { setElapsed(0); return; }
+    const interval = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [uploading]);
 
   useEffect(() => {
     if (!uploading) return;
@@ -92,8 +99,12 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
           <TranscriptionStatusBadge />
         </div>
         <div className="p-8 text-center">
+          <div className="animate-spin text-2xl mb-3">⏳</div>
           <div className="text-[13px] font-medium text-[#172b4d] mb-1">{statusMsg}</div>
-          <div className="text-[12px] text-[#5e6c84]">Do not close this tab.</div>
+          <div className="text-[12px] text-[#5e6c84] mb-2">Do not close this tab.</div>
+          <div className="text-[12px] font-mono text-[#97a0af]">
+            {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")} elapsed
+          </div>
         </div>
       </div>
     );

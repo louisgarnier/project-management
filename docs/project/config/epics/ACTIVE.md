@@ -1,10 +1,10 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-5 / Story 5.0 — Transcript Review & Redo
-- **File:** `docs/project/config/epics/epic-5/story-5.0.md`
-- **Goal:** Artifacts stage shows full transcript for validation; "Redo transcript" button clears it and sends card back to Get Transcript
-- **Modules touched:** `backend/routers/calls.py`, `frontend/app/projects/[id]/calls/[call_id]/page.tsx`, new Artifacts stage component
+- **Story:** EPIC-4 / Story 4.5 — Transcript Review, Edit & Download
+- **File:** `docs/project/config/epics/epic-4/story-4.5.md`
+- **Goal:** After transcription or .txt upload, show editable review screen before saving. Download .txt, replace, explicit Save & continue. Kanban card shows transcript metadata.
+- **Modules touched:** `backend/routers/calls.py`, `backend/tests/`, `frontend/src/components/TranscriptStage.tsx`, `frontend/src/components/CallCard.tsx`, `frontend/src/api/client.ts`
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
@@ -19,3 +19,4 @@
 - [x] EPIC-4 / Story 4.2 — Transcript Stage Backend — 2026-04-09
 - [x] EPIC-4 / Story 4.3 — Transcript Stage UI — 2026-04-09
 - [x] EPIC-4 / Story 4.4 — Server Control UI — 2026-04-09
+- [x] EPIC-4 / Story 4.1–4.4 fixes — Transcription server (numpy, pyannote 4.0.4, WAV conversion, HF token) — 2026-04-10
