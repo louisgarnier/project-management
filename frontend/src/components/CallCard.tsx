@@ -39,6 +39,10 @@ export default function CallCard({ call, onClick }: Props) {
   const cfg = STAGE_CONFIG[call.kanban_stage];
   const isDone = call.kanban_stage === "done";
 
+  const lineCount = call.transcript
+    ? call.transcript.split("\n").filter((l) => l.trim()).length
+    : 0;
+
   return (
     <div
       onClick={onClick}
@@ -49,6 +53,18 @@ export default function CallCard({ call, onClick }: Props) {
       }}
     >
       <p className="text-[13px] font-medium text-[#172b4d] leading-snug mb-2">{call.title}</p>
+
+      {/* Transcript metadata */}
+      {call.kanban_stage === "transcript" && !call.transcript && (
+        <p className="text-[10px] text-[#97a0af] mb-2">No transcript yet</p>
+      )}
+      {call.transcript && (
+        <p className="text-[10px] text-[#97a0af] mb-2">
+          {lineCount} lines
+          {call.transcript_source ? ` · ${call.transcript_source}` : ""}
+        </p>
+      )}
+
       <div className="flex items-center justify-between">
         <span
           className="text-[10px] font-semibold px-[7px] py-[2px] rounded-[3px] uppercase tracking-[0.04em]"
