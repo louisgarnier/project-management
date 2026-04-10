@@ -1,6 +1,6 @@
 # Codebase Map — Call Tracker
 > Updated after every story. Read this before touching any existing module.
-> Last updated: EPIC-4 / Story 4.5
+> Last updated: EPIC-4 / Story 4.8
 
 ---
 
@@ -40,11 +40,12 @@ frontend/
     └── components/
         ├── TopNav.tsx             → Blue top nav bar (EPIC-2 / Story 2.3)
         ├── Sidebar.tsx            → Project list + per-project nav (EPIC-2 / Story 2.3)
-        ├── KanbanBoard.tsx        → 4-column kanban (EPIC-3 / Story 3.2)
+        ├── KanbanBoard.tsx        → history trail kanban: each column shows all calls that have reached or passed that stage; active vs historical card differentiation (EPIC-4 / Story 4.8)
         ├── CallCard.tsx           → Call card with stage badge (EPIC-3 / Story 3.2)
         ├── NewCallModal.tsx       → Create call form (EPIC-3 / Story 3.2)
         ├── TranscriptionStatusBadge.tsx → 4-state badge (offline/starting/online/stopping) + Start/Stop buttons (EPIC-4 / Story 4.4)
-        └── TranscriptStage.tsx    → MP3/TXT upload → review screen (edit, download, replace, save & continue) (EPIC-4 / Story 4.5)
+        ├── TranscriptStage.tsx    → MP3/TXT upload → review screen (edit, download, replace, save & continue) (EPIC-4 / Story 4.5)
+        └── TranscriptPanel.tsx    → collapsible transcript viewer/editor (PATCH save, download .txt) — shown on call detail for post-transcript stages (EPIC-4 / Story 4.8)
 
 transcription/
 ├── main.py                        → FastAPI local server: /health, /transcribe (EPIC-4 / Story 4.7)

@@ -9,6 +9,12 @@
 
 ## Session History
 
+### 2026-04-10 — Story 4.8: Kanban History Trail + Persistent Transcript Panel
+- `KanbanBoard.tsx` — column filter changed to show all calls that have reached or passed each stage; STAGE_INDEX map for O(1) lookups; projectId guard added
+- `CallCard.tsx` — `isHistorical` prop: grey background + ✓ badge for historical cards; explicit `dimColor` in STAGE_CONFIG; `lineCount` memoized
+- `TranscriptPanel.tsx` — new collapsible component: view/edit transcript via PATCH, download .txt; `savedText` state for accurate `isDirty`; robust download helper
+- `calls/[call_id]/page.tsx` — TranscriptPanel wired in for all post-transcript stages
+
 ### 2026-04-10 — Story 4.7: Replace Transcription Engine with MLX Whisper
 - Replaced openai-whisper + pyannote with mlx-whisper 0.4.3 (Apple Silicon Neural Engine)
 - `transcription/transcribe.py` — rewritten: `preload_model()`, `transcribe_audio()` returns raw text (no timestamps/speaker labels)

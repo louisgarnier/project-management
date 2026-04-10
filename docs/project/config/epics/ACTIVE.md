@@ -20,3 +20,4 @@
 - [x] EPIC-4 / Story 4.3 — Transcript Stage UI — 2026-04-09
 - [x] EPIC-4 / Story 4.4 — Server Control UI — 2026-04-09
 - [x] EPIC-4 / Story 4.1–4.4 fixes — Transcription server (numpy, pyannote 4.0.4, WAV conversion, HF token) — 2026-04-10
+- [x] EPIC-4 / Story 4.8 — Kanban History Trail + Persistent Transcript Panel — 2026-04-10
