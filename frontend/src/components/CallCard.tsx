@@ -32,10 +32,11 @@ const STAGE_CONFIG: Record<
 
 type Props = {
   call: Call;
+  isHistorical?: boolean;
   onClick: () => void;
 };
 
-export default function CallCard({ call, onClick }: Props) {
+export default function CallCard({ call, isHistorical = false, onClick }: Props) {
   const cfg = STAGE_CONFIG[call.kanban_stage];
   const isDone = call.kanban_stage === "done";
 
@@ -46,13 +47,23 @@ export default function CallCard({ call, onClick }: Props) {
   return (
     <div
       onClick={onClick}
-      className="bg-white rounded p-[10px_12px] shadow-[0_1px_3px_rgba(0,0,0,0.12)] cursor-pointer border-l-[3px] hover:shadow-[0_3px_8px_rgba(0,0,0,0.16)] transition-shadow"
+      className="rounded p-[10px_12px] shadow-[0_1px_3px_rgba(0,0,0,0.12)] cursor-pointer border-l-[3px] hover:shadow-[0_3px_8px_rgba(0,0,0,0.16)] transition-shadow"
       style={{
-        borderLeftColor: cfg.color,
-        opacity: isDone ? 0.65 : 1,
+        backgroundColor: isHistorical ? "#f4f5f7" : "#ffffff",
+        borderLeftColor: isHistorical
+          ? `${cfg.color}66`
+          : cfg.color,
+        opacity: isDone && !isHistorical ? 0.65 : 1,
       }}
     >
-      <p className="text-[13px] font-medium text-[#172b4d] leading-snug mb-2">{call.title}</p>
+      <div className="flex items-start justify-between gap-1 mb-2">
+        <p className="text-[13px] font-medium text-[#172b4d] leading-snug">{call.title}</p>
+        {isHistorical && (
+          <span className="text-[9px] font-semibold text-[#36b37e] bg-[#e3fcef] px-[5px] py-[1px] rounded flex-shrink-0">
+            ✓
+          </span>
+        )}
+      </div>
 
       {/* Transcript metadata */}
       {call.kanban_stage === "transcript" && !call.transcript && (
