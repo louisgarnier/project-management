@@ -6,7 +6,7 @@ const ts = () => new Date().toISOString().replace("T", " ").substring(0, 23);
 async function isHealthy(): Promise<boolean> {
   try {
     const r = await fetch("http://localhost:8001/health", {
-      signal: AbortSignal.timeout(1000),
+      signal: AbortSignal.timeout(3000),
     });
     return r.ok;
   } catch {

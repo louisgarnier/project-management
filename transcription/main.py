@@ -4,6 +4,7 @@ Accepts MP3 uploads, runs mlx-whisper on Apple Silicon, returns raw transcript t
 Never deployed to Railway — local only.
 """
 
+import asyncio
 import os
 import tempfile
 import time
@@ -76,7 +77,12 @@ async def transcribe(audio: UploadFile = File(...)):
         tmp_path = tmp.name
 
     try:
-        transcript_text = transcribe_audio(tmp_path, audio.filename or "")
+        # Run blocking mlx-whisper inference in a thread pool so the event loop
+        # stays free to handle /health checks during transcription.
+        loop = asyncio.get_event_loop()
+        transcript_text = await loop.run_in_executor(
+            None, transcribe_audio, tmp_path, audio.filename or ""
+        )
     finally:
         os.unlink(tmp_path)
 
