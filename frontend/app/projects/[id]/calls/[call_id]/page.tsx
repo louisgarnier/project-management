@@ -7,6 +7,7 @@ import { logger } from "@/utils/logger";
 import type { Call } from "@/types";
 import TranscriptStage from "@/components/TranscriptStage";
 import TranscriptPanel from "@/components/TranscriptPanel";
+import ContextFiles from "@/components/ContextFiles";
 
 const STAGES = ["transcript", "artifacts", "topics", "done"] as const;
 
@@ -74,6 +75,7 @@ export default function CallDetailPage() {
             onSaved={(updated) => setCall(updated)}
             defaultOpen={true}
           />
+          <ContextFiles call={call} readonly />
         </div>
       </div>
     );
@@ -138,6 +140,7 @@ export default function CallDetailPage() {
                 onSaved={(updated) => setCall(updated)}
               />
             )}
+            <ContextFiles call={call} readonly />
           </>
         )}
       </div>

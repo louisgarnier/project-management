@@ -5,6 +5,7 @@ import { callsAPI, transcriptionAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { Call } from "@/types";
 import TranscriptionStatusBadge from "@/components/TranscriptionStatusBadge";
+import ContextFiles from "@/components/ContextFiles";
 
 interface Props {
   call: Call;
@@ -145,6 +146,7 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
         </div>
         <input ref={txtRef} type="file" accept=".txt" className="hidden" onChange={handleTxtChange} />
       </div>
+      <ContextFiles call={call} />
     </div>
   );
 }
