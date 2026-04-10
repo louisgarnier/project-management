@@ -1,5 +1,6 @@
 import mlx.core as mx
 import mlx_whisper
+import numpy as np
 from mlx_whisper.transcribe import ModelHolder
 
 from transcription.logger import get_transcription_logger
@@ -10,10 +11,19 @@ MODEL = "mlx-community/whisper-large-v3-turbo"
 
 
 def preload_model() -> None:
-    """Warm up the MLX Whisper model at server startup."""
+    """Load model weights and run a dummy inference to compile Metal shaders.
+
+    Without the warm-up, the first real transcription pays a ~15-20s JIT cost
+    for Metal shader compilation. Running a silent dummy call at startup amortises
+    that cost so every user request gets consistent latency.
+    """
     logger.info("🔄 [Transcription] Loading MLX Whisper model...")
     ModelHolder.get_model(MODEL, mx.float16)
-    logger.info("✅ [Transcription] MLX Whisper model loaded")
+    logger.info("🔥 [Transcription] Warming up Metal shaders...")
+    # 0.5s of silence at 16 kHz — enough to trigger full Metal pipeline init
+    dummy = np.zeros(8000, dtype=np.float32)
+    mlx_whisper.transcribe(dummy, path_or_hf_repo=MODEL)
+    logger.info("✅ [Transcription] MLX Whisper model loaded and warmed up")
 
 
 def transcribe_audio(audio_path: str, filename: str) -> str:
