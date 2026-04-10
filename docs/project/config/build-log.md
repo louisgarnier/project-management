@@ -9,6 +9,12 @@
 
 ## Session History
 
+### 2026-04-10 — Story 4.8 (patch): Historical card UX fixes
+- `CallCard.tsx` + `KanbanBoard.tsx` — historical badge shows column's stage label in green (was showing current stage in orange)
+- `KanbanBoard.tsx` — historical card click appends `?view=${col.key}` to URL
+- `TranscriptPanel.tsx` — added `defaultOpen` prop
+- `calls/[call_id]/page.tsx` — `?view=transcript` renders transcript-only mode (no stage bar, panel expanded)
+
 ### 2026-04-10 — Story 4.8: Kanban History Trail + Persistent Transcript Panel
 - `KanbanBoard.tsx` — column filter changed to show all calls that have reached or passed each stage; STAGE_INDEX map for O(1) lookups; projectId guard added
 - `CallCard.tsx` — `isHistorical` prop: grey background + ✓ badge for historical cards; explicit `dimColor` in STAGE_CONFIG; `lineCount` memoized
