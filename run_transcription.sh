@@ -1,7 +1,7 @@
 #!/bin/bash
-# Start the local transcription server (Whisper + pyannote)
+# Start the local transcription server (mlx-whisper on Apple Silicon)
 # Run this from the project root: ./run_transcription.sh
-# First run: automatically creates venv and installs dependencies (~10 min)
+# First run: deletes old venv (if any), creates fresh venv, installs dependencies (~5 min)
 
 set -e
 
@@ -10,11 +10,10 @@ cd "$SCRIPT_DIR"
 
 VENV="$SCRIPT_DIR/transcription/.venv"
 
-# First-time setup: create venv and install dependencies
-# Check for whisper package specifically — not just the activate file —
-# to handle the case where venv was created but pip install was interrupted.
-if [ ! -f "$VENV/bin/activate" ] || ! "$VENV/bin/python" -c "import whisper" 2>/dev/null; then
-  echo "Setup required: installing dependencies (this takes ~10 minutes on first run)..."
+# venv check: if mlx_whisper not importable, delete stale venv and rebuild
+if [ ! -f "$VENV/bin/activate" ] || ! "$VENV/bin/python" -c "import mlx_whisper" 2>/dev/null; then
+  echo "Setup required: deleting old venv (if any) and installing mlx-whisper..."
+  rm -rf "$VENV"
   python3 -m venv "$VENV"
   source "$VENV/bin/activate"
   pip install -r transcription/requirements.txt
