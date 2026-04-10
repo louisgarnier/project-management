@@ -1,7 +1,7 @@
 # Story 4.7 — Replace Transcription Engine with MLX Whisper
 
 **Epic:** EPIC-4 — Transcript Stage
-**Status:** `pending`
+**Status:** `done`
 **Depends on:** None (independent of 4.5/4.6, but should be done before 4.5 to avoid rework)
 **Priority:** High — current engine (openai-whisper + pyannote) is too slow for production use
 

@@ -140,6 +140,8 @@ Updated `run_transcription.sh` to auto-create the venv and install deps on first
 #### Prevention Rule
 > 🔒 **RULE ERR-003:** When closing a story that involves a runnable server, verify it actually starts on a clean checkout before closing. If it requires a venv or any one-time setup, that setup must be automated in the launch script — not left as a manual step.
 
+**2026-04-10 follow-up (Story 4.7):** Replaced openai-whisper+pyannote with mlx-whisper. The old and new venvs are incompatible (different torch/torchaudio stacks). `run_transcription.sh` now checks `import mlx_whisper` and runs `rm -rf "$VENV"` before rebuilding if the check fails — ensures stale venvs are never reused.
+
 ---
 
 ## 🔒 Prevention Rules Summary

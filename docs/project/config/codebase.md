@@ -1,6 +1,6 @@
 # Codebase Map — Call Tracker
 > Updated after every story. Read this before touching any existing module.
-> Last updated: EPIC-4 / Story 4.3
+> Last updated: EPIC-4 / Story 4.7
 
 ---
 
@@ -47,13 +47,13 @@ frontend/
         └── TranscriptStage.tsx    → MP3/TXT file pickers, transcription flow, uploading state (EPIC-4 / Story 4.3)
 
 transcription/
-├── main.py                        → FastAPI local server: /health, /transcribe (EPIC-4 / Story 4.1)
-├── transcribe.py                  → get_whisper(), get_pipeline(), transcribe_audio() (EPIC-4 / Story 4.1)
+├── main.py                        → FastAPI local server: /health, /transcribe (EPIC-4 / Story 4.7)
+├── transcribe.py                  → preload_model(), transcribe_audio() — mlx-whisper engine (EPIC-4 / Story 4.7)
 ├── logger.py                      → Transcription logger factory (EPIC-4 / Story 4.1)
-├── requirements.txt               → Transcription deps (fastapi, whisper, pyannote, torch)
+├── requirements.txt               → Transcription deps (fastapi, mlx-whisper, torch)
 └── tests/
-    ├── test_transcribe.py         → 4 tests: unit + 3 API (EPIC-4 / Story 4.1)
-    └── test_health.py             → 2 tests: health + rejection (EPIC-4 / Story 4.1)
+    ├── test_transcribe.py         → 4 tests: unit + API (mlx-whisper mocks) (EPIC-4 / Story 4.7)
+    └── test_health.py             → 2 tests: health + rejection (EPIC-4 / Story 4.7)
 
 run_transcription.sh               → Starts local transcription server on :8001 (EPIC-4 / Story 4.1)
 ```
@@ -81,11 +81,11 @@ run_transcription.sh               → Starts local transcription server on :800
 ---
 
 ### `transcription/transcribe.py`
-**Exports:** `get_whisper()`, `get_pipeline()`, `transcribe_audio(audio_path, filename) → str`
+**Exports:** `preload_model()`, `transcribe_audio(audio_path, filename) → str`
 
-**Model loading:** Lazy singletons via `_whisper_model` and `_diarization_pipeline` globals. `get_whisper()` loads `openai-whisper medium`. `get_pipeline()` loads `pyannote/speaker-diarization-3.1` — requires `HF_TOKEN` env var (raises `RuntimeError` if unset).
+**Model loading:** `preload_model()` warms up `mlx-community/whisper-large-v3-turbo` via `ModelHolder.get_model()` at server startup. Runs on Apple Silicon Neural Engine via `mlx-whisper 0.4.3`. No HF_TOKEN required.
 
-**Output format:** `[MM:SS] SPEAKER_X: text` per line. Speaker assigned by max-overlap between Whisper segment and pyannote diarization turns.
+**Output format:** Raw text string — no timestamps, no speaker labels. `result["text"].strip()` from mlx_whisper.
 
 ---
 
@@ -106,7 +106,7 @@ run_transcription.sh               → Starts local transcription server on :800
 | `backend/logger.py` | — | all backend routers |
 | `backend/routers/calls.py` | `database.py`, `logger.py` | `backend/main.py` |
 | `backend/routers/projects.py` | `database.py`, `logger.py` | `backend/main.py` |
-| `transcription/transcribe.py` | `transcription/logger.py`, `HF_TOKEN` env | `transcription/main.py` |
+| `transcription/transcribe.py` | `transcription/logger.py`, `mlx-whisper`, `mlx.core` | `transcription/main.py` |
 | `transcription/main.py` | `transcription/transcribe.py`, `transcription/logger.py` | `run_transcription.sh` |
 | `frontend/src/api/client.ts` | Next.js proxy routes | all frontend components |
 
