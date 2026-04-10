@@ -13,10 +13,11 @@ interface Props {
 export default function TranscriptPanel({ call, onSaved }: Props) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(call.transcript ?? "");
+  const [savedText, setSavedText] = useState(call.transcript ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isDirty = text !== (call.transcript ?? "");
+  const isDirty = text !== savedText;
 
   async function handleSave() {
     if (!isDirty || !text.trim()) return;
@@ -26,6 +27,7 @@ export default function TranscriptPanel({ call, onSaved }: Props) {
       const updated = await callsAPI.updateTranscript(call.id, text);
       logger.info("Transcript updated", { component: "TranscriptPanel", data: { callId: call.id } });
       onSaved(updated);
+      setSavedText(text); // keep isDirty accurate regardless of when parent re-renders
     } catch (err) {
       logger.error("Transcript update failed", { component: "TranscriptPanel", data: err });
       setError(err instanceof Error ? err.message : "Save failed. Please try again.");
@@ -40,8 +42,10 @@ export default function TranscriptPanel({ call, onSaved }: Props) {
     const a = document.createElement("a");
     a.href = url;
     a.download = `transcript_${call.title.replace(/\s+/g, "_")}.txt`;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
   }
 
   return (
@@ -49,6 +53,7 @@ export default function TranscriptPanel({ call, onSaved }: Props) {
       {/* Header — always visible, click to expand/collapse */}
       <button
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
         className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[#f8f9ff] transition-colors rounded-lg"
       >
         <div className="flex items-center gap-2">
