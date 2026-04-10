@@ -35,8 +35,11 @@ async function proxy(request: NextRequest, params: { path: string[] }): Promise<
       body,
     });
 
-    const data = await response.json().catch(() => null);
     console.log(`${ts()} ✅ [Frontend→API] ${method} ${fullPath} → ${response.status}`);
+    if (response.status === 204) {
+      return new NextResponse(null, { status: 204 });
+    }
+    const data = await response.json().catch(() => null);
     return NextResponse.json(data, { status: response.status });
   } catch (error) {
     console.error(`${ts()} ❌ [Frontend→API] ${method} ${fullPath} error:`, error);
