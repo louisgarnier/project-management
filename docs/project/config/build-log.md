@@ -1,13 +1,31 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-5 / Story 5.0 — Transcript Review & Redo**
+**EPIC-4 / Story 4.6 — Context File Attachments**
 - Status: not started
 - Blocked by: nothing
 
 ---
 
 ## Session History
+
+### 2026-04-10 — Story 4.7: Replace Transcription Engine with MLX Whisper
+- Replaced openai-whisper + pyannote with mlx-whisper 0.4.3 (Apple Silicon Neural Engine)
+- `transcription/transcribe.py` — rewritten: `preload_model()`, `transcribe_audio()` returns raw text (no timestamps/speaker labels)
+- `transcription/main.py` — removed load_dotenv/Path, lifespan calls preload_model only
+- `transcription/requirements.txt` — mlx-whisper==0.4.3, removed pyannote/openai-whisper/torchaudio
+- `run_transcription.sh` — checks `import mlx_whisper`, rm -rf old venv before rebuild
+- `transcription/.env` deleted, `.env.example` updated (no HF_TOKEN needed)
+- 6/6 transcription tests pass, integration test confirmed raw text output
+
+### 2026-04-10 — Story 4.5: Transcript Review, Edit & Download
+- DB migration: `transcript_source TEXT` column added to `calls`
+- `backend/routers/calls.py` — `POST /transcript` accepts `source_filename`, new `PATCH /transcript` endpoint (edit without stage change)
+- 4 new tests, 31 total passing
+- `frontend/src/types/index.ts` — `transcript_source: string | null` added to Call
+- `frontend/src/api/client.ts` — `submitTranscript` accepts sourceFilename, added `updateTranscript`
+- `frontend/src/components/TranscriptStage.tsx` — review step: upload → editable textarea → download/replace/save & continue
+- `frontend/src/components/CallCard.tsx` — shows transcript line count + source filename
 
 ### 2026-04-09 — Story 4.4: Server Control UI
 - `frontend/app/api/local/process.ts` — ChildProcess singleton (getServerProcess / setServerProcess)

@@ -1,7 +1,7 @@
 # Story 4.5 — Transcript Review, Edit & Download
 
 **Epic:** EPIC-4 — Transcript Stage
-**Status:** `pending`
+**Status:** `done`
 **Priority:** Blocker — Get Transcript stage is incomplete without review/edit step
 
 ---

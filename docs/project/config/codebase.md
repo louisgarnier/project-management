@@ -1,6 +1,6 @@
 # Codebase Map — Call Tracker
 > Updated after every story. Read this before touching any existing module.
-> Last updated: EPIC-4 / Story 4.7
+> Last updated: EPIC-4 / Story 4.5
 
 ---
 
@@ -44,7 +44,7 @@ frontend/
         ├── CallCard.tsx           → Call card with stage badge (EPIC-3 / Story 3.2)
         ├── NewCallModal.tsx       → Create call form (EPIC-3 / Story 3.2)
         ├── TranscriptionStatusBadge.tsx → 4-state badge (offline/starting/online/stopping) + Start/Stop buttons (EPIC-4 / Story 4.4)
-        └── TranscriptStage.tsx    → MP3/TXT file pickers, transcription flow, uploading state (EPIC-4 / Story 4.3)
+        └── TranscriptStage.tsx    → MP3/TXT upload → review screen (edit, download, replace, save & continue) (EPIC-4 / Story 4.5)
 
 transcription/
 ├── main.py                        → FastAPI local server: /health, /transcribe (EPIC-4 / Story 4.7)
@@ -69,6 +69,8 @@ run_transcription.sh               → Starts local transcription server on :800
 - `POST /api/projects/{project_id}/calls` → create call (409 if active call exists)
 - `GET /api/calls/{call_id}` → single call
 - `PATCH /api/calls/{call_id}/stage` → advance stage (422 on skip; order: transcript→artifacts→topics→done)
+- `POST /api/calls/{call_id}/transcript` → store transcript + source_filename, advance to artifacts
+- `PATCH /api/calls/{call_id}/transcript` → edit transcript without stage change (409 if still at transcript stage)
 
 **Stage order constant:** `STAGE_ORDER = ["transcript", "artifacts", "topics", "done"]`
 

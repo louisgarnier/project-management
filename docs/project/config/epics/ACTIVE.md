@@ -1,10 +1,10 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-4 / Story 4.5 — Transcript Review, Edit & Download
-- **File:** `docs/project/config/epics/epic-4/story-4.5.md`
-- **Goal:** After transcription or .txt upload, show editable review screen before saving. Download .txt, replace, explicit Save & continue. Kanban card shows transcript metadata.
-- **Modules touched:** `backend/routers/calls.py`, `backend/tests/`, `frontend/src/components/TranscriptStage.tsx`, `frontend/src/components/CallCard.tsx`, `frontend/src/api/client.ts`
+- **Story:** EPIC-4 / Story 4.6 — Context File Attachments
+- **File:** `docs/project/config/epics/epic-4/story-4.6.md`
+- **Goal:** User can attach supplementary files to a call. Files stored in Supabase Storage, accessible from all subsequent stages.
+- **Modules touched:** Supabase Storage, `backend/routers/calls.py` (new files router), `frontend/src/api/client.ts`, new `ContextFiles.tsx` component
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
