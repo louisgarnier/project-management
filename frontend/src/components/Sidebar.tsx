@@ -46,6 +46,18 @@ export default function Sidebar() {
       });
   }, []);
 
+  async function handleDelete(projectId: string, projectName: string) {
+    if (!confirm(`Delete "${projectName}"? This will permanently delete all calls and data for this project.`)) return;
+    try {
+      await projectsAPI.delete(projectId);
+      logger.info(`Deleted project: ${projectId}`, { component: "Sidebar" });
+      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+      router.push("/");
+    } catch (err) {
+      logger.error("Failed to delete project", { component: "Sidebar", data: err });
+    }
+  }
+
   async function handleCreate(name: string, description: string) {
     try {
       const project = await projectsAPI.create({ name, description });
@@ -126,6 +138,13 @@ export default function Sidebar() {
                   </Link>
                 );
               })}
+              <button
+                onClick={() => handleDelete(activeProject.id, activeProject.name)}
+                className="flex items-center gap-2 px-2 py-1.5 rounded w-full text-left text-[11px] text-[#97a0af] hover:text-red-500 hover:bg-red-50 mt-2 transition-colors"
+              >
+                <span>🗑</span>
+                <span>Delete project</span>
+              </button>
             </div>
           </>
         )}

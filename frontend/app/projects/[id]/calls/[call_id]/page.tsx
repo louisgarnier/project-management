@@ -23,6 +23,17 @@ export default function CallDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  async function handleResetTranscript() {
+    if (!confirm("Delete the transcript and roll back to Get Transcript stage? This cannot be undone.")) return;
+    try {
+      const updated = await callsAPI.resetTranscript(callId);
+      logger.info("Transcript reset", { component: "CallDetailPage", data: { callId } });
+      setCall(updated);
+    } catch (err) {
+      logger.error("Failed to reset transcript", { component: "CallDetailPage", data: err });
+    }
+  }
+
   const loadCall = useCallback(async () => {
     try {
       logger.info("Fetching call", { component: "CallDetailPage", data: { callId } });
@@ -141,6 +152,16 @@ export default function CallDetailPage() {
               />
             )}
             <ContextFiles call={call} readonly />
+            {call.kanban_stage === "artifacts" && (
+              <div className="mt-4 text-right">
+                <button
+                  onClick={handleResetTranscript}
+                  className="text-[11px] text-[#97a0af] hover:text-red-500 hover:underline"
+                >
+                  ↩ Reset transcript
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
