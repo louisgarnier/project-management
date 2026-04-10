@@ -93,3 +93,75 @@ def test_submit_transcript_rejects_empty_string():
             json={"transcript": ""},
         )
     assert r.status_code == 422
+
+
+# --- PATCH /api/calls/{call_id}/transcript ---
+
+MOCK_CALL_ARTIFACTS = {
+    **MOCK_CALL,
+    "kanban_stage": "artifacts",
+    "transcript": "Original text",
+}
+
+
+def test_update_transcript_happy_path():
+    mc = _mock_client()
+    mc.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=[{"kanban_stage": "artifacts"}]
+    )
+    mc.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=[{**MOCK_CALL_ARTIFACTS, "transcript": "Updated text"}]
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.patch(
+            f"/api/calls/{CALL_ID}/transcript",
+            json={"transcript": "Updated text"},
+        )
+    assert r.status_code == 200
+    assert r.json()["transcript"] == "Updated text"
+    assert r.json()["kanban_stage"] == "artifacts"
+
+
+def test_update_transcript_returns_404_when_call_missing():
+    mc = _mock_client()
+    mc.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=[]
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.patch(
+            "/api/calls/nonexistent/transcript",
+            json={"transcript": "text"},
+        )
+    assert r.status_code == 404
+
+
+def test_update_transcript_returns_409_when_at_transcript_stage():
+    mc = _mock_client()
+    mc.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=[{"kanban_stage": "transcript"}]
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.patch(
+            f"/api/calls/{CALL_ID}/transcript",
+            json={"transcript": "text"},
+        )
+    assert r.status_code == 409
+
+
+def test_submit_transcript_stores_source_filename():
+    mc = _mock_client()
+    mc.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=[{"kanban_stage": "transcript"}]
+    )
+    mc.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=[{**MOCK_CALL, "transcript": "text", "kanban_stage": "artifacts",
+               "transcript_source": "interview.mp3"}]
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.post(
+            f"/api/calls/{CALL_ID}/transcript",
+            json={"transcript": "text", "source_filename": "interview.mp3"},
+        )
+    assert r.status_code == 200
+    update_kwargs = mc.table.return_value.update.call_args[0][0]
+    assert update_kwargs["transcript_source"] == "interview.mp3"

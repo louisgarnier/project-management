@@ -1,3 +1,5 @@
+from typing import Optional
+
 from backend.database.supabase_client import get_client
 from backend.utils.logger import db_logger
 from fastapi import APIRouter, HTTPException
@@ -17,6 +19,11 @@ class StageAdvance(BaseModel):
 
 
 class TranscriptSubmit(BaseModel):
+    transcript: str = Field(min_length=1)
+    source_filename: Optional[str] = None
+
+
+class TranscriptUpdate(BaseModel):
     transcript: str = Field(min_length=1)
 
 
@@ -127,12 +134,42 @@ def submit_transcript(call_id: str, payload: TranscriptSubmit):
             detail=f"Call is already past the transcript stage (current: {current_stage})",
         )
 
+    update_data: dict = {"transcript": payload.transcript, "kanban_stage": "artifacts"}
+    if payload.source_filename:
+        update_data["transcript_source"] = payload.source_filename
+
     db_logger.info(f"🗄️ [DB] Storing transcript and advancing call: {call_id}")
     update_result = (
         client.table("calls")
-        .update({"transcript": payload.transcript, "kanban_stage": "artifacts"})
+        .update(update_data)
         .eq("id", call_id)
         .execute()
     )
     db_logger.info(f"✅ [DB] Transcript stored, advanced to artifacts: {call_id}")
+    return update_result.data[0]
+
+
+@router.patch("/calls/{call_id}/transcript")
+def update_transcript(call_id: str, payload: TranscriptUpdate):
+    client = get_client()
+    db_logger.info(f"🗄️ [DB] Fetching call for transcript update: {call_id}")
+    result = client.table("calls").select("kanban_stage").eq("id", call_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Call not found")
+
+    current_stage = result.data[0]["kanban_stage"]
+    if current_stage == "transcript":
+        raise HTTPException(
+            status_code=409,
+            detail="Call is at transcript stage — use POST /transcript to save and advance",
+        )
+
+    db_logger.info(f"🗄️ [DB] Updating transcript for call: {call_id}")
+    update_result = (
+        client.table("calls")
+        .update({"transcript": payload.transcript})
+        .eq("id", call_id)
+        .execute()
+    )
+    db_logger.info(f"✅ [DB] Transcript updated: {call_id}")
     return update_result.data[0]
