@@ -6,6 +6,7 @@ import { callsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { Call } from "@/types";
 import TranscriptStage from "@/components/TranscriptStage";
+import TranscriptPanel from "@/components/TranscriptPanel";
 
 const STAGES = ["transcript", "artifacts", "topics", "done"] as const;
 
@@ -52,6 +53,7 @@ export default function CallDetailPage() {
   }
 
   const currentIdx = STAGES.indexOf(call.kanban_stage);
+  const isPastTranscript = call.kanban_stage !== "transcript";
 
   return (
     <div className="h-full flex flex-col">
@@ -96,12 +98,20 @@ export default function CallDetailPage() {
         {call.kanban_stage === "transcript" && (
           <TranscriptStage call={call} onAdvance={loadCall} />
         )}
-        {call.kanban_stage !== "transcript" && (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-[13px] text-[#5e6c84]">
-              {call.kanban_stage.charAt(0).toUpperCase() + call.kanban_stage.slice(1)} stage — coming soon.
-            </p>
-          </div>
+        {isPastTranscript && (
+          <>
+            <div className="flex items-center justify-center py-12">
+              <p className="text-[13px] text-[#5e6c84]">
+                {call.kanban_stage.charAt(0).toUpperCase() + call.kanban_stage.slice(1)} stage — coming soon.
+              </p>
+            </div>
+            {call.transcript && (
+              <TranscriptPanel
+                call={call}
+                onSaved={(updated) => setCall(updated)}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
