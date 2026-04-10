@@ -8,10 +8,11 @@ import type { Call } from "@/types";
 interface Props {
   call: Call;
   onSaved: (updated: Call) => void;
+  defaultOpen?: boolean;
 }
 
-export default function TranscriptPanel({ call, onSaved }: Props) {
-  const [open, setOpen] = useState(false);
+export default function TranscriptPanel({ call, onSaved, defaultOpen = false }: Props) {
+  const [open, setOpen] = useState(defaultOpen);
   const [text, setText] = useState(call.transcript ?? "");
   const [savedText, setSavedText] = useState(call.transcript ?? "");
   const [saving, setSaving] = useState(false);

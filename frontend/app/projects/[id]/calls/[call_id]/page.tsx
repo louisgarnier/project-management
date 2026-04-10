@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { callsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { Call } from "@/types";
@@ -13,7 +13,10 @@ const STAGES = ["transcript", "artifacts", "topics", "done"] as const;
 export default function CallDetailPage() {
   const params = useParams<{ id: string; call_id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { id: projectId, call_id: callId } = params;
+
+  const viewStage = searchParams.get("view"); // set when navigating from a historical card
 
   const [call, setCall] = useState<Call | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +51,30 @@ export default function CallDetailPage() {
     return (
       <div className="h-full flex items-center justify-center">
         <p className="text-[13px] text-red-600">{error ?? "Call not found."}</p>
+      </div>
+    );
+  }
+
+  // Transcript-only mode: navigated from a historical "Get Transcript" card
+  if (viewStage === "transcript" && call.transcript) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
+          <button
+            onClick={() => router.push(`/projects/${projectId}/board`)}
+            className="text-[12px] text-[#5e6c84] hover:text-[#0052cc] hover:underline mb-2 block"
+          >
+            ← Board
+          </button>
+          <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          <TranscriptPanel
+            call={call}
+            onSaved={(updated) => setCall(updated)}
+            defaultOpen={true}
+          />
+        </div>
       </div>
     );
   }
