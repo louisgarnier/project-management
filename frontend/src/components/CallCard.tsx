@@ -1,29 +1,34 @@
+import { useMemo } from "react";
 import type { Call, KanbanStage } from "@/types";
 
 const STAGE_CONFIG: Record<
   KanbanStage,
-  { color: string; badgeBg: string; badgeText: string; label: string }
+  { color: string; dimColor: string; badgeBg: string; badgeText: string; label: string }
 > = {
   transcript: {
     color: "#0052cc",
+    dimColor: "#0052cc66",
     badgeBg: "#e9f0ff",
     badgeText: "#0052cc",
     label: "Transcript",
   },
   artifacts: {
     color: "#ff8b00",
+    dimColor: "#ff8b0066",
     badgeBg: "#fff4e6",
     badgeText: "#974f0c",
     label: "Artifacts",
   },
   topics: {
     color: "#6554c0",
+    dimColor: "#6554c066",
     badgeBg: "#f3f0ff",
     badgeText: "#5243aa",
     label: "Topics",
   },
   done: {
     color: "#36b37e",
+    dimColor: "#36b37e66",
     badgeBg: "#e3fcef",
     badgeText: "#006644",
     label: "Done",
@@ -40,9 +45,13 @@ export default function CallCard({ call, isHistorical = false, onClick }: Props)
   const cfg = STAGE_CONFIG[call.kanban_stage];
   const isDone = call.kanban_stage === "done";
 
-  const lineCount = call.transcript
-    ? call.transcript.split("\n").filter((l) => l.trim()).length
-    : 0;
+  const lineCount = useMemo(
+    () =>
+      call.transcript
+        ? call.transcript.split("\n").filter((l) => l.trim()).length
+        : 0,
+    [call.transcript]
+  );
 
   return (
     <div
@@ -50,9 +59,8 @@ export default function CallCard({ call, isHistorical = false, onClick }: Props)
       className="rounded p-[10px_12px] shadow-[0_1px_3px_rgba(0,0,0,0.12)] cursor-pointer border-l-[3px] hover:shadow-[0_3px_8px_rgba(0,0,0,0.16)] transition-shadow"
       style={{
         backgroundColor: isHistorical ? "#f4f5f7" : "#ffffff",
-        borderLeftColor: isHistorical
-          ? `${cfg.color}66`
-          : cfg.color,
+        borderLeftColor: isHistorical ? cfg.dimColor : cfg.color,
+        // Dim active done-column cards (historical done cards already look muted via dimColor border)
         opacity: isDone && !isHistorical ? 0.65 : 1,
       }}
     >
