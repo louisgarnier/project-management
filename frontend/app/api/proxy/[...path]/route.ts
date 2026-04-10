@@ -9,17 +9,24 @@ async function proxy(request: NextRequest, params: { path: string[] }): Promise<
   const searchParams = request.nextUrl.searchParams.toString();
   const fullPath = searchParams ? `${endpoint}?${searchParams}` : endpoint;
   const method = request.method;
+  const contentType = request.headers.get("content-type") || "";
+  const isMultipart = contentType.includes("multipart/form-data");
 
   console.log(`${ts()} 📡 [Frontend→API] ${method} ${fullPath}`);
 
   try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
+    let headers: Record<string, string>;
+    let body: string | ArrayBuffer | undefined;
 
-    let body: string | undefined;
-    if (method !== "GET" && method !== "HEAD") {
-      body = await request.text();
+    if (isMultipart) {
+      // Forward Content-Type as-is (includes the boundary) and body as raw bytes
+      headers = { "Content-Type": contentType };
+      body = await request.arrayBuffer();
+    } else {
+      headers = { "Content-Type": "application/json" };
+      if (method !== "GET" && method !== "HEAD") {
+        body = await request.text();
+      }
     }
 
     const response = await fetch(`${BACKEND_URL}${fullPath}`, {

@@ -69,3 +69,12 @@ export interface TopicWithHistory extends Topic {
   history: TopicUpdate[];
   first_raised_call_title?: string;
 }
+
+export interface CallFile {
+  id: string;
+  call_id: string;
+  filename: string;
+  storage_path: string;
+  size_bytes: number | null;
+  created_at: string;
+}

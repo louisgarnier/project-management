@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call } from "@/types";
+import type { Project, Call, CallFile } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -62,6 +62,20 @@ export const callsAPI = {
     }),
 };
 
+async function proxyFetchForm<T>(path: string, formData: FormData): Promise<T> {
+  const url = `${PROXY_BASE}${path}`;
+  // No Content-Type header — browser sets it automatically with the correct boundary
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+    throw new Error(error.detail || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
 // transcriptionAPI — calls the local server directly from the browser (not via proxy)
 export const transcriptionAPI = {
   health: async (): Promise<boolean> => {
@@ -110,6 +124,19 @@ export const localServerAPI = {
     const r = await fetch("/api/local/stop", { method: "POST" });
     if (!r.ok) throw new Error("Failed to stop server");
   },
+};
+
+export const filesAPI = {
+  upload: (callId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return proxyFetchForm<CallFile>(`/api/calls/${callId}/files`, form);
+  },
+  list: (callId: string) => proxyFetch<CallFile[]>(`/api/calls/${callId}/files`),
+  delete: (callId: string, fileId: string) =>
+    proxyFetch<void>(`/api/calls/${callId}/files/${fileId}`, { method: "DELETE" }),
+  downloadUrl: (callId: string, fileId: string) =>
+    proxyFetch<{ url: string }>(`/api/calls/${callId}/files/${fileId}/download`),
 };
 
 // Further API modules added per epic (artifacts, topics)
