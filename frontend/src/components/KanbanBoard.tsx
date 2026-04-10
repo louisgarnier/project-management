@@ -11,6 +11,10 @@ const COLUMNS: { key: KanbanStage; label: string }[] = [
 
 const STAGE_ORDER: KanbanStage[] = ["transcript", "artifacts", "topics", "done"];
 
+const STAGE_INDEX: Record<KanbanStage, number> = Object.fromEntries(
+  STAGE_ORDER.map((stage, i) => [stage, i])
+) as Record<KanbanStage, number>;
+
 type Props = {
   calls: Call[];
 };
@@ -19,13 +23,14 @@ export default function KanbanBoard({ calls }: Props) {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const projectId = params.id;
+  if (!projectId) throw new Error("KanbanBoard rendered outside [id] route");
 
   return (
     <div className="flex gap-3 p-4 overflow-x-auto flex-1">
       {COLUMNS.map((col) => {
-        const colIdx = STAGE_ORDER.indexOf(col.key);
+        const colIdx = STAGE_INDEX[col.key];
         const colCalls = calls.filter(
-          (c) => STAGE_ORDER.indexOf(c.kanban_stage) >= colIdx
+          (c) => STAGE_INDEX[c.kanban_stage] >= colIdx
         );
         return (
           <div key={col.key} className="w-[230px] flex-shrink-0 flex flex-col">
