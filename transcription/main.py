@@ -1,6 +1,6 @@
 """
 Local transcription server — runs on user's machine at localhost:8001.
-Accepts MP3 uploads, runs Whisper + pyannote, returns formatted transcript.
+Accepts MP3 uploads, runs mlx-whisper on Apple Silicon, returns raw transcript text.
 Never deployed to Railway — local only.
 """
 
@@ -8,18 +8,14 @@ import os
 import tempfile
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from transcription.logger import get_transcription_logger
-from transcription.transcribe import get_pipeline, get_whisper, transcribe_audio
-
-load_dotenv(Path(__file__).parent / ".env")
+from transcription.transcribe import preload_model, transcribe_audio
 
 logger = get_transcription_logger("server")
 request_logger = get_transcription_logger("requests")
@@ -28,8 +24,7 @@ request_logger = get_transcription_logger("requests")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 [Transcription] Local transcription server starting on port 8001")
-    get_whisper()
-    get_pipeline()
+    preload_model()
     logger.info("✅ [Transcription] Models ready")
     yield
 

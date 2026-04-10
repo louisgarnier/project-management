@@ -10,8 +10,7 @@ from starlette.testclient import TestClient
 
 @pytest.fixture
 def client():
-    with patch("transcription.main.get_whisper"), \
-         patch("transcription.main.get_pipeline"):
+    with patch("transcription.main.preload_model"):
         from transcription.main import app
         with TestClient(app) as c:
             yield c
@@ -20,7 +19,7 @@ def client():
 def test_health_returns_ok(client):
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    assert response.json() == {"status": "ok", "models": "loaded"}
 
 
 def test_transcribe_rejects_txt_file(client):
