@@ -12,10 +12,10 @@ interface Props {
   onAdvance: () => void;
 }
 
-// Rough estimate: ~20s of processing per MB of MP3
-// (covers typical mlx-whisper speed on Apple Silicon across audio lengths)
+// Rough estimate: ~15s fixed overhead (Metal buffer init) + ~8s/MB
+// mlx-whisper has significant per-request startup cost regardless of file size
 function estimateSeconds(bytes: number): number {
-  return Math.round((bytes / (1024 * 1024)) * 20);
+  return Math.round(15 + (bytes / (1024 * 1024)) * 8);
 }
 
 function formatRemaining(seconds: number): string {
