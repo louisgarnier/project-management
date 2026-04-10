@@ -1,3 +1,4 @@
+import json
 from typing import Optional
 
 from backend.database.supabase_client import get_client
@@ -166,14 +167,22 @@ def reset_transcript(call_id: str):
         )
 
     db_logger.info(f"🗄️ [DB] Resetting transcript for call: {call_id}")
-    update_result = (
-        client.table("calls")
-        .update({"kanban_stage": "transcript", "transcript": None, "transcript_source": None})
-        .eq("id", call_id)
-        .execute()
+    # supabase-py filters out None values from .update() payloads, so we bypass it
+    # and send the raw JSON directly via the underlying httpx session to guarantee
+    # that transcript and transcript_source are set to NULL in the database.
+    payload = json.dumps(
+        {"kanban_stage": "transcript", "transcript": None, "transcript_source": None}
     )
-    db_logger.info(f"✅ [DB] Transcript reset, rolled back to transcript stage: {call_id}")
-    return update_result.data[0]
+    response = client.postgrest.session.patch(
+        f"/calls?id=eq.{call_id}",
+        content=payload,
+        headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+    )
+    data = response.json()
+    if not data:
+        raise HTTPException(status_code=500, detail="Transcript reset failed")
+    db_logger.info(f"✅ [DB] Transcript cleared, rolled back to transcript stage: {call_id}")
+    return data[0]
 
 
 @router.patch("/calls/{call_id}/transcript")
