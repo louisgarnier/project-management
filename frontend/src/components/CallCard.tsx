@@ -60,8 +60,8 @@ export default function CallCard({ call, isHistorical = false, columnStage, onCl
       className="rounded p-[10px_12px] shadow-[0_1px_3px_rgba(0,0,0,0.12)] cursor-pointer border-l-[3px] hover:shadow-[0_3px_8px_rgba(0,0,0,0.16)] transition-shadow"
       style={{
         backgroundColor: isHistorical ? "#f4f5f7" : "#ffffff",
-        borderLeftColor: isHistorical ? cfg.dimColor : cfg.color,
-        // Dim active done-column cards (historical done cards already look muted via dimColor border)
+        borderLeftColor: isHistorical ? "#36b37e" : cfg.color,
+        // Dim active done-column cards (historical done cards already look muted via green border)
         opacity: isDone && !isHistorical ? 0.65 : 1,
       }}
     >
