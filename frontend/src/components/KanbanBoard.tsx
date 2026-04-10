@@ -9,6 +9,8 @@ const COLUMNS: { key: KanbanStage; label: string }[] = [
   { key: "done", label: "Done" },
 ];
 
+const STAGE_ORDER: KanbanStage[] = ["transcript", "artifacts", "topics", "done"];
+
 type Props = {
   calls: Call[];
 };
@@ -21,7 +23,10 @@ export default function KanbanBoard({ calls }: Props) {
   return (
     <div className="flex gap-3 p-4 overflow-x-auto flex-1">
       {COLUMNS.map((col) => {
-        const colCalls = calls.filter((c) => c.kanban_stage === col.key);
+        const colIdx = STAGE_ORDER.indexOf(col.key);
+        const colCalls = calls.filter(
+          (c) => STAGE_ORDER.indexOf(c.kanban_stage) >= colIdx
+        );
         return (
           <div key={col.key} className="w-[230px] flex-shrink-0 flex flex-col">
             <div className="flex items-center justify-between mb-2">
@@ -40,8 +45,9 @@ export default function KanbanBoard({ calls }: Props) {
               ) : (
                 colCalls.map((call) => (
                   <CallCard
-                    key={call.id}
+                    key={`${col.key}-${call.id}`}
                     call={call}
+                    isHistorical={call.kanban_stage !== col.key}
                     onClick={() => router.push(`/projects/${projectId}/calls/${call.id}`)}
                   />
                 ))
