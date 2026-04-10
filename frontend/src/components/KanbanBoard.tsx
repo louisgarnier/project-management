@@ -53,6 +53,7 @@ export default function KanbanBoard({ calls }: Props) {
                     key={`${col.key}-${call.id}`}
                     call={call}
                     isHistorical={call.kanban_stage !== col.key}
+                    columnStage={col.key}
                     onClick={() => router.push(`/projects/${projectId}/calls/${call.id}`)}
                   />
                 ))

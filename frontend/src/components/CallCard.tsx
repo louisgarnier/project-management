@@ -38,10 +38,11 @@ const STAGE_CONFIG: Record<
 type Props = {
   call: Call;
   isHistorical?: boolean;
+  columnStage?: KanbanStage;
   onClick: () => void;
 };
 
-export default function CallCard({ call, isHistorical = false, onClick }: Props) {
+export default function CallCard({ call, isHistorical = false, columnStage, onClick }: Props) {
   const cfg = STAGE_CONFIG[call.kanban_stage];
   const isDone = call.kanban_stage === "done";
 
@@ -87,9 +88,13 @@ export default function CallCard({ call, isHistorical = false, onClick }: Props)
       <div className="flex items-center justify-between">
         <span
           className="text-[10px] font-semibold px-[7px] py-[2px] rounded-[3px] uppercase tracking-[0.04em]"
-          style={{ background: cfg.badgeBg, color: cfg.badgeText }}
+          style={
+            isHistorical && columnStage
+              ? { background: "#e3fcef", color: "#006644" }
+              : { background: cfg.badgeBg, color: cfg.badgeText }
+          }
         >
-          {cfg.label}
+          {isHistorical && columnStage ? STAGE_CONFIG[columnStage].label : cfg.label}
         </span>
         <span className="text-[10px] text-[#97a0af]">
           {new Date(call.created_at).toLocaleDateString("en-US", {
