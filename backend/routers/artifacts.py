@@ -1,6 +1,8 @@
 import asyncio
 import json
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -15,7 +17,7 @@ logger = get_logger("artifacts")
 
 class ArtifactSelection(BaseModel):
     artifact_type_id: str
-    mode: str  # 'claude' | 'manual'
+    mode: Literal["claude", "manual"]
 
 
 class ArtifactSelectionsPayload(BaseModel):
@@ -31,6 +33,12 @@ def create_artifact_selections(call_id: str, payload: ArtifactSelectionsPayload)
     prompt_used is snapshotted from the artifact type's current prompt.
     """
     client = get_client()
+
+    # Verify call exists
+    call_check = client.table("calls").select("id").eq("id", call_id).execute()
+    if not call_check.data:
+        raise HTTPException(status_code=404, detail="Call not found")
+
     db_logger.info(f"🗄️ [DB] Creating {len(payload.selections)} artifact selections for call: {call_id}")
 
     type_ids = [s.artifact_type_id for s in payload.selections]
@@ -134,4 +142,8 @@ async def stream_artifacts(call_id: str):
 
         yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

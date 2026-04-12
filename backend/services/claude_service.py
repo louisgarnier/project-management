@@ -6,7 +6,7 @@ from backend.utils.logger import get_logger
 
 logger = get_logger("claude_service")
 
-_MAX_RETRIES = 3
+_MAX_RETRIES = 3  # number of retries (4 total attempts)
 
 
 async def generate_artifact(prompt_used: str, transcript: str) -> str:
@@ -18,7 +18,7 @@ async def generate_artifact(prompt_used: str, transcript: str) -> str:
     client = anthropic.AsyncAnthropic()
     user_message = f"Transcript:\n{transcript}\n\nTask:\n{prompt_used}"
 
-    for attempt in range(_MAX_RETRIES):
+    for attempt in range(_MAX_RETRIES + 1):
         try:
             logger.info(f"🤖 [Claude] Generating artifact (attempt {attempt + 1})")
             message = await client.messages.create(
@@ -34,9 +34,9 @@ async def generate_artifact(prompt_used: str, transcript: str) -> str:
             )
             return content
         except anthropic.RateLimitError:
-            if attempt == _MAX_RETRIES - 1:
+            if attempt == _MAX_RETRIES:
                 logger.error("❌ [Claude] Rate limit exceeded after 3 retries")
                 raise
-            wait = 2 ** attempt
+            wait = 2 ** attempt  # 1s, 2s, 4s
             logger.warning(f"⚠️ [Claude] Rate limited — retrying in {wait}s")
             await asyncio.sleep(wait)
