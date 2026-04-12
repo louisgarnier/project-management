@@ -1,9 +1,8 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-5 / Story 5.4 — Artifacts Stage UI
-- **File:** `docs/project/config/epics/epic-5/story-5.4.md`
-- **Goal:** Artifacts stage in the call workflow — select artifact types, trigger generation, view streamed results
+- **Story:** EPIC-5 complete — all stories done
+- **Next:** EPIC-6 (not yet defined)
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
@@ -28,3 +27,4 @@
 - [x] EPIC-5 / Story 5.1 — Artifacts Tab UI — 2026-04-12
 - [x] EPIC-5 / Story 5.2 — Artifact Types API — 2026-04-12
 - [x] EPIC-5 / Story 5.3 — Claude Service & SSE — 2026-04-12
+- [x] EPIC-5 / Story 5.4 — Artifacts Stage UI — 2026-04-12

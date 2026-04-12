@@ -1,13 +1,32 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-5 — Artifacts Stage**
-- Status: Stories 5.1 + 5.2 + 5.3 done — next: Story 5.4 (Artifacts Stage UI)
+**EPIC-5 — Artifacts Stage — COMPLETE**
+- Status: All stories done (5.1 → 5.4)
 - Blocked by: nothing
+- Next: EPIC-6 (not yet defined)
 
 ---
 
 ## Session History
+
+### 2026-04-12 — EPIC-5: Story 5.4 — Artifacts Stage UI
+
+**Story 5.4: Artifacts Stage UI**
+- `backend/routers/artifacts.py` — added `GET /api/calls/{call_id}/artifacts` (list, 404 guard) and `PATCH /api/artifacts/{artifact_id}` (update content/status; 422 no-fields, 404 not-found); `ArtifactUpdate` Pydantic model
+- `backend/tests/test_artifacts.py` — 5 new tests: list happy path, patch happy path, list 404, patch 422, patch 404 (58 total backend tests passing)
+- `frontend/app/api/sse/[...path]/route.ts` — dedicated SSE proxy; passes `backendResponse.body` directly without buffering (unlike the JSON proxy); headers: `text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`
+- `frontend/src/api/client.ts` — added `artifactsAPI` (createSelections, list, update); added `callsAPI.advanceStage`; added `Artifact` to type imports
+- `frontend/src/components/ArtifactSelector.tsx` — per-type row: Generate via Claude / Manual / Skip toggle buttons; exports `ArtifactMode` type
+- `frontend/src/components/ArtifactCard.tsx` — status badge (pending/generating/done/error), spinner during generation, editable textarea, Mark Done button, inline `StatusBadge`
+- `frontend/src/components/ArtifactsStage.tsx` — three-phase orchestrator: select → generating → reviewing; SSE consumption via ReadableStream + line buffer; `AbortController` cleanup on unmount; skips to reviewing if artifacts already exist
+- `frontend/app/projects/[id]/calls/[call_id]/page.tsx` — replaced "coming soon" placeholder with `ArtifactsStage` for artifacts stage; other past-transcript stages still show placeholder
+
+**Key decisions:**
+- SSE streams through `/api/sse/` not `/api/proxy/` (proxy buffers response.json())
+- `streamArtifacts()` takes no arguments — uses closured `callId` from component scope
+- `handleRetry` accepts `_artifactId` to match `ArtifactCard` prop type but re-streams all pending artifacts
+- `ArtifactUpdate` filter uses `if v is not None` (not falsiness) — allows `content: ""` correctly
 
 ### 2026-04-12 — EPIC-5: Story 5.3 — Claude Service & SSE
 

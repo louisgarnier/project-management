@@ -1,6 +1,6 @@
 # Codebase Map — Call Tracker
 > Updated after every story. Read this before touching any existing module.
-> Last updated: EPIC-5 / Stories 5.1 + 5.2 (2026-04-12)
+> Last updated: EPIC-5 / Story 5.4 (2026-04-12)
 
 ---
 
@@ -16,14 +16,14 @@ backend/
 │   ├── calls.py                   → GET/POST /api/projects/{id}/calls, PATCH /api/calls/{id}/stage, POST/PATCH/DELETE /api/calls/{id}/transcript (EPIC-3/4)
 │   ├── files.py                   → POST/GET/DELETE /api/calls/{id}/files, GET signed URL (EPIC-4 / Story 4.6)
 │   ├── artifact_types.py          → GET/POST/PATCH/DELETE /api/projects/{id}/artifact-types, POST /import; seed_defaults() (EPIC-5 / Story 5.2)
-│   └── artifacts.py               → POST /api/calls/{id}/artifacts (create selections), GET /stream SSE (parallel generation) (EPIC-5 / Story 5.3)
+│   └── artifacts.py               → POST /api/calls/{id}/artifacts (create selections), GET /api/calls/{id}/artifacts (list), PATCH /api/artifacts/{id} (update), GET /stream SSE (parallel generation) (EPIC-5 / Stories 5.3 + 5.4)
 └── tests/
     ├── test_projects.py           → 5 tests for projects API (EPIC-2 / Story 2.1)
     ├── test_calls.py              → 9 tests for calls API (EPIC-3 / Story 3.1)
     ├── test_transcript.py         → 5 tests: happy path, exact text, 404, 409, 422 (EPIC-4 / Story 4.2)
     ├── test_files.py              → 10 tests: upload, list, delete, download, 404s, 422s (EPIC-4 / Story 4.6)
     ├── test_artifact_types.py     → 7 tests: list, create, update, delete (custom/default/404), import (EPIC-5 / Story 5.2)
-    └── test_artifacts.py          → 5 tests: POST create, prompt snapshot, SSE happy path, SSE error isolation, empty pending (EPIC-5 / Story 5.3)
+    └── test_artifacts.py          → 10 tests: POST create, prompt snapshot, SSE happy path, SSE error isolation, empty pending, list artifacts, list 404, patch content, patch 422, patch 404 (EPIC-5 / Stories 5.3 + 5.4)
 
 frontend/
 ├── app/
@@ -36,13 +36,14 @@ frontend/
 │       ├── history/page.tsx       → Placeholder (EPIC-2 / Story 2.3)
 │       ├── artifacts/page.tsx     → Artifacts tab: list all artifact types, delete/update, + Add modal (EPIC-5 / Story 5.1)
 │       ├── calls/[call_id]/page.tsx → Call detail page: stage router, progress bar (EPIC-4 / Story 4.3)
+│       ├── api/sse/[...path]/route.ts → GET: SSE proxy — streams backendResponse.body without buffering (EPIC-5 / Story 5.4)
 │       └── api/local/
 │           ├── process.ts             → ChildProcess singleton (EPIC-4 / Story 4.4)
 │           ├── start/route.ts         → POST: spawn run_transcription.sh (EPIC-4 / Story 4.4)
 │           ├── stop/route.ts          → POST: SIGTERM transcription process (EPIC-4 / Story 4.4)
 │           └── status/route.ts        → GET: running / starting / offline (EPIC-4 / Story 4.4)
 └── src/
-    ├── api/client.ts              → proxyFetch, proxyFetchForm, projectsAPI, callsAPI (getCall, submitTranscript, updateTranscript, resetTranscript), transcriptionAPI, filesAPI, localServerAPI, artifactTypesAPI (EPIC-2/3/4/5)
+    ├── api/client.ts              → proxyFetch, proxyFetchForm, projectsAPI, callsAPI (getCall, submitTranscript, updateTranscript, resetTranscript, advanceStage), transcriptionAPI, filesAPI, localServerAPI, artifactTypesAPI, artifactsAPI (createSelections, list, update) (EPIC-2/3/4/5)
     ├── utils/logger.ts            → Frontend console logger (EPIC-1 / Story 1.2)
     └── components/
         ├── TopNav.tsx             → Blue top nav bar (EPIC-2 / Story 2.3)
@@ -55,7 +56,10 @@ frontend/
         ├── TranscriptPanel.tsx    → collapsible transcript viewer/editor (PATCH save, download .txt) — shown on call detail for post-transcript stages (EPIC-4 / Story 4.8)
         ├── ContextFiles.tsx       → context file list with upload/delete (editable) or download-only (readonly prop); 10MB guard, accepted types: .txt .pdf .docx .csv .md (EPIC-4 / Story 4.6)
         ├── ArtifactTypeCard.tsx   → expandable artifact type card: Default/Custom badge, expand prompt, inline edit (name + textarea, orange border), delete with confirm (EPIC-5 / Story 5.1)
-        └── AddArtifactTypeModal.tsx → two-mode modal: Create new (name + prompt) + Import from another project (project selector → checklist); error states + retry (EPIC-5 / Story 5.1)
+        ├── AddArtifactTypeModal.tsx → two-mode modal: Create new (name + prompt) + Import from another project (project selector → checklist); error states + retry (EPIC-5 / Story 5.1)
+        ├── ArtifactSelector.tsx   → per-type row: Generate via Claude / Manual / Skip toggle buttons; exports ArtifactMode type (EPIC-5 / Story 5.4)
+        ├── ArtifactCard.tsx       → status badge, editable textarea, spinner during generation, Mark Done button, inline StatusBadge (EPIC-5 / Story 5.4)
+        └── ArtifactsStage.tsx     → three-phase orchestrator (select → generating → reviewing); SSE via ReadableStream + line buffer; AbortController cleanup; skips to reviewing if artifacts exist (EPIC-5 / Story 5.4)
 
 backend/services/
 └── claude_service.py              → generate_artifact(prompt_used, transcript) → str; AsyncAnthropic, claude-sonnet-4-6, 3-retry backoff (EPIC-5 / Story 5.3)
@@ -116,6 +120,8 @@ run_transcription.sh               → Starts local transcription server on :800
 **Exports:** `router` (APIRouter, prefix `/api`)
 **Endpoints:**
 - `POST /api/calls/{call_id}/artifacts` — accepts `{selections: [{artifact_type_id, mode: "claude"|"manual"}]}`; snapshots `prompt_used` from artifact type; mode='manual' → status='done'; mode='claude' → status='pending'; 404 if call not found
+- `GET /api/calls/{call_id}/artifacts` — list all artifacts for call (ordered by created_at); 404 if call not found
+- `PATCH /api/artifacts/{artifact_id}` — update content and/or status; 422 if no fields; 404 if not found
 - `GET /api/calls/{call_id}/artifacts/stream` — SSE; fetches pending artifacts, runs all in parallel via asyncio tasks + queue; emits `status`→`done`/`error` per artifact, `complete` at end; headers: `Cache-Control: no-cache`, `X-Accel-Buffering: no`
 
 ---
