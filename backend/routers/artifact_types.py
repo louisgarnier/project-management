@@ -55,8 +55,8 @@ class ArtifactTypeCreate(BaseModel):
 
 
 class ArtifactTypeUpdate(BaseModel):
-    name: str | None = None
-    prompt: str | None = None
+    name: str | None = Field(default=None, min_length=1)
+    prompt: str | None = Field(default=None, min_length=1)
 
 
 class ArtifactTypeImport(BaseModel):
@@ -146,6 +146,8 @@ def delete_artifact_type(project_id: str, type_id: str):
 def import_artifact_types(project_id: str, payload: ArtifactTypeImport):
     client = get_client()
     db_logger.info(f"🗄️ [DB] Importing {len(payload.type_ids)} artifact types into project: {project_id}")
+    # Intentionally cross-project: fetch by ID only so users can import from any project.
+    # Auth is enforced at the API gateway layer; open reads across projects are acceptable.
     source = (
         client.table("artifact_types")
         .select("name,prompt")
