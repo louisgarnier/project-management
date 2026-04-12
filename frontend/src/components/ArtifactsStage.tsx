@@ -147,6 +147,7 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
     logger.info("Artifact marked done", { component: "ArtifactsStage", data: { artifactId } });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function handleRetry(_artifactId: string) {
     // Re-opens SSE stream for any remaining pending/error artifacts
     void streamArtifacts();
