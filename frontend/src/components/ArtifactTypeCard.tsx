@@ -69,6 +69,31 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
           )}
         </div>
 
+        {/* LLM selector — always visible in header */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {editing ? (
+            <select
+              value={llm ?? ""}
+              onChange={(e) => setLlm((e.target.value as LLMProvider) || null)}
+              className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
+            >
+              <option value="">Default ({
+                { groq: "Groq", claude: "Claude", openai: "ChatGPT" }[projectDefaultLlm]
+              })</option>
+              <option value="groq">Groq (free)</option>
+              <option value="claude">Claude</option>
+              <option value="openai">ChatGPT (OpenAI)</option>
+            </select>
+          ) : (
+            <span className="text-[11px] text-[#5e6c84] bg-[#f4f5f7] px-2 py-[3px] rounded">
+              {type.llm
+                ? { groq: "Groq (free)", claude: "Claude", openai: "ChatGPT" }[type.llm]
+                : `Default · ${{ groq: "Groq (free)", claude: "Claude", openai: "ChatGPT" }[projectDefaultLlm]}`
+              }
+            </span>
+          )}
+        </div>
+
         <div className="flex items-center gap-3 flex-shrink-0">
           {editing ? (
             <>
@@ -126,43 +151,15 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
       {/* Prompt — read or edit */}
       {expanded &&
         (editing ? (
-          <>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="mt-2 w-full text-[12px] text-[#172b4d] bg-[#f4f5f7] border border-[#dfe1e6] rounded p-3 resize-none h-32 focus:outline-none focus:border-[#0052cc]"
-            />
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-[11px] text-[#5e6c84] flex-shrink-0">LLM:</span>
-              <select
-                value={llm ?? ""}
-                onChange={(e) => setLlm((e.target.value as LLMProvider) || null)}
-                className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
-              >
-                <option value="">Project default ({
-                  { groq: "Groq (free)", claude: "Claude", openai: "ChatGPT (OpenAI)" }[projectDefaultLlm]
-                })</option>
-                <option value="groq">Groq (free)</option>
-                <option value="claude">Claude</option>
-                <option value="openai">ChatGPT (OpenAI)</option>
-              </select>
-            </div>
-          </>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            className="mt-2 w-full text-[12px] text-[#172b4d] bg-[#f4f5f7] border border-[#dfe1e6] rounded p-3 resize-none h-32 focus:outline-none focus:border-[#0052cc]"
+          />
         ) : (
-          <>
-            <p className="mt-2 text-[12px] text-[#5e6c84] leading-relaxed whitespace-pre-wrap bg-[#f4f5f7] rounded p-3">
-              {type.prompt}
-            </p>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-[10px] text-[#97a0af] uppercase tracking-wide">LLM:</span>
-              <span className="text-[11px] text-[#5e6c84]">
-                {type.llm
-                  ? { groq: "Groq (free)", claude: "Claude", openai: "ChatGPT (OpenAI)" }[type.llm]
-                  : `Project default (${{ groq: "Groq (free)", claude: "Claude", openai: "ChatGPT (OpenAI)" }[projectDefaultLlm]})`
-                }
-              </span>
-            </div>
-          </>
+          <p className="mt-2 text-[12px] text-[#5e6c84] leading-relaxed whitespace-pre-wrap bg-[#f4f5f7] rounded p-3">
+            {type.prompt}
+          </p>
         ))}
 
       {saveError && <p className="mt-2 text-[11px] text-red-600">{saveError}</p>}
