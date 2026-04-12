@@ -1,42 +1,42 @@
-# Story 5.3 — Artifacts Stage UI
+# Story 5.3 — Claude Service & SSE Endpoint
 
 **Epic:** EPIC-5 — Artifacts Stage
 **Maps to plan:** Slice 5
-**Maps to PRD:** US-03, US-04, US-05, FR-06, FR-07, NFR-08
+**Maps to PRD:** US-03, US-04, FR-05, FR-13, NFR-01, NFR-02, NFR-08
 **Status:** `pending`
 
 ---
 
 ## Goal
-The Artifacts stage shows all 6 artifact types. User sets each to Claude / Manual / Skip, triggers generation, watches live progress via SSE, edits content, and marks each Done. Stage cannot advance until all included artifacts are Done.
+Railway FastAPI generates all selected "claude" artifacts in parallel and streams per-artifact status to the frontend via SSE. Manual artifacts are skipped. One failure does not block others.
 
 ## Acceptance Criteria
-- [ ] `ArtifactSelector` shows all artifact types with 3 options per row: "Generate via Claude" · "Manual" · "Skip"
-- [ ] "Generate" button is enabled only after at least one artifact is set (not all skipped)
-- [ ] NFR-08: no API call fires until user clicks "Generate"
-- [ ] Clicking "Generate" calls `POST /api/calls/{id}/artifacts` then opens SSE stream to `/api/calls/{id}/artifacts/stream`
-- [ ] Each `ArtifactCard` shows live status: `pending` (grey) · `generating` (spinner) · `done` (green) · `error` (red with retry)
-- [ ] Manual artifacts show an empty editable textarea immediately — no spinner
-- [ ] All artifact content is editable inline (both Claude-generated and manual)
-- [ ] "Mark Done" button per artifact — turns card green
-- [ ] "Proceed to Topics" button appears only when all included (non-skipped) artifacts are marked Done
-- [ ] Clicking "Proceed to Topics" calls `PATCH /api/calls/{id}/stage` to advance to `'topics'`
-- [ ] All SSE events logged via `logger.sse`
+- [ ] `POST /api/calls/{call_id}/artifacts` accepts a list of `{artifact_type_id, mode}` selections
+  - Creates artifact rows: `mode = 'claude'` → `status = 'pending'`; `mode = 'manual'` → `status = 'done'` with empty content
+- [ ] `GET /api/calls/{call_id}/artifacts/stream` opens an SSE stream
+  - All `'claude'` artifacts start generating simultaneously (parallel, not sequential)
+  - Each artifact emits events: `{"type":"status","artifact_id":"...","status":"generating"}` then `{"type":"done","artifact_id":"...","content":"..."}` or `{"type":"error","artifact_id":"...","message":"..."}`
+  - Final event: `{"type":"complete"}`
+  - Stream closes after final event
+- [ ] Each artifact row's `prompt_used` is set to the artifact type's current prompt at generation time (immutable snapshot)
+- [ ] Claude model used: `claude-sonnet-4-6`
+- [ ] Rate limit (429): retry with exponential backoff (max 3 retries), then mark artifact as `error`
+- [ ] One artifact error does not block the others
+- [ ] All Claude calls logged: start, token count on success, error on failure
+- [ ] NFR-08: no generation starts until `POST /api/calls/{id}/artifacts` is explicitly called
 
 ## Tasks
-- [ ] Create `frontend/components/ArtifactSelector.tsx` — per-type mode selector
-- [ ] Create `frontend/components/ArtifactCard.tsx` — status badge, editable content, Mark Done button
-- [ ] Create `frontend/components/ArtifactsStage.tsx` — orchestrates selector, generation, cards
-- [ ] Wire SSE: `EventSource` on `/api/proxy/calls/{id}/artifacts/stream`
-- [ ] Manage state: selections → artifact rows → status per artifact
-- [ ] "Proceed" button: enabled only when `artifacts.filter(not skipped).every(a => a.status === 'done')`
-- [ ] Inline edit: `PATCH /api/artifacts/{id}` with updated content on blur
+- [ ] Create `backend/services/claude_service.py` — `generate_artifact(artifact_id, prompt, transcript) → str`
+- [ ] Implement retry logic in `claude_service.py` (3 retries, exponential backoff on 429)
+- [ ] Create `backend/routers/artifacts.py` — POST to create selections, GET `/stream` SSE endpoint
+- [ ] `POST` creates artifact rows with `prompt_used` snapshot
+- [ ] `GET /stream` uses `asyncio.as_completed` for parallel generation
+- [ ] Register router in `backend/main.py`
+- [ ] Write tests: `backend/tests/test_artifacts.py` (mock Anthropic client)
 
 ## Dev Tests
-Verify manually:
-- Select 3 Claude + 2 Manual + 1 Skip → click Generate
-- Manual cards show editable textarea immediately
-- Claude cards show spinner → then content as SSE events arrive
-- Edit a generated artifact → content updates
-- Mark each Done → "Proceed" button becomes active
-- Click Proceed → call advances to Topics stage
+- `backend/tests/test_artifacts.py`:
+  - `POST` with 3 claude + 2 manual → 5 artifact rows created; manual rows have `status='done'`
+  - `GET /stream` (mocked Claude) → all 3 claude artifacts emit `generating` then `done` events
+  - `GET /stream` where one Claude call raises → that artifact emits `error`; stream still completes
+  - `prompt_used` on artifact row matches the artifact type's prompt at creation time

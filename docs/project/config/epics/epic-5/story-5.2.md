@@ -1,42 +1,30 @@
-# Story 5.2 — Claude Service & SSE Endpoint
+# Story 5.2 — Artifacts Tab UI
 
 **Epic:** EPIC-5 — Artifacts Stage
-**Maps to plan:** Slice 5
-**Maps to PRD:** US-03, US-04, FR-05, FR-13, NFR-01, NFR-02, NFR-08
 **Status:** `pending`
+**Depends on:** Story 5.1
 
 ---
 
 ## Goal
-Railway FastAPI generates all selected "claude" artifacts in parallel and streams per-artifact status to the frontend via SSE. Manual artifacts are skipped. One failure does not block others.
+A project-level Artifacts tab (alongside Board and Topics in the sidebar) lets the user browse all artifact types, read their prompts, create custom types, and delete custom ones. This is the management layer — artifact types defined here are what appear as options during the call workflow.
 
 ## Acceptance Criteria
-- [ ] `POST /api/calls/{call_id}/artifacts` accepts a list of `{artifact_type_id, mode}` selections
-  - Creates artifact rows: `mode = 'claude'` → `status = 'pending'`; `mode = 'manual'` → `status = 'done'` with empty content
-- [ ] `GET /api/calls/{call_id}/artifacts/stream` opens an SSE stream
-  - All `'claude'` artifacts start generating simultaneously (parallel, not sequential)
-  - Each artifact emits events: `{"type":"status","artifact_id":"...","status":"generating"}` then `{"type":"done","artifact_id":"...","content":"..."}` or `{"type":"error","artifact_id":"...","message":"..."}`
-  - Final event: `{"type":"complete"}`
-  - Stream closes after final event
-- [ ] Each artifact row's `prompt_used` is set to the artifact type's current prompt at generation time (immutable snapshot)
-- [ ] Claude model used: `claude-sonnet-4-6`
-- [ ] Rate limit (429): retry with exponential backoff (max 3 retries), then mark artifact as `error`
-- [ ] One artifact error does not block the others
-- [ ] All Claude calls logged: start, token count on success, error on failure
-- [ ] NFR-08: no generation starts until `POST /api/calls/{id}/artifacts` is explicitly called
+- [ ] Artifacts tab accessible from sidebar nav (per-project, same level as Board and File History)
+- [ ] Page lists all artifact types: name, description of what it does, prompt preview
+- [ ] Clicking an artifact type expands it to show the full prompt
+- [ ] "New artifact type" button opens a form: name + prompt fields
+- [ ] Submitting creates a new custom artifact type (calls `POST /api/artifact-types`)
+- [ ] Custom types show a delete button — clicking prompts confirmation then deletes (calls `DELETE /api/artifact-types/{id}`)
+- [ ] Default types (the 6 seeded ones) show no delete button
+- [ ] Editing a type's prompt is possible inline or via edit mode (calls `PATCH /api/artifact-types/{id}`)
+- [ ] All changes reflected immediately in the list (optimistic or refetch)
 
 ## Tasks
-- [ ] Create `backend/services/claude_service.py` — `generate_artifact(artifact_id, prompt, transcript) → str`
-- [ ] Implement retry logic in `claude_service.py` (3 retries, exponential backoff on 429)
-- [ ] Create `backend/routers/artifacts.py` — POST to create selections, GET `/stream` SSE endpoint
-- [ ] `POST` creates artifact rows with `prompt_used` snapshot
-- [ ] `GET /stream` uses `asyncio.as_completed` for parallel generation
-- [ ] Register router in `backend/main.py`
-- [ ] Write tests: `backend/tests/test_artifacts.py` (mock Anthropic client)
-
-## Dev Tests
-- `backend/tests/test_artifacts.py`:
-  - `POST` with 3 claude + 2 manual → 5 artifact rows created; manual rows have `status='done'`
-  - `GET /stream` (mocked Claude) → all 3 claude artifacts emit `generating` then `done` events
-  - `GET /stream` where one Claude call raises → that artifact emits `error`; stream still completes
-  - `prompt_used` on artifact row matches the artifact type's prompt at creation time
+- [ ] Add "Artifacts" nav item to `Sidebar.tsx`
+- [ ] Create `frontend/app/projects/[id]/artifacts/page.tsx`
+- [ ] Create `frontend/src/components/ArtifactTypeCard.tsx` — expandable card with prompt, edit, delete
+- [ ] Create `frontend/src/components/NewArtifactTypeModal.tsx` — name + prompt form
+- [ ] Add `artifactTypesAPI` to `frontend/src/api/client.ts` (list, create, patch, delete)
+- [ ] Wire delete with confirmation dialog
+- [ ] Wire inline prompt editing with save on blur / explicit save button

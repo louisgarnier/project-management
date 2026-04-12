@@ -4,6 +4,7 @@
 - **Story:** EPIC-5 / Story 5.1 — Artifact Types API
 - **File:** `docs/project/config/epics/epic-5/story-5.1.md`
 - **Goal:** CRUD for artifact types; 6 defaults seeded; user can add custom types and edit prompts
+- **After 5.1:** Story 5.2 — Artifacts Tab UI (project-level management page)
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09

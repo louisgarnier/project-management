@@ -8,7 +8,7 @@
 | EPIC-2 | Projects | [x] Done | 3 |
 | EPIC-3 | Kanban Board & Calls | [x] Done | 2 |
 | EPIC-4 | Transcript Stage | [x] Done | 8 |
-| EPIC-5 | Artifacts Stage | [ ] Next | 4 |
+| EPIC-5 | Artifacts Stage | [ ] Next | 5 |
 | EPIC-6 | Topics Stage | [ ] | 2 |
 | EPIC-7 | Topic Dashboard | [ ] | 2 |
 | EPIC-8 | Testing & Deployment | [ ] | 2 |
