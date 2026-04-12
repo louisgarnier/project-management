@@ -1,10 +1,10 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-5 / Story 5.1 — Artifact Types API
+- **Story:** EPIC-5 / Story 5.1 — Artifacts Tab UI
 - **File:** `docs/project/config/epics/epic-5/story-5.1.md`
-- **Goal:** CRUD for artifact types; 6 defaults seeded; user can add custom types and edit prompts
-- **After 5.1:** Story 5.2 — Artifacts Tab UI (project-level management page)
+- **Goal:** Project-level Artifacts tab — browse, create, edit, delete artifact types
+- **After 5.1:** Story 5.2 — Artifact Types API (backend CRUD)
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
