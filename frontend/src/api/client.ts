@@ -62,6 +62,11 @@ export const callsAPI = {
     }),
   resetTranscript: (callId: string) =>
     proxyFetch<Call>(`/api/calls/${callId}/transcript`, { method: "DELETE" }),
+  advanceStage: (callId: string) =>
+    proxyFetch<Call>(`/api/calls/${callId}/stage`, {
+      method: "PATCH",
+      body: JSON.stringify({}),
+    }),
 };
 
 async function proxyFetchForm<T>(path: string, formData: FormData): Promise<T> {

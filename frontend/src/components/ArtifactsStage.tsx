@@ -76,7 +76,7 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
       logger.info("Artifact selections created", { component: "ArtifactsStage", data: { count: created.length } });
 
       // Open SSE stream
-      await streamArtifacts(created);
+      await streamArtifacts();
     } catch (err) {
       logger.error("Generate failed", { component: "ArtifactsStage", data: err });
       setGenerateError(err instanceof Error ? err.message : "Failed to generate");
@@ -84,12 +84,9 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
     }
   }
 
-  async function streamArtifacts(initialArtifacts: Artifact[]) {
+  async function streamArtifacts() {
     const controller = new AbortController();
     streamAbortRef.current = controller;
-
-    // initialArtifacts used only to satisfy the parameter — state is managed via setArtifacts
-    void initialArtifacts;
 
     try {
       const response = await fetch(`/api/sse/api/calls/${callId}/artifacts/stream`, {
@@ -150,10 +147,9 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
     logger.info("Artifact marked done", { component: "ArtifactsStage", data: { artifactId } });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function handleRetry(_artifactId: string) {
-    // Re-trigger SSE stream for any remaining pending artifacts
-    streamArtifacts(artifacts);
+    // Re-opens SSE stream for any remaining pending/error artifacts
+    void streamArtifacts();
   }
 
   const typeMap = Object.fromEntries(artifactTypes.map((t) => [t.id, t]));
