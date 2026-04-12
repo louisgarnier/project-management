@@ -1,9 +1,9 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-5 / Story 5.1 — (next up)
-- **File:** `docs/project/config/epics/epic-5/`
-- **Goal:** Artifacts Stage — TBD at EPIC-5 kickoff
+- **Story:** EPIC-5 / Story 5.1 — Artifact Types API
+- **File:** `docs/project/config/epics/epic-5/story-5.1.md`
+- **Goal:** CRUD for artifact types; 6 defaults seeded; user can add custom types and edit prompts
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
@@ -24,3 +24,4 @@
 - [x] EPIC-4 / Story 4.7 — Replace Transcription Engine with MLX Whisper — 2026-04-10
 - [x] EPIC-4 / Story 4.8 — Kanban History Trail + Persistent Transcript Panel — 2026-04-10
 - [x] EPIC-4 / extras — Delete project UI, reset transcript rollback, transcript validate screen, time estimate, Metal warmup — 2026-04-10
+- [x] EPIC-5 / Story 5.0 — Transcript Review & Redo — completed in EPIC-4 (2026-04-10)
