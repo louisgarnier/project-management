@@ -1,6 +1,6 @@
 # Codebase Map — Call Tracker
 > Updated after every story. Read this before touching any existing module.
-> Last updated: EPIC-4 / Story 4.6 (EPIC-4 closed)
+> Last updated: EPIC-5 / Stories 5.1 + 5.2 (2026-04-12)
 
 ---
 
@@ -12,14 +12,16 @@ backend/
 ├── database.py                    → Supabase client factory (EPIC-1 / Story 1.3)
 ├── logger.py                      → Backend logger (EPIC-1 / Story 1.2)
 ├── routers/
-│   ├── projects.py                → GET/POST/DELETE /api/projects (EPIC-2 / Story 2.1)
+│   ├── projects.py                → GET/POST/DELETE /api/projects; seeds 6 default artifact types on POST (EPIC-2 / Story 2.1, EPIC-5 / Story 5.2)
 │   ├── calls.py                   → GET/POST /api/projects/{id}/calls, PATCH /api/calls/{id}/stage, POST/PATCH/DELETE /api/calls/{id}/transcript (EPIC-3/4)
-│   └── files.py                   → POST/GET/DELETE /api/calls/{id}/files, GET signed URL (EPIC-4 / Story 4.6)
+│   ├── files.py                   → POST/GET/DELETE /api/calls/{id}/files, GET signed URL (EPIC-4 / Story 4.6)
+│   └── artifact_types.py          → GET/POST/PATCH/DELETE /api/projects/{id}/artifact-types, POST /import; seed_defaults() (EPIC-5 / Story 5.2)
 └── tests/
     ├── test_projects.py           → 5 tests for projects API (EPIC-2 / Story 2.1)
     ├── test_calls.py              → 9 tests for calls API (EPIC-3 / Story 3.1)
     ├── test_transcript.py         → 5 tests: happy path, exact text, 404, 409, 422 (EPIC-4 / Story 4.2)
-    └── test_files.py              → 10 tests: upload, list, delete, download, 404s, 422s (EPIC-4 / Story 4.6)
+    ├── test_files.py              → 10 tests: upload, list, delete, download, 404s, 422s (EPIC-4 / Story 4.6)
+    └── test_artifact_types.py     → 7 tests: list, create, update, delete (custom/default/404), import (EPIC-5 / Story 5.2)
 
 frontend/
 ├── app/
@@ -30,6 +32,7 @@ frontend/
 │       ├── board/page.tsx         → Kanban board (live calls) (EPIC-3 / Story 3.2)
 │       ├── topics/page.tsx        → Placeholder (EPIC-2 / Story 2.3)
 │       ├── history/page.tsx       → Placeholder (EPIC-2 / Story 2.3)
+│       ├── artifacts/page.tsx     → Artifacts tab: list all artifact types, delete/update, + Add modal (EPIC-5 / Story 5.1)
 │       ├── calls/[call_id]/page.tsx → Call detail page: stage router, progress bar (EPIC-4 / Story 4.3)
 │       └── api/local/
 │           ├── process.ts             → ChildProcess singleton (EPIC-4 / Story 4.4)
@@ -37,7 +40,7 @@ frontend/
 │           ├── stop/route.ts          → POST: SIGTERM transcription process (EPIC-4 / Story 4.4)
 │           └── status/route.ts        → GET: running / starting / offline (EPIC-4 / Story 4.4)
 └── src/
-    ├── api/client.ts              → proxyFetch, proxyFetchForm, projectsAPI, callsAPI (getCall, submitTranscript, updateTranscript, resetTranscript), transcriptionAPI, filesAPI, localServerAPI (EPIC-2/3/4)
+    ├── api/client.ts              → proxyFetch, proxyFetchForm, projectsAPI, callsAPI (getCall, submitTranscript, updateTranscript, resetTranscript), transcriptionAPI, filesAPI, localServerAPI, artifactTypesAPI (EPIC-2/3/4/5)
     ├── utils/logger.ts            → Frontend console logger (EPIC-1 / Story 1.2)
     └── components/
         ├── TopNav.tsx             → Blue top nav bar (EPIC-2 / Story 2.3)
@@ -48,7 +51,9 @@ frontend/
         ├── TranscriptionStatusBadge.tsx → 4-state badge (offline/starting/online/stopping) + Start/Stop buttons (EPIC-4 / Story 4.4)
         ├── TranscriptStage.tsx    → MP3/TXT upload → review screen (edit, download, replace, ContextFiles, validate & send to Artifacts) (EPIC-4 / Story 4.5 + 4.6)
         ├── TranscriptPanel.tsx    → collapsible transcript viewer/editor (PATCH save, download .txt) — shown on call detail for post-transcript stages (EPIC-4 / Story 4.8)
-        └── ContextFiles.tsx       → context file list with upload/delete (editable) or download-only (readonly prop); 10MB guard, accepted types: .txt .pdf .docx .csv .md (EPIC-4 / Story 4.6)
+        ├── ContextFiles.tsx       → context file list with upload/delete (editable) or download-only (readonly prop); 10MB guard, accepted types: .txt .pdf .docx .csv .md (EPIC-4 / Story 4.6)
+        ├── ArtifactTypeCard.tsx   → expandable artifact type card: Default/Custom badge, expand prompt, inline edit (name + textarea, orange border), delete with confirm (EPIC-5 / Story 5.1)
+        └── AddArtifactTypeModal.tsx → two-mode modal: Create new (name + prompt) + Import from another project (project selector → checklist); error states + retry (EPIC-5 / Story 5.1)
 
 transcription/
 ├── main.py                        → FastAPI local server: /health, /transcribe (EPIC-4 / Story 4.7)
@@ -98,6 +103,20 @@ run_transcription.sh               → Starts local transcription server on :800
 ### `backend/routers/projects.py`
 **Exports:** `router` (APIRouter, prefix `/api`)
 **Endpoints:** `GET /api/projects`, `POST /api/projects`, `DELETE /api/projects/{id}`
+**Side effect:** `POST /api/projects` calls `seed_defaults(project_id)` to insert 6 default artifact types.
+
+---
+
+### `backend/routers/artifact_types.py`
+**Exports:** `router` (APIRouter, prefix `/api`), `seed_defaults(project_id: str)`
+**Endpoints:**
+- `GET /api/projects/{project_id}/artifact-types` → list all types for project (ordered by created_at)
+- `POST /api/projects/{project_id}/artifact-types` → create custom type (is_default=False)
+- `PATCH /api/projects/{project_id}/artifact-types/{type_id}` → update name and/or prompt; 404 if not found
+- `DELETE /api/projects/{project_id}/artifact-types/{type_id}` → 403 if default; 404 if not found; 204 on success
+- `POST /api/projects/{project_id}/artifact-types/import` → fetch source types by ID (cross-project), insert copies with new project_id and is_default=False
+
+**`seed_defaults(project_id)`:** inserts 6 default types (Executive Summary, Next Steps & Action Items, Questions for Stakeholders, Email Summary 1-pager, Email Follow-up, Next Call Meeting Invite Topics).
 
 ---
 

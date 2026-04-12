@@ -2,12 +2,35 @@
 
 ## Current Stage
 **EPIC-5 — Artifacts Stage**
-- Status: not started
-- Blocked by: nothing (EPIC-4 fully closed)
+- Status: Stories 5.1 + 5.2 done — next: Story 5.3 (Claude Service & SSE)
+- Blocked by: nothing
 
 ---
 
 ## Session History
+
+### 2026-04-12 — EPIC-5: Stories 5.1 + 5.2 — Artifacts Tab UI + API
+
+**Story 5.1: Artifacts Tab UI**
+- `frontend/app/projects/[id]/artifacts/page.tsx` — Artifacts page: load/error/empty states, delete/update handlers, modal trigger
+- `frontend/src/components/ArtifactTypeCard.tsx` — expandable card: Default/Custom badge, expand/collapse prompt, inline edit (name + textarea), delete with confirm dialog, orange border on edit
+- `frontend/src/components/AddArtifactTypeModal.tsx` — two-mode modal: Create new (name + prompt) + Import from another project (project dropdown → type checklist → multi-select confirm); error states for all API failures + retry
+- `frontend/src/components/Sidebar.tsx` — added Artifacts (⚡) nav item between Board and Topics
+- `frontend/src/types/index.ts` — added `project_id` to `ArtifactType`
+- `frontend/src/api/client.ts` — `artifactTypesAPI`: list, create, update, delete, import
+
+**Story 5.2: Artifact Types API**
+- `backend/database/migrations/003_artifact_types_project_scoped.sql` — adds `project_id` FK (NOT NULL), clears old global seed rows
+- `backend/routers/artifact_types.py` — GET, POST, PATCH, DELETE, POST /import; `seed_defaults()` exports 6 default types; 403 guard on default delete; import is intentionally cross-project
+- `backend/tests/test_artifact_types.py` — 7 tests covering all endpoints and guards; 48 total backend tests pass
+- `backend/routers/projects.py` — `seed_defaults(project["id"])` called after project creation
+- `backend/main.py` — artifact_types router registered
+
+**Key decisions:**
+- artifact_types is project-scoped (project_id FK), not global
+- Importing from another project creates independent copies (`is_default=False`)
+- ArtifactTypeUpdate validates `min_length=1` to prevent empty-string writes
+- Plan: `docs/project/config/2026-04-12-story-5.1-artifacts-tab-plan.md`
 
 ### 2026-04-10 — EPIC-4 closed: Story 4.6 + extras
 **Story 4.6: Context File Attachments**
