@@ -1,6 +1,6 @@
 # Codebase Map — Call Tracker
 > Updated after every story. Read this before touching any existing module.
-> Last updated: EPIC-5 / Story 5.4 (2026-04-12)
+> Last updated: EPIC-6 / Multi-LLM (2026-04-12)
 
 ---
 
@@ -12,18 +12,19 @@ backend/
 ├── database.py                    → Supabase client factory (EPIC-1 / Story 1.3)
 ├── logger.py                      → Backend logger (EPIC-1 / Story 1.2)
 ├── routers/
-│   ├── projects.py                → GET/POST/DELETE /api/projects; seeds 6 default artifact types on POST (EPIC-2 / Story 2.1, EPIC-5 / Story 5.2)
+│   ├── projects.py                → GET/POST/DELETE /api/projects, GET/PATCH /api/projects/{id}; seeds 6 default artifact types on POST; PATCH updates default_llm (EPIC-2 / Story 2.1, EPIC-5 / Story 5.2, EPIC-6)
 │   ├── calls.py                   → GET/POST /api/projects/{id}/calls, PATCH /api/calls/{id}/stage, POST/PATCH/DELETE /api/calls/{id}/transcript (EPIC-3/4)
 │   ├── files.py                   → POST/GET/DELETE /api/calls/{id}/files, GET signed URL (EPIC-4 / Story 4.6)
-│   ├── artifact_types.py          → GET/POST/PATCH/DELETE /api/projects/{id}/artifact-types, POST /import; seed_defaults() (EPIC-5 / Story 5.2)
+│   ├── artifact_types.py          → GET/POST/PATCH/DELETE /api/projects/{id}/artifact-types, POST /import; seed_defaults(); llm field (nullable, null=inherit project default) (EPIC-5 / Story 5.2, EPIC-6)
 │   └── artifacts.py               → POST /api/calls/{id}/artifacts (create selections), GET /api/calls/{id}/artifacts (list), PATCH /api/artifacts/{id} (update), GET /stream SSE (parallel generation) (EPIC-5 / Stories 5.3 + 5.4)
 └── tests/
-    ├── test_projects.py           → 5 tests for projects API (EPIC-2 / Story 2.1)
+    ├── test_projects.py           → 9 tests for projects API: CRUD + GET single + PATCH default_llm (EPIC-2 / Story 2.1, EPIC-6)
     ├── test_calls.py              → 9 tests for calls API (EPIC-3 / Story 3.1)
     ├── test_transcript.py         → 5 tests: happy path, exact text, 404, 409, 422 (EPIC-4 / Story 4.2)
     ├── test_files.py              → 10 tests: upload, list, delete, download, 404s, 422s (EPIC-4 / Story 4.6)
-    ├── test_artifact_types.py     → 7 tests: list, create, update, delete (custom/default/404), import (EPIC-5 / Story 5.2)
-    └── test_artifacts.py          → 10 tests: POST create, prompt snapshot, SSE happy path, SSE error isolation, empty pending, list artifacts, list 404, patch content, patch 422, patch 404 (EPIC-5 / Stories 5.3 + 5.4)
+    ├── test_artifact_types.py     → 9 tests: list, create, update, delete (custom/default/404), import + 2 new EPIC-6 llm field tests (EPIC-5 / Story 5.2, EPIC-6)
+    ├── test_artifacts.py          → 12 tests: POST create, prompt snapshot, SSE happy path, SSE error isolation, empty pending, list artifacts, list 404, patch content, patch 422, patch 404 + 2 new EPIC-6 (EPIC-5 / Stories 5.3 + 5.4, EPIC-6)
+    └── test_llm_service.py        → 4 tests: claude dispatch, groq dispatch, openai dispatch, unknown provider ValueError (EPIC-6)
 
 frontend/
 ├── app/
@@ -62,7 +63,7 @@ frontend/
         └── ArtifactsStage.tsx     → three-phase orchestrator (select → generating → reviewing); SSE via ReadableStream + line buffer; AbortController cleanup; skips to reviewing if artifacts exist (EPIC-5 / Story 5.4)
 
 backend/services/
-└── claude_service.py              → generate_artifact(prompt_used, transcript) → str; AsyncAnthropic, claude-sonnet-4-6, 3-retry backoff (EPIC-5 / Story 5.3)
+└── llm_service.py                 → generate_artifact(prompt_used, transcript, llm) → str; dispatches to Groq (llama-3.3-70b-versatile), Claude (claude-sonnet-4-6), OpenAI (gpt-4o); 3-retry backoff (EPIC-6)
 
 transcription/
 ├── main.py                        → FastAPI local server: /health, /transcribe (EPIC-4 / Story 4.7)
@@ -111,8 +112,12 @@ run_transcription.sh               → Starts local transcription server on :800
 
 ### `backend/routers/projects.py`
 **Exports:** `router` (APIRouter, prefix `/api`)
-**Endpoints:** `GET /api/projects`, `POST /api/projects`, `DELETE /api/projects/{id}`
-**Side effect:** `POST /api/projects` calls `seed_defaults(project_id)` to insert 6 default artifact types.
+**Endpoints:**
+- `GET /api/projects` → list all projects
+- `POST /api/projects` → create project (side effect: calls `seed_defaults(project_id)` to insert 6 default artifact types)
+- `DELETE /api/projects/{id}` → delete project
+- `GET /api/projects/{project_id}` → single project
+- `PATCH /api/projects/{project_id}` → update `default_llm` (accepts `"claude"`, `"groq"`, `"openai"`)
 
 ---
 
@@ -130,12 +135,26 @@ run_transcription.sh               → Starts local transcription server on :800
 **Exports:** `router` (APIRouter, prefix `/api`), `seed_defaults(project_id: str)`
 **Endpoints:**
 - `GET /api/projects/{project_id}/artifact-types` → list all types for project (ordered by created_at)
-- `POST /api/projects/{project_id}/artifact-types` → create custom type (is_default=False)
-- `PATCH /api/projects/{project_id}/artifact-types/{type_id}` → update name and/or prompt; 404 if not found
+- `POST /api/projects/{project_id}/artifact-types` → create custom type (is_default=False); accepts optional `llm` field
+- `PATCH /api/projects/{project_id}/artifact-types/{type_id}` → update name, prompt, and/or llm; 404 if not found
 - `DELETE /api/projects/{project_id}/artifact-types/{type_id}` → 403 if default; 404 if not found; 204 on success
 - `POST /api/projects/{project_id}/artifact-types/import` → fetch source types by ID (cross-project), insert copies with new project_id and is_default=False
 
+**`llm` field:** nullable TEXT on `artifact_types`; `null` means inherit the project's `default_llm`; explicit values: `"claude"`, `"groq"`, `"openai"`.
+
 **`seed_defaults(project_id)`:** inserts 6 default types (Executive Summary, Next Steps & Action Items, Questions for Stakeholders, Email Summary 1-pager, Email Follow-up, Next Call Meeting Invite Topics).
+
+---
+
+### `backend/services/llm_service.py`
+**Exports:** `generate_artifact(prompt_used, transcript, llm: str) → str`
+
+**Providers:**
+- `"claude"` → AsyncAnthropic, claude-sonnet-4-6, 3-retry exponential backoff on RateLimitError
+- `"groq"` → AsyncOpenAI (base_url=https://api.groq.com/openai/v1), llama-3.3-70b-versatile
+- `"openai"` → AsyncOpenAI, gpt-4o
+
+**Config:** API keys from env — `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY`
 
 ---
 

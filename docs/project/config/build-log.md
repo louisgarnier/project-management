@@ -1,14 +1,42 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-5 — Artifacts Stage — COMPLETE**
-- Status: All stories done (5.1 → 5.4)
+**EPIC-6 — Multi-LLM Support — COMPLETE**
+- Status: All stories done
 - Blocked by: nothing
-- Next: EPIC-6 (not yet defined)
+- Next: EPIC-7 (not yet defined)
 
 ---
 
 ## Session History
+
+### 2026-04-12 — EPIC-6: Multi-LLM Support
+
+**Feature: Multi-LLM Provider Selection**
+- `backend/services/llm_service.py` — `generate_artifact(prompt_used, transcript, llm: str) → str`; dispatches to Groq (`llama-3.3-70b-versatile`), Claude (`claude-sonnet-4-6`), or OpenAI (`gpt-4o`); 3-retry exponential backoff on rate limit errors; API keys from `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY`
+- `backend/database/migrations/004_multi_llm.sql` — adds `default_llm TEXT` to `projects` table (default `'claude'`); adds `llm TEXT` to `artifact_types` table (nullable — null = inherit project default)
+- `backend/routers/projects.py` — added `GET /api/projects/{project_id}` (single project) and `PATCH /api/projects/{project_id}` (update `default_llm`)
+- `backend/routers/artifact_types.py` — `llm` field exposed on all read/write endpoints; nullable (null = inherit project default)
+- `backend/routers/artifacts.py` — `POST /api/calls/{call_id}/artifacts` now accepts `llm` per selection; stream endpoint resolves effective LLM (artifact override → project default) and passes to `llm_service.generate_artifact`
+- `backend/tests/test_llm_service.py` — 4 new tests: all three providers dispatch correctly, unknown provider raises ValueError
+- `frontend/src/types/index.ts` — `default_llm` added to `Project`; `llm` (nullable) added to `ArtifactType`
+- `frontend/src/api/client.ts` — `projectsAPI.get`, `projectsAPI.updateDefaultLlm`; `artifactTypesAPI` updated to include `llm` on create/update; `artifactsAPI.createSelections` accepts per-artifact `llm`
+- `frontend/app/projects/[id]/artifacts/page.tsx` — per-artifact-type LLM dropdown; apply-to-all control
+- `frontend/src/components/ArtifactTypeCard.tsx` — shows/edits `llm` field with inherit-project-default option
+- `frontend/src/components/ArtifactSelector.tsx` — per-artifact LLM dropdown in generation flow; inherits project default when not set
+- `frontend/src/components/ArtifactsStage.tsx` — passes resolved LLM per artifact to `createSelections`; apply-to-all LLM control in selection phase
+
+**Files deleted:** `backend/services/claude_service.py` (replaced by `llm_service.py`)
+
+**Tests:** 70 backend tests passing (4 new `test_llm_service` + 2 new artifacts + 2 new artifact_types + 4 new projects)
+
+**Key decisions:**
+- `llm` on `artifact_types` is nullable; null means "use project default" — not stored as a string
+- Provider dispatch in `llm_service.py` uses a single `if/elif` — no dynamic import or registry
+- `GROQ_API_KEY` uses `AsyncOpenAI` with `base_url=https://api.groq.com/openai/v1` (Groq is OpenAI-compatible)
+- Apply-to-all sets all artifact type LLMs in state but does not persist unless user saves individually
+
+---
 
 ### 2026-04-12 — EPIC-5: Story 5.4 — Artifacts Stage UI
 
