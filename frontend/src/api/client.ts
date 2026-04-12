@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call, CallFile } from "@/types";
+import type { Project, Call, CallFile, ArtifactType } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -139,6 +139,30 @@ export const filesAPI = {
     proxyFetch<void>(`/api/calls/${callId}/files/${fileId}`, { method: "DELETE" }),
   downloadUrl: (callId: string, fileId: string) =>
     proxyFetch<{ url: string }>(`/api/calls/${callId}/files/${fileId}/download`),
+};
+
+export const artifactTypesAPI = {
+  list: (projectId: string) =>
+    proxyFetch<ArtifactType[]>(`/api/projects/${projectId}/artifact-types`),
+  create: (projectId: string, data: { name: string; prompt: string }) =>
+    proxyFetch<ArtifactType>(`/api/projects/${projectId}/artifact-types`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (projectId: string, typeId: string, data: { name?: string; prompt?: string }) =>
+    proxyFetch<ArtifactType>(`/api/projects/${projectId}/artifact-types/${typeId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  delete: (projectId: string, typeId: string) =>
+    proxyFetch<void>(`/api/projects/${projectId}/artifact-types/${typeId}`, {
+      method: "DELETE",
+    }),
+  import: (projectId: string, typeIds: string[]) =>
+    proxyFetch<ArtifactType[]>(`/api/projects/${projectId}/artifact-types/import`, {
+      method: "POST",
+      body: JSON.stringify({ type_ids: typeIds }),
+    }),
 };
 
 // Further API modules added per epic (artifacts, topics)

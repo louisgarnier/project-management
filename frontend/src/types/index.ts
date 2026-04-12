@@ -25,6 +25,7 @@ export type ArtifactStatus = "pending" | "generating" | "done" | "error";
 
 export interface ArtifactType {
   id: string;
+  project_id: string;
   name: string;
   prompt: string;
   is_default: boolean;
