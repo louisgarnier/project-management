@@ -6,10 +6,10 @@ const STAGE_CONFIG: Record<
   { color: string; dimColor: string; badgeBg: string; badgeText: string; label: string }
 > = {
   transcript: {
-    color: "#0052cc",
-    dimColor: "#0052cc66",
-    badgeBg: "#e9f0ff",
-    badgeText: "#0052cc",
+    color: "#ff8b00",
+    dimColor: "#ff8b0066",
+    badgeBg: "#fff4e6",
+    badgeText: "#974f0c",
     label: "Transcript",
   },
   artifacts: {
@@ -20,10 +20,10 @@ const STAGE_CONFIG: Record<
     label: "Artifacts",
   },
   topics: {
-    color: "#6554c0",
-    dimColor: "#6554c066",
-    badgeBg: "#f3f0ff",
-    badgeText: "#5243aa",
+    color: "#ff8b00",
+    dimColor: "#ff8b0066",
+    badgeBg: "#fff4e6",
+    badgeText: "#974f0c",
     label: "Topics",
   },
   done: {

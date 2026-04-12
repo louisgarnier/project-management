@@ -1,6 +1,6 @@
 # Codebase Map — Call Tracker
 > Updated after every story. Read this before touching any existing module.
-> Last updated: EPIC-4 / Story 4.8
+> Last updated: EPIC-4 / Story 4.6 (EPIC-4 closed)
 
 ---
 
@@ -13,11 +13,13 @@ backend/
 ├── logger.py                      → Backend logger (EPIC-1 / Story 1.2)
 ├── routers/
 │   ├── projects.py                → GET/POST/DELETE /api/projects (EPIC-2 / Story 2.1)
-│   └── calls.py                   → GET/POST /api/projects/{id}/calls, PATCH /api/calls/{id}/stage, POST /api/calls/{id}/transcript (EPIC-3/4)
+│   ├── calls.py                   → GET/POST /api/projects/{id}/calls, PATCH /api/calls/{id}/stage, POST/PATCH/DELETE /api/calls/{id}/transcript (EPIC-3/4)
+│   └── files.py                   → POST/GET/DELETE /api/calls/{id}/files, GET signed URL (EPIC-4 / Story 4.6)
 └── tests/
     ├── test_projects.py           → 5 tests for projects API (EPIC-2 / Story 2.1)
     ├── test_calls.py              → 9 tests for calls API (EPIC-3 / Story 3.1)
-    └── test_transcript.py         → 5 tests: happy path, exact text, 404, 409, 422 (EPIC-4 / Story 4.2)
+    ├── test_transcript.py         → 5 tests: happy path, exact text, 404, 409, 422 (EPIC-4 / Story 4.2)
+    └── test_files.py              → 10 tests: upload, list, delete, download, 404s, 422s (EPIC-4 / Story 4.6)
 
 frontend/
 ├── app/
@@ -35,17 +37,18 @@ frontend/
 │           ├── stop/route.ts          → POST: SIGTERM transcription process (EPIC-4 / Story 4.4)
 │           └── status/route.ts        → GET: running / starting / offline (EPIC-4 / Story 4.4)
 └── src/
-    ├── api/client.ts              → proxyFetch, projectsAPI, callsAPI (getCall, submitTranscript), transcriptionAPI (EPIC-2/3/4)
+    ├── api/client.ts              → proxyFetch, proxyFetchForm, projectsAPI, callsAPI (getCall, submitTranscript, updateTranscript, resetTranscript), transcriptionAPI, filesAPI, localServerAPI (EPIC-2/3/4)
     ├── utils/logger.ts            → Frontend console logger (EPIC-1 / Story 1.2)
     └── components/
         ├── TopNav.tsx             → Blue top nav bar (EPIC-2 / Story 2.3)
-        ├── Sidebar.tsx            → Project list + per-project nav (EPIC-2 / Story 2.3)
+        ├── Sidebar.tsx            → Project list + per-project nav + delete project (EPIC-2 / Story 2.3 + EPIC-4 extra)
         ├── KanbanBoard.tsx        → history trail kanban: each column shows all calls that have reached or passed that stage; active vs historical card differentiation (EPIC-4 / Story 4.8)
         ├── CallCard.tsx           → Call card with stage badge (EPIC-3 / Story 3.2)
         ├── NewCallModal.tsx       → Create call form (EPIC-3 / Story 3.2)
         ├── TranscriptionStatusBadge.tsx → 4-state badge (offline/starting/online/stopping) + Start/Stop buttons (EPIC-4 / Story 4.4)
-        ├── TranscriptStage.tsx    → MP3/TXT upload → review screen (edit, download, replace, save & continue) (EPIC-4 / Story 4.5)
-        └── TranscriptPanel.tsx    → collapsible transcript viewer/editor (PATCH save, download .txt) — shown on call detail for post-transcript stages (EPIC-4 / Story 4.8)
+        ├── TranscriptStage.tsx    → MP3/TXT upload → review screen (edit, download, replace, ContextFiles, validate & send to Artifacts) (EPIC-4 / Story 4.5 + 4.6)
+        ├── TranscriptPanel.tsx    → collapsible transcript viewer/editor (PATCH save, download .txt) — shown on call detail for post-transcript stages (EPIC-4 / Story 4.8)
+        └── ContextFiles.tsx       → context file list with upload/delete (editable) or download-only (readonly prop); 10MB guard, accepted types: .txt .pdf .docx .csv .md (EPIC-4 / Story 4.6)
 
 transcription/
 ├── main.py                        → FastAPI local server: /health, /transcribe (EPIC-4 / Story 4.7)
@@ -72,8 +75,23 @@ run_transcription.sh               → Starts local transcription server on :800
 - `PATCH /api/calls/{call_id}/stage` → advance stage (422 on skip; order: transcript→artifacts→topics→done)
 - `POST /api/calls/{call_id}/transcript` → store transcript + source_filename, advance to artifacts
 - `PATCH /api/calls/{call_id}/transcript` → edit transcript without stage change (409 if still at transcript stage)
+- `DELETE /api/calls/{call_id}/transcript` → roll back artifacts → transcript, set transcript + transcript_source to NULL (bypasses supabase-py None-filtering bug via raw httpx session patch)
 
 **Stage order constant:** `STAGE_ORDER = ["transcript", "artifacts", "topics", "done"]`
+
+---
+
+### `backend/routers/files.py`
+**Exports:** `router` (APIRouter, prefix `/api`)
+**Endpoints:**
+- `POST /api/calls/{call_id}/files` → multipart upload to Supabase Storage `call-files` bucket + DB record; 422 for wrong type/size; storage rollback if DB insert fails
+- `GET /api/calls/{call_id}/files` → list `call_files` rows for call
+- `DELETE /api/calls/{call_id}/files/{file_id}` → delete from storage + DB; 404 if not found
+- `GET /api/calls/{call_id}/files/{file_id}/download` → return 60s signed URL via `create_signed_url()`
+
+**Constants:** `ALLOWED_EXTENSIONS`, `MAX_FILE_SIZE = 10 * 1024 * 1024`, `SIGNED_URL_TTL_SECONDS = 60`
+
+**Security:** `os.path.basename(file.filename)` prevents path traversal in storage key.
 
 ---
 

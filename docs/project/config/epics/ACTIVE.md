@@ -1,10 +1,9 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-4 / Story 4.6 — Context File Attachments
-- **File:** `docs/project/config/epics/epic-4/story-4.6.md`
-- **Goal:** User can attach supplementary files to a call. Files stored in Supabase Storage, accessible from all subsequent stages.
-- **Modules touched:** Supabase Storage, `backend/routers/calls.py` (new files router), `frontend/src/api/client.ts`, new `ContextFiles.tsx` component
+- **Story:** EPIC-5 / Story 5.1 — (next up)
+- **File:** `docs/project/config/epics/epic-5/`
+- **Goal:** Artifacts Stage — TBD at EPIC-5 kickoff
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
@@ -20,4 +19,8 @@
 - [x] EPIC-4 / Story 4.3 — Transcript Stage UI — 2026-04-09
 - [x] EPIC-4 / Story 4.4 — Server Control UI — 2026-04-09
 - [x] EPIC-4 / Story 4.1–4.4 fixes — Transcription server (numpy, pyannote 4.0.4, WAV conversion, HF token) — 2026-04-10
+- [x] EPIC-4 / Story 4.5 — Transcript Review, Edit & Download — 2026-04-10
+- [x] EPIC-4 / Story 4.6 — Context File Attachments — 2026-04-10
+- [x] EPIC-4 / Story 4.7 — Replace Transcription Engine with MLX Whisper — 2026-04-10
 - [x] EPIC-4 / Story 4.8 — Kanban History Trail + Persistent Transcript Panel — 2026-04-10
+- [x] EPIC-4 / extras — Delete project UI, reset transcript rollback, transcript validate screen, time estimate, Metal warmup — 2026-04-10

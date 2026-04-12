@@ -87,6 +87,16 @@ export default function CallDetailPage() {
             defaultOpen={true}
           />
           <ContextFiles call={call} readonly />
+          {call.kanban_stage === "artifacts" && (
+            <div className="mt-4 text-right">
+              <button
+                onClick={handleResetTranscript}
+                className="text-[11px] text-[#97a0af] hover:text-red-500 hover:underline"
+              >
+                ↩ Reset transcript
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );

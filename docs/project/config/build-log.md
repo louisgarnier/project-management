@@ -1,13 +1,36 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-4 / Story 4.6 — Context File Attachments**
+**EPIC-5 — Artifacts Stage**
 - Status: not started
-- Blocked by: nothing
+- Blocked by: nothing (EPIC-4 fully closed)
 
 ---
 
 ## Session History
+
+### 2026-04-10 — EPIC-4 closed: Story 4.6 + extras
+**Story 4.6: Context File Attachments**
+- Supabase Storage `call-files` bucket (manual setup)
+- `backend/routers/files.py` — 4 endpoints: upload (multipart), list, delete, signed URL (60s TTL)
+- `backend/tests/test_files.py` — 10 tests, all passing
+- `frontend/src/types/index.ts` — `CallFile` interface
+- `frontend/src/api/client.ts` — `proxyFetchForm`, `filesAPI` (upload, list, delete, downloadUrl), `callsAPI.resetTranscript`
+- `frontend/src/components/ContextFiles.tsx` — upload + list + delete (editable) + download-only (readonly prop)
+- `frontend/app/api/proxy/[...path]/route.ts` — multipart passthrough + 204 fix (`new NextResponse(null, {status:204})`)
+- `frontend/app/projects/[id]/calls/[call_id]/page.tsx` — ContextFiles wired in (readonly), reset transcript button for artifacts stage
+- ADR-002 written for Supabase Storage adoption
+
+**Extras built this session:**
+- Delete project UI: `Sidebar.tsx` — "🗑 Delete project" button with confirm dialog, calls existing `DELETE /api/projects/{id}`
+- Reset transcript: `DELETE /api/calls/{call_id}/transcript` (new backend endpoint) — rolls back artifacts → transcript, clears transcript + transcript_source via raw PATCH to bypass supabase-py None-filtering bug
+- Transcript validate/review screen: `TranscriptStage.tsx` — after transcription, shows review screen with transcript preview + ContextFiles before advancing to Artifacts
+- Time estimate calibration: formula `15 + 8s/MB` (was `20s/MB`); root cause was fixed 15s Metal JIT overhead per request
+- Metal warmup: `transcription/transcribe.py` — `preload_model()` runs 0.5s silence dummy inference at startup to eliminate first-run latency spike
+
+**Bug fixes:**
+- 503 on delete project: `NextResponse.json(null, {status:204})` throws in Next.js → fixed to `new NextResponse(null, {status:204})`
+- Transcript not cleared on reset: supabase-py silently drops `None` from `.update()` → fixed via `client.postgrest.session.patch()` with explicit `json.dumps()`
 
 ### 2026-04-10 — Story 4.8 (patch): Historical card UX fixes
 - `CallCard.tsx` + `KanbanBoard.tsx` — historical badge shows column's stage label in green (was showing current stage in orange)

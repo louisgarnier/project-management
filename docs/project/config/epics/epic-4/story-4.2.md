@@ -11,13 +11,13 @@
 Railway FastAPI receives transcripts (either from the local transcription server or direct .txt upload) and stores them in Supabase. The call card advances to `'artifacts'` stage automatically after storage.
 
 ## Acceptance Criteria
-- [ ] `POST /api/calls/{call_id}/transcript` accepts a transcript text body and stores it in `calls.transcript`
-- [ ] After storing, `kanban_stage` is automatically advanced to `'artifacts'`
-- [ ] The endpoint is called by the Next.js proxy after either transcription or .txt upload
-- [ ] 404 returned if call does not exist
-- [ ] 409 returned if call is already past the `'transcript'` stage (duplicate submission guard)
-- [ ] Transcript stored as plain text — never truncated
-- [ ] All operations logged
+- [x] `POST /api/calls/{call_id}/transcript` accepts a transcript text body and stores it in `calls.transcript`
+- [x] After storing, `kanban_stage` is automatically advanced to `'artifacts'`
+- [x] The endpoint is called by the Next.js proxy after either transcription or .txt upload
+- [x] 404 returned if call does not exist
+- [x] 409 returned if call is already past the `'transcript'` stage (duplicate submission guard)
+- [x] Transcript stored as plain text — never truncated
+- [x] All operations logged
 
 ## Tasks
 - [x] Add `POST /api/calls/{call_id}/transcript` to `backend/routers/calls.py`

@@ -31,69 +31,62 @@ The model weights (~800MB) are already cached at `~/.cache/huggingface/` from th
 ## Acceptance Criteria
 
 ### transcription/requirements.txt
-- [ ] `openai-whisper`, `pyannote.audio`, `torchaudio` removed
-- [ ] `mlx-whisper==0.4.3` added
-- [ ] `torch` kept (mlx-whisper depends on it for some ops)
-- [ ] `python-multipart`, `fastapi`, `uvicorn`, `python-dotenv`, `httpx`, `pytest` kept
+- [x] `openai-whisper`, `pyannote.audio`, `torchaudio` removed
+- [x] `mlx-whisper==0.4.3` added
+- [x] `torch` kept (mlx-whisper depends on it for some ops)
+- [x] `python-multipart`, `fastapi`, `uvicorn`, `python-dotenv`, `httpx`, `pytest` kept
 
 ### transcription/transcribe.py
-- [ ] `get_whisper()` replaced with `preload_model()` — calls `ModelHolder.get_model()` to warm up MLX model at startup
-- [ ] `get_pipeline()` removed entirely
-- [ ] `_mp3_to_wav()` removed entirely
-- [ ] `transcribe_audio(audio_path, filename) → str` rewritten:
+- [x] `get_whisper()` replaced with `preload_model()` — calls `ModelHolder.get_model()` to warm up MLX model at startup
+- [x] `get_pipeline()` removed entirely
+- [x] `_mp3_to_wav()` removed entirely
+- [x] `transcribe_audio(audio_path, filename) → str` rewritten:
   - Calls `mlx_whisper.transcribe(audio_path, path_or_hf_repo="mlx-community/whisper-large-v3-turbo")`
   - Returns `result["text"].strip()`
   - No speaker detection, no timestamp formatting
-- [ ] All logging retained (`📥 Starting`, `✅ Done`, `❌ Failed`)
+- [x] All logging retained (`📥 Starting`, `✅ Done`, `❌ Failed`)
 
 ### transcription/main.py
-- [ ] Lifespan calls `preload_model()` only (no `get_pipeline()`)
-- [ ] `load_dotenv()` call removed (no env vars needed)
-- [ ] `Path` import removed
-- [ ] Startup log updated: `"🚀 [Transcription] Local transcription server starting on port 8001"`
-- [ ] Health endpoint still returns `{"status": "ok", "models": "loaded"}`
-- [ ] `/transcribe` endpoint unchanged (still accepts MP3, returns `{"transcript": str, "filename": str}`)
+- [x] Lifespan calls `preload_model()` only (no `get_pipeline()`)
+- [x] `load_dotenv()` call removed (no env vars needed)
+- [x] `Path` import removed
+- [x] Startup log updated: `"🚀 [Transcription] Local transcription server starting on port 8001"`
+- [x] Health endpoint still returns `{"status": "ok", "models": "loaded"}`
+- [x] `/transcribe` endpoint unchanged (still accepts MP3, returns `{"transcript": str, "filename": str}`)
 
 ### transcription/.env / .env.example
-- [ ] `transcription/.env.example` updated — `HF_TOKEN` line removed, comment added: `# No environment variables required for transcription`
-- [ ] `transcription/.env` deleted (no longer needed)
+- [x] `transcription/.env.example` updated — `HF_TOKEN` line removed, comment: `# No environment variables required for transcription`
+- [x] `transcription/.env` deleted (no longer needed)
 
 ### run_transcription.sh
-- [ ] Venv check updated: checks `import mlx_whisper` instead of `import whisper`
-- [ ] On first run: deletes old venv if it exists (to avoid stale torch/pyannote packages), creates fresh venv, installs new requirements
+- [x] Venv check updated: checks `import mlx_whisper` instead of `import whisper`
+- [x] On first run: deletes old venv if it exists, creates fresh venv, installs new requirements
 
 ### Venv
-- [ ] Old venv at `transcription/.venv` deleted
-- [ ] New venv built with `mlx-whisper==0.4.3` and dependencies
-- [ ] `mlx_whisper.transcribe` verified working with a real MP3
+- [x] Old venv at `transcription/.venv` deleted
+- [x] New venv built with `mlx-whisper==0.4.3` and dependencies
+- [x] `mlx_whisper.transcribe` verified working with a real MP3
 
 ### Tests — transcription/tests/
-- [ ] `test_transcribe.py` rewritten for mlx-whisper API:
-  - Mock `mlx_whisper.transcribe` (not `whisper.load_model`)
-  - `test_transcribe_audio_returns_text()` — mocks mlx call, verifies `.strip()` applied
-  - `test_transcribe_audio_logs_filename()` — verifies filename logged
-  - `test_transcribe_api_mp3_only()` — POST non-mp3 → 422
-  - `test_transcribe_api_happy_path()` — POST mp3 → `{"transcript": "...", "filename": "..."}`
-- [ ] `test_health.py` updated — lifespan mock updated for `preload_model` (no pipeline)
-- [ ] All 6 transcription tests pass
+- [x] `test_transcribe.py` rewritten for mlx-whisper API
+- [x] `test_health.py` updated — lifespan mock updated for `preload_model`
+- [x] All 6 transcription tests pass
 
 ### Integration test
-- [ ] Start server via `./run_transcription.sh`
-- [ ] POST a real MP3 to `http://localhost:8001/transcribe`
-- [ ] Response contains `{"transcript": "<non-empty text>", "filename": "..."}`
-- [ ] Transcript is clean raw text (no `[00:00]`, no `SPEAKER_00:`)
-- [ ] Transcription completes at speed comparable to PM folder
+- [x] Server started via `./run_transcription.sh`
+- [x] Real MP3 transcribed — clean raw text output confirmed
+- [x] Transcription speed comparable to PM folder
 
 ## Tasks
-- [ ] Delete `transcription/.venv`
-- [ ] Update `transcription/requirements.txt`
-- [ ] Rewrite `transcription/transcribe.py`
-- [ ] Update `transcription/main.py`
-- [ ] Update `run_transcription.sh` — venv check + fresh build
-- [ ] Update `transcription/.env.example`, delete `transcription/.env`
-- [ ] Rewrite `transcription/tests/test_transcribe.py`
-- [ ] Update `transcription/tests/test_health.py`
-- [ ] Rebuild venv and verify all 6 tests pass
-- [ ] Integration test with real MP3
-- [ ] Update `workflow/ERRORS.md` — close ERR-003 (venv issues now resolved by fresh build)
-- [ ] Update `docs/project/config/codebase.md`
+- [x] Delete `transcription/.venv`
+- [x] Update `transcription/requirements.txt`
+- [x] Rewrite `transcription/transcribe.py`
+- [x] Update `transcription/main.py`
+- [x] Update `run_transcription.sh` — venv check + fresh build
+- [x] Update `transcription/.env.example`, delete `transcription/.env`
+- [x] Rewrite `transcription/tests/test_transcribe.py`
+- [x] Update `transcription/tests/test_health.py`
+- [x] Rebuild venv and verify all 6 tests pass
+- [x] Integration test with real MP3
+- [x] Update `workflow/ERRORS.md` — ERR-003 follow-up added
+- [x] Update `docs/project/config/codebase.md`

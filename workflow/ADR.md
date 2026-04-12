@@ -12,6 +12,7 @@
 | ID | Title | Status | Date | Epic |
 |---|---|---|---|---|
 | ADR-001 | Upgrade Next.js from 14 to 15 | Accepted | 2026-04-09 | EPIC-1 |
+| ADR-002 | Use Supabase Storage for Call Context Files | Accepted | 2026-04-10 | EPIC-4 |
 
 ---
 
@@ -90,6 +91,52 @@ Architecture locked `next@14`. During EPIC-1 implementation, `next@16.0.3` was i
 
 #### Review Triggers
 - [ ] If a CVE is reported against next@15
+
+---
+
+---
+
+### ADR-002: Use Supabase Storage for Call Context Files
+**Date:** 2026-04-10
+**Epic / Story:** EPIC-4 / Story 4.6
+**Status:** `Accepted`
+**Decided by:** Both
+
+#### Context
+Story 4.6 requires storing arbitrary binary files (PDF, DOCX, CSV, TXT, MD) attached to calls. We needed a file storage solution compatible with our existing Supabase backend. Options were: Supabase Storage (native integration), a separate S3 bucket, or storing files as base64 in the DB.
+
+#### Decision
+**We will use Supabase Storage (`call-files` private bucket) for all call context file storage. Files are uploaded via the Python backend (not directly from the browser) and accessed only via 60-second signed URLs.**
+
+#### Alternatives Considered
+| Option | Pros | Cons | Reason Rejected |
+|---|---|---|---|
+| Supabase Storage (chosen) | Native integration, same auth, no extra infra | Signed URL expiry needs management | *Chosen* |
+| AWS S3 | Industry standard, very mature | Separate credentials, extra infra, no native Supabase link | Unnecessary complexity for this scale |
+| DB blob storage | Simplest — no extra service | Binary in Postgres is slow, expensive, bad practice for large files | Poor practice for files >100KB |
+
+#### Consequences
+**Positive:**
+- Single Supabase project covers DB + file storage — no extra credentials
+- RLS policies can restrict file access to authenticated users
+- `call_files` DB table keeps metadata (filename, size, path) for fast listing without hitting storage
+
+**Negative / Trade-offs:**
+- Signed URLs expire in 60s — frontend must call `/download` endpoint each time a download is needed (cannot cache URLs)
+- supabase-py `storage.from_().upload()` returns an object with `path` on success; error handling requires checking the response type
+
+**What this decision affects:**
+- `backend/routers/files.py` — upload, list, delete, signed URL generation
+- `backend/tests/test_files.py` — storage client mocked, 10 tests
+- `frontend/src/components/ContextFiles.tsx` — download triggers fresh signed URL
+- Supabase dashboard — `call-files` bucket must be created manually before deploy
+
+**Known gotcha — supabase-py None in .update():**
+`supabase-py` silently strips `None` values from `.update()` dicts. For any PATCH that must set a column to NULL, use `client.postgrest.session.patch()` with `content=json.dumps(payload)` directly.
+
+#### Review Triggers
+- [ ] If signed URL TTL causes UX issues (links expiring during active session)
+- [ ] If file sizes grow beyond Supabase free-tier storage limits
 
 ---
 

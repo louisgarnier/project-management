@@ -7,8 +7,8 @@
 | EPIC-1 | Foundation & Logging | [x] Done | 3 |
 | EPIC-2 | Projects | [x] Done | 3 |
 | EPIC-3 | Kanban Board & Calls | [x] Done | 2 |
-| EPIC-4 | Transcript Stage | [ ] In Progress | 6 |
-| EPIC-5 | Artifacts Stage | [ ] | 4 |
+| EPIC-4 | Transcript Stage | [x] Done | 8 |
+| EPIC-5 | Artifacts Stage | [ ] Next | 4 |
 | EPIC-6 | Topics Stage | [ ] | 2 |
 | EPIC-7 | Topic Dashboard | [ ] | 2 |
 | EPIC-8 | Testing & Deployment | [ ] | 2 |
@@ -36,9 +36,9 @@ EPIC-1 (Foundation + Logging)
 ## 🚦 Status
 
 ```
-Working on : EPIC-4 — Transcript Stage
+Working on : EPIC-5 — Artifacts Stage
 Blocked by : —
-Next up    : EPIC-4 / Story 4.5
+Next up    : EPIC-5 / Story 5.1
 ```
 
 ---

@@ -13,7 +13,6 @@ interface Props {
 }
 
 // Rough estimate: ~15s fixed overhead (Metal buffer init) + ~8s/MB
-// mlx-whisper has significant per-request startup cost regardless of file size
 function estimateSeconds(bytes: number): number {
   return Math.round(15 + (bytes / (1024 * 1024)) * 8);
 }
@@ -29,21 +28,26 @@ function formatRemaining(seconds: number): string {
 export default function TranscriptStage({ call, onAdvance }: Props) {
   const [uploading, setUploading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [estimatedSecs, setEstimatedSecs] = useState<number | null>(null);
-  const [savedCall, setSavedCall] = useState<Call | null>(null);
+
+  // Review screen state — transcript lives here until user clicks "Save & continue"
+  const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
+  const [pendingFilename, setPendingFilename] = useState<string | null>(null);
+  const [editedTranscript, setEditedTranscript] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const mp3Ref = useRef<HTMLInputElement>(null);
   const txtRef = useRef<HTMLInputElement>(null);
 
-  // Elapsed timer during upload/transcription
   useEffect(() => {
     if (!uploading) { setElapsed(0); return; }
     const interval = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(interval);
   }, [uploading]);
 
-  // Prevent tab close during upload
   useEffect(() => {
     if (!uploading) return;
     const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
@@ -58,24 +62,24 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
 
     const online = await transcriptionAPI.health();
     if (!online) {
-      setError("Server is offline. Use the Start server button above.");
+      setUploadError("Server is offline. Use the Start server button above.");
       return;
     }
 
     setEstimatedSecs(estimateSeconds(file.size));
     setUploading(true);
-    setError(null);
+    setUploadError(null);
     try {
       setStatusMsg("Transcribing… this may take a few minutes.");
       logger.info("Starting MP3 transcription", { component: "TranscriptStage", data: { callId: call.id } });
       const transcript = await transcriptionAPI.transcribe(file);
-      setStatusMsg("Saving transcript…");
-      const updated = await callsAPI.submitTranscript(call.id, transcript, file.name);
-      logger.info("Transcript saved", { component: "TranscriptStage", data: { callId: call.id } });
-      setSavedCall(updated);
+      logger.info("Transcription complete", { component: "TranscriptStage", data: { callId: call.id } });
+      setPendingTranscript(transcript);
+      setPendingFilename(file.name);
+      setEditedTranscript(transcript);
     } catch (err) {
-      logger.error("Transcription or save failed", { component: "TranscriptStage", data: err });
-      setError(err instanceof Error ? err.message : "Transcription failed. Please try again.");
+      logger.error("Transcription failed", { component: "TranscriptStage", data: err });
+      setUploadError(err instanceof Error ? err.message : "Transcription failed. Please try again.");
     } finally {
       setUploading(false);
       setStatusMsg(null);
@@ -88,24 +92,56 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
     e.target.value = "";
 
     setUploading(true);
-    setError(null);
+    setUploadError(null);
     try {
       setStatusMsg("Reading file…");
       const text = await file.text();
-      setStatusMsg("Saving transcript…");
-      const updated = await callsAPI.submitTranscript(call.id, text, file.name);
-      logger.info("TXT transcript saved", { component: "TranscriptStage", data: { callId: call.id } });
-      setSavedCall(updated);
+      setPendingTranscript(text);
+      setPendingFilename(file.name);
+      setEditedTranscript(text);
+      logger.info("TXT file read", { component: "TranscriptStage", data: { callId: call.id } });
     } catch (err) {
-      logger.error("TXT save failed", { component: "TranscriptStage", data: err });
-      setError(err instanceof Error ? err.message : "Failed to save transcript. Please try again.");
+      logger.error("TXT read failed", { component: "TranscriptStage", data: err });
+      setUploadError(err instanceof Error ? err.message : "Failed to read file. Please try again.");
     } finally {
       setUploading(false);
       setStatusMsg(null);
     }
   }
 
-  // ── Transcribing/uploading/saving state ────────────────────────────────────
+  function handleDownload() {
+    const filename = `transcript_${call.title.replace(/\s+/g, "_")}.txt`;
+    const blob = new Blob([editedTranscript], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleReplace() {
+    setPendingTranscript(null);
+    setPendingFilename(null);
+    setEditedTranscript("");
+    setSaveError(null);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await callsAPI.submitTranscript(call.id, editedTranscript, pendingFilename ?? undefined);
+      logger.info("Transcript saved", { component: "TranscriptStage", data: { callId: call.id } });
+      onAdvance();
+    } catch (err) {
+      logger.error("Transcript save failed", { component: "TranscriptStage", data: err });
+      setSaveError(err instanceof Error ? err.message : "Failed to save. Please try again.");
+      setSaving(false);
+    }
+  }
+
+  // ── Transcribing / reading state ───────────────────────────────────────────
   if (uploading) {
     const remaining = estimatedSecs !== null ? estimatedSecs - elapsed : null;
     return (
@@ -130,41 +166,57 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
   }
 
   // ── Review screen ──────────────────────────────────────────────────────────
-  if (savedCall) {
-    const previewLines = (savedCall.transcript ?? "")
-      .split("\n")
-      .filter((l) => l.trim())
-      .slice(0, 10);
-
+  if (pendingTranscript !== null) {
     return (
       <div className="bg-white border border-[#dfe1e6] rounded-lg">
         <div className="px-4 py-3 border-b border-[#dfe1e6] flex items-center justify-between">
-          <span className="text-[14px] font-semibold text-[#172b4d]">Transcript Ready</span>
+          <div>
+            <span className="text-[14px] font-semibold text-[#172b4d]">Review Transcript</span>
+            {pendingFilename && (
+              <span className="ml-2 text-[12px] text-[#5e6c84]">From: {pendingFilename}</span>
+            )}
+          </div>
           <TranscriptionStatusBadge />
         </div>
         <div className="p-4">
-          <div className="mb-3 text-[12px] text-[#36b37e] bg-[#e3fcef] border border-[#36b37e33] rounded px-3 py-2">
-            ✓ Transcript saved. Review it below, add any context files, then send to Artifacts.
-          </div>
+          {saveError && (
+            <div className="mb-3 text-[12px] text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+              {saveError}
+            </div>
+          )}
 
-          <div className="mb-4 border border-[#dfe1e6] rounded p-3 max-h-40 overflow-y-auto bg-[#f4f5f7]">
-            {previewLines.length > 0 ? (
-              previewLines.map((line, i) => (
-                <p key={i} className="text-[12px] text-[#172b4d] leading-relaxed">{line}</p>
-              ))
-            ) : (
-              <p className="text-[12px] text-[#97a0af]">No content.</p>
-            )}
-          </div>
+          <textarea
+            value={editedTranscript}
+            onChange={(e) => setEditedTranscript(e.target.value)}
+            className="w-full h-64 text-[12px] font-mono text-[#172b4d] bg-[#f4f5f7] border border-[#dfe1e6] rounded p-3 resize-none focus:outline-none focus:border-[#0052cc] mb-4"
+            spellCheck={false}
+          />
 
           <ContextFiles call={call} />
 
-          <button
-            onClick={onAdvance}
-            className="mt-4 w-full py-2 bg-[#0052cc] text-white text-[13px] font-semibold rounded hover:bg-[#0747a6] transition-colors"
-          >
-            Send to Artifacts →
-          </button>
+          <div className="flex items-center justify-between mt-4">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleDownload}
+                className="text-[12px] text-[#5e6c84] hover:text-[#0052cc] hover:underline"
+              >
+                ↓ Download .txt
+              </button>
+              <button
+                onClick={handleReplace}
+                className="text-[12px] text-[#5e6c84] hover:text-[#172b4d] hover:underline"
+              >
+                ← Replace
+              </button>
+            </div>
+            <button
+              onClick={handleSave}
+              disabled={saving || !editedTranscript.trim()}
+              className="px-4 py-2 bg-[#0052cc] text-white text-[13px] font-semibold rounded hover:bg-[#0747a6] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? "Saving…" : "Save & continue →"}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -178,9 +230,9 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
         <TranscriptionStatusBadge />
       </div>
       <div className="p-4">
-        {error && (
+        {uploadError && (
           <div className="mb-3 text-[12px] text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-            {error}
+            {uploadError}
           </div>
         )}
 
