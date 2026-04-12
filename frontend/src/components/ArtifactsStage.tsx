@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { artifactTypesAPI, artifactsAPI, callsAPI } from "@/api/client";
+import { artifactTypesAPI, artifactsAPI, callsAPI, projectsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { Artifact, ArtifactType, Call } from "@/types";
-import ArtifactSelector, { type ArtifactMode } from "@/components/ArtifactSelector";
+import type { Artifact, ArtifactMode, ArtifactType, Call, LLMProvider } from "@/types";
+import ArtifactSelector, { type SelectionMode } from "@/components/ArtifactSelector";
 import ArtifactCard from "@/components/ArtifactCard";
 
 type Phase = "select" | "generating" | "reviewing";
@@ -19,7 +19,9 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
   const callId = call.id;
 
   const [artifactTypes, setArtifactTypes] = useState<ArtifactType[]>([]);
-  const [selections, setSelections] = useState<Record<string, ArtifactMode>>({});
+  const [selections, setSelections] = useState<Record<string, SelectionMode>>({});
+  const [projectDefaultLlm, setProjectDefaultLlm] = useState<LLMProvider>("groq");
+  const [applyLlm, setApplyLlm] = useState<LLMProvider>("groq");
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [phase, setPhase] = useState<Phase>("select");
   const [generating, setGenerating] = useState(false);
@@ -30,14 +32,20 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
   // Load artifact types and check for existing artifacts
   const init = useCallback(async () => {
     try {
-      const [types, existing] = await Promise.all([
+      const [types, existing, project] = await Promise.all([
         artifactTypesAPI.list(projectId),
         artifactsAPI.list(callId),
+        projectsAPI.get(projectId),
       ]);
       setArtifactTypes(types);
-      // Default all to "claude"
-      const defaultSels: Record<string, ArtifactMode> = {};
-      types.forEach((t) => { defaultSels[t.id] = "claude"; });
+      setProjectDefaultLlm(project.default_llm);
+      setApplyLlm(project.default_llm);
+
+      // Default each type to its stored llm, or the project default
+      const defaultSels: Record<string, SelectionMode> = {};
+      types.forEach((t) => {
+        defaultSels[t.id] = t.llm ?? project.default_llm;
+      });
       setSelections(defaultSels);
 
       if (existing.length > 0) {
@@ -54,8 +62,20 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
     return () => { streamAbortRef.current?.abort(); };
   }, [init]);
 
-  function handleSelectionChange(typeId: string, mode: ArtifactMode) {
+  function handleSelectionChange(typeId: string, mode: SelectionMode) {
     setSelections((prev) => ({ ...prev, [typeId]: mode }));
+  }
+
+  function handleApplyToAll() {
+    setSelections((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((id) => {
+        if (next[id] !== "manual" && next[id] !== "skip") {
+          next[id] = applyLlm;
+        }
+      });
+      return next;
+    });
   }
 
   const nonSkipped = Object.entries(selections).filter(([, m]) => m !== "skip");
@@ -68,7 +88,7 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
       // POST selections (exclude skipped)
       const payload = nonSkipped.map(([typeId, mode]) => ({
         artifact_type_id: typeId,
-        mode: mode as "claude" | "manual",
+        mode: mode as ArtifactMode,  // "groq" | "claude" | "openai" | "manual"
       }));
       const created = await artifactsAPI.createSelections(callId, payload);
       setArtifacts(created);
@@ -185,11 +205,34 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
         {artifactTypes.length === 0 ? (
           <p className="text-[13px] text-[#5e6c84]">No artifact types configured. Add some in the Artifacts tab.</p>
         ) : (
-          <ArtifactSelector
-            artifactTypes={artifactTypes}
-            selections={selections}
-            onChange={handleSelectionChange}
-          />
+          <>
+            {artifactTypes.length > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-[#f4f5f7] rounded-lg border border-[#dfe1e6]">
+                <span className="text-[11px] text-[#5e6c84]">Apply to all generate:</span>
+                <select
+                  value={applyLlm}
+                  onChange={(e) => setApplyLlm(e.target.value as LLMProvider)}
+                  className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
+                >
+                  <option value="groq">Groq (free)</option>
+                  <option value="claude">Claude</option>
+                  <option value="openai">ChatGPT (OpenAI)</option>
+                </select>
+                <button
+                  onClick={handleApplyToAll}
+                  className="px-3 py-1 text-[11px] font-medium text-[#0052cc] border border-[#0052cc] rounded hover:bg-[#e9f0ff] transition-colors"
+                >
+                  Apply to all
+                </button>
+              </div>
+            )}
+            <ArtifactSelector
+              artifactTypes={artifactTypes}
+              selections={selections}
+              projectDefaultLlm={projectDefaultLlm}
+              onChange={handleSelectionChange}
+            />
+          </>
         )}
 
         {generateError && <p className="text-[12px] text-red-600">{generateError}</p>}
