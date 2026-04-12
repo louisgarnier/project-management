@@ -1,10 +1,9 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-5 / Story 5.3 — Claude Service & SSE
-- **File:** `docs/project/config/epics/epic-5/story-5.3.md`
-- **Goal:** Call `claude-3-5-sonnet` with transcript + prompt, stream response back to frontend via SSE
-- **After 5.3:** Story 5.4 — Artifacts Stage UI
+- **Story:** EPIC-5 / Story 5.4 — Artifacts Stage UI
+- **File:** `docs/project/config/epics/epic-5/story-5.4.md`
+- **Goal:** Artifacts stage in the call workflow — select artifact types, trigger generation, view streamed results
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
@@ -28,3 +27,4 @@
 - [x] EPIC-5 / Story 5.0 — Transcript Review & Redo — completed in EPIC-4 (2026-04-10)
 - [x] EPIC-5 / Story 5.1 — Artifacts Tab UI — 2026-04-12
 - [x] EPIC-5 / Story 5.2 — Artifact Types API — 2026-04-12
+- [x] EPIC-5 / Story 5.3 — Claude Service & SSE — 2026-04-12

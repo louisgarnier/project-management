@@ -15,13 +15,15 @@ backend/
 │   ├── projects.py                → GET/POST/DELETE /api/projects; seeds 6 default artifact types on POST (EPIC-2 / Story 2.1, EPIC-5 / Story 5.2)
 │   ├── calls.py                   → GET/POST /api/projects/{id}/calls, PATCH /api/calls/{id}/stage, POST/PATCH/DELETE /api/calls/{id}/transcript (EPIC-3/4)
 │   ├── files.py                   → POST/GET/DELETE /api/calls/{id}/files, GET signed URL (EPIC-4 / Story 4.6)
-│   └── artifact_types.py          → GET/POST/PATCH/DELETE /api/projects/{id}/artifact-types, POST /import; seed_defaults() (EPIC-5 / Story 5.2)
+│   ├── artifact_types.py          → GET/POST/PATCH/DELETE /api/projects/{id}/artifact-types, POST /import; seed_defaults() (EPIC-5 / Story 5.2)
+│   └── artifacts.py               → POST /api/calls/{id}/artifacts (create selections), GET /stream SSE (parallel generation) (EPIC-5 / Story 5.3)
 └── tests/
     ├── test_projects.py           → 5 tests for projects API (EPIC-2 / Story 2.1)
     ├── test_calls.py              → 9 tests for calls API (EPIC-3 / Story 3.1)
     ├── test_transcript.py         → 5 tests: happy path, exact text, 404, 409, 422 (EPIC-4 / Story 4.2)
     ├── test_files.py              → 10 tests: upload, list, delete, download, 404s, 422s (EPIC-4 / Story 4.6)
-    └── test_artifact_types.py     → 7 tests: list, create, update, delete (custom/default/404), import (EPIC-5 / Story 5.2)
+    ├── test_artifact_types.py     → 7 tests: list, create, update, delete (custom/default/404), import (EPIC-5 / Story 5.2)
+    └── test_artifacts.py          → 5 tests: POST create, prompt snapshot, SSE happy path, SSE error isolation, empty pending (EPIC-5 / Story 5.3)
 
 frontend/
 ├── app/
@@ -54,6 +56,9 @@ frontend/
         ├── ContextFiles.tsx       → context file list with upload/delete (editable) or download-only (readonly prop); 10MB guard, accepted types: .txt .pdf .docx .csv .md (EPIC-4 / Story 4.6)
         ├── ArtifactTypeCard.tsx   → expandable artifact type card: Default/Custom badge, expand prompt, inline edit (name + textarea, orange border), delete with confirm (EPIC-5 / Story 5.1)
         └── AddArtifactTypeModal.tsx → two-mode modal: Create new (name + prompt) + Import from another project (project selector → checklist); error states + retry (EPIC-5 / Story 5.1)
+
+backend/services/
+└── claude_service.py              → generate_artifact(prompt_used, transcript) → str; AsyncAnthropic, claude-sonnet-4-6, 3-retry backoff (EPIC-5 / Story 5.3)
 
 transcription/
 ├── main.py                        → FastAPI local server: /health, /transcribe (EPIC-4 / Story 4.7)
@@ -104,6 +109,14 @@ run_transcription.sh               → Starts local transcription server on :800
 **Exports:** `router` (APIRouter, prefix `/api`)
 **Endpoints:** `GET /api/projects`, `POST /api/projects`, `DELETE /api/projects/{id}`
 **Side effect:** `POST /api/projects` calls `seed_defaults(project_id)` to insert 6 default artifact types.
+
+---
+
+### `backend/routers/artifacts.py`
+**Exports:** `router` (APIRouter, prefix `/api`)
+**Endpoints:**
+- `POST /api/calls/{call_id}/artifacts` — accepts `{selections: [{artifact_type_id, mode: "claude"|"manual"}]}`; snapshots `prompt_used` from artifact type; mode='manual' → status='done'; mode='claude' → status='pending'; 404 if call not found
+- `GET /api/calls/{call_id}/artifacts/stream` — SSE; fetches pending artifacts, runs all in parallel via asyncio tasks + queue; emits `status`→`done`/`error` per artifact, `complete` at end; headers: `Cache-Control: no-cache`, `X-Accel-Buffering: no`
 
 ---
 

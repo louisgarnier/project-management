@@ -2,12 +2,29 @@
 
 ## Current Stage
 **EPIC-5 — Artifacts Stage**
-- Status: Stories 5.1 + 5.2 done — next: Story 5.3 (Claude Service & SSE)
+- Status: Stories 5.1 + 5.2 + 5.3 done — next: Story 5.4 (Artifacts Stage UI)
 - Blocked by: nothing
 
 ---
 
 ## Session History
+
+### 2026-04-12 — EPIC-5: Story 5.3 — Claude Service & SSE
+
+**Story 5.3: Claude Service & SSE Endpoint**
+- `backend/services/claude_service.py` — `generate_artifact(prompt_used, transcript) → str`; uses `AsyncAnthropic`, model `claude-sonnet-4-6`, 4 total attempts (3 retries) with exponential backoff (1s/2s/4s) on 429; logs start, token counts, errors
+- `backend/routers/artifacts.py` — two endpoints:
+  - `POST /api/calls/{call_id}/artifacts` — accepts `[{artifact_type_id, mode}]`; snapshots `prompt_used` from artifact type at creation; mode='manual' → status='done'; mode='claude' → status='pending'; 404 guard for call
+  - `GET /api/calls/{call_id}/artifacts/stream` — SSE StreamingResponse; parallel generation via asyncio tasks + queue; emits `status`(generating) → `done`/`error` per artifact, `complete` at end; Cache-Control + X-Accel-Buffering headers
+- `backend/tests/test_artifacts.py` — 5 tests; 53 total backend tests pass
+- `backend/main.py` — artifacts router registered
+- Plan: `docs/project/config/2026-04-12-story-5.3-claude-service-plan.md`
+
+**Key decisions:**
+- `prompt_used` is snapshotted at POST time — artifact type edits never affect generated history
+- One artifact error does not block others (independent asyncio tasks, broad except)
+- `Literal["claude", "manual"]` on mode field — invalid modes rejected with 422
+- Supabase singleton client safe for concurrent coroutine use (each `.table()` creates independent query builder)
 
 ### 2026-04-12 — EPIC-5: Stories 5.1 + 5.2 — Artifacts Tab UI + API
 
