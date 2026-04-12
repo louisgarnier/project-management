@@ -1,15 +1,13 @@
 import asyncio
 import json
-
 from typing import Literal
-
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 
 from backend.database.supabase_client import get_client
 from backend.services.claude_service import generate_artifact
 from backend.utils.logger import db_logger, get_logger
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api", tags=["artifacts"])
 logger = get_logger("artifacts")
@@ -74,6 +72,9 @@ def create_artifact_selections(call_id: str, payload: ArtifactSelectionsPayload)
 @router.get("/calls/{call_id}/artifacts")
 def list_artifacts(call_id: str):
     client = get_client()
+    call_check = client.table("calls").select("id").eq("id", call_id).execute()
+    if not call_check.data:
+        raise HTTPException(status_code=404, detail="Call not found")
     db_logger.info(f"🗄️ [DB] Fetching artifacts for call: {call_id}")
     result = (
         client.table("artifacts")

@@ -1,11 +1,8 @@
-import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-from fastapi.testclient import TestClient
-
 from backend.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -191,6 +188,11 @@ def test_stream_no_pending_artifacts_emits_complete(mock_gc):
 def test_list_artifacts_for_call(mock_gc):
     """GET /api/calls/{call_id}/artifacts returns all artifacts for the call."""
     m = MagicMock()
+    # call-existence check: .select().eq().execute().data must be truthy
+    m.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"id": CALL_ID}
+    ]
+    # artifact fetch: .select().eq().order().execute().data
     m.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
         make_artifact(ART_ID_1, TYPE_ID_1, mode="claude", status="done"),
         make_artifact(ART_ID_2, TYPE_ID_2, mode="manual", status="done"),
@@ -214,3 +216,31 @@ def test_patch_artifact_content(mock_gc):
     )
     assert r.status_code == 200
     assert r.json()["content"] == "New content"
+
+
+@patch("backend.routers.artifacts.get_client")
+def test_list_artifacts_call_not_found(mock_gc):
+    """GET /api/calls/{call_id}/artifacts returns 404 when call does not exist."""
+    m = MagicMock()
+    m.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+    mock_gc.return_value = m
+    r = client.get(f"/api/calls/{CALL_ID}/artifacts")
+    assert r.status_code == 404
+
+
+@patch("backend.routers.artifacts.get_client")
+def test_patch_artifact_empty_payload(mock_gc):
+    """PATCH /api/artifacts/{id} with no fields returns 422."""
+    mock_gc.return_value = MagicMock()
+    r = client.patch(f"/api/artifacts/{ART_ID_1}", json={})
+    assert r.status_code == 422
+
+
+@patch("backend.routers.artifacts.get_client")
+def test_patch_artifact_not_found(mock_gc):
+    """PATCH /api/artifacts/{id} returns 404 when artifact does not exist."""
+    m = MagicMock()
+    m.table.return_value.update.return_value.eq.return_value.execute.return_value.data = []
+    mock_gc.return_value = m
+    r = client.patch(f"/api/artifacts/{ART_ID_1}", json={"content": "x"})
+    assert r.status_code == 404
