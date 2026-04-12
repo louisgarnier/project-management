@@ -17,6 +17,7 @@ const getColor = (id: string) => {
 
 const NAV_ITEMS = [
   { key: "board", label: "Board", icon: "📋" },
+  { key: "artifacts", label: "Artifacts", icon: "⚡" },
   { key: "topics", label: "Topics", icon: "🗺️" },
   { key: "history", label: "File History", icon: "📁" },
 ] as const;
