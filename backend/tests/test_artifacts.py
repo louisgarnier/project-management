@@ -1,0 +1,187 @@
+import asyncio
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from backend.main import app
+
+client = TestClient(app)
+
+CALL_ID    = "aaaaaaaa-0000-0000-0000-000000000001"
+TYPE_ID_1  = "bbbbbbbb-0000-0000-0000-000000000002"
+TYPE_ID_2  = "cccccccc-0000-0000-0000-000000000003"
+TYPE_ID_3  = "dddddddd-0000-0000-0000-000000000004"
+TYPE_ID_4  = "eeeeeeee-0000-0000-0000-000000000005"
+TYPE_ID_5  = "ffffffff-0000-0000-0000-000000000006"
+ART_ID_1   = "11111111-0000-0000-0000-000000000001"
+ART_ID_2   = "22222222-0000-0000-0000-000000000002"
+ART_ID_3   = "33333333-0000-0000-0000-000000000003"
+
+
+def make_artifact_type(type_id, prompt="Test prompt"):
+    return {"id": type_id, "name": "Test Type", "prompt": prompt, "is_default": False}
+
+
+def make_artifact(art_id, type_id, mode="claude", status="pending"):
+    return {
+        "id": art_id,
+        "call_id": CALL_ID,
+        "artifact_type_id": type_id,
+        "mode": mode,
+        "status": status,
+        "content": "" if mode == "manual" else None,
+        "prompt_used": "Test prompt",
+        "error_message": None,
+        "created_at": "2026-04-12T00:00:00Z",
+    }
+
+
+@patch("backend.routers.artifacts.get_client")
+def test_post_creates_artifact_rows(mock_gc):
+    """POST with 3 claude + 2 manual → 5 rows; manual rows have status='done'."""
+    m = MagicMock()
+    m.table.return_value.select.return_value.in_.return_value.execute.return_value.data = [
+        make_artifact_type(TYPE_ID_1),
+        make_artifact_type(TYPE_ID_2),
+        make_artifact_type(TYPE_ID_3),
+        make_artifact_type(TYPE_ID_4),
+        make_artifact_type(TYPE_ID_5),
+    ]
+    inserted = [
+        make_artifact(ART_ID_1, TYPE_ID_1, mode="claude"),
+        make_artifact(ART_ID_2, TYPE_ID_2, mode="claude"),
+        make_artifact(ART_ID_3, TYPE_ID_3, mode="claude"),
+        make_artifact("44444444-0000-0000-0000-000000000004", TYPE_ID_4, mode="manual", status="done"),
+        make_artifact("55555555-0000-0000-0000-000000000005", TYPE_ID_5, mode="manual", status="done"),
+    ]
+    m.table.return_value.insert.return_value.execute.return_value.data = inserted
+    mock_gc.return_value = m
+
+    r = client.post(
+        f"/api/calls/{CALL_ID}/artifacts",
+        json={
+            "selections": [
+                {"artifact_type_id": TYPE_ID_1, "mode": "claude"},
+                {"artifact_type_id": TYPE_ID_2, "mode": "claude"},
+                {"artifact_type_id": TYPE_ID_3, "mode": "claude"},
+                {"artifact_type_id": TYPE_ID_4, "mode": "manual"},
+                {"artifact_type_id": TYPE_ID_5, "mode": "manual"},
+            ]
+        },
+    )
+    assert r.status_code == 201
+    data = r.json()
+    assert len(data) == 5
+    manual_rows = [a for a in data if a["mode"] == "manual"]
+    assert all(a["status"] == "done" for a in manual_rows)
+
+
+@patch("backend.routers.artifacts.get_client")
+def test_post_snapshots_prompt_used(mock_gc):
+    """prompt_used on the artifact row matches the artifact type's prompt at creation time."""
+    m = MagicMock()
+    m.table.return_value.select.return_value.in_.return_value.execute.return_value.data = [
+        make_artifact_type(TYPE_ID_1, prompt="Specific prompt text"),
+    ]
+    m.table.return_value.insert.return_value.execute.return_value.data = [
+        {**make_artifact(ART_ID_1, TYPE_ID_1), "prompt_used": "Specific prompt text"},
+    ]
+    mock_gc.return_value = m
+
+    r = client.post(
+        f"/api/calls/{CALL_ID}/artifacts",
+        json={"selections": [{"artifact_type_id": TYPE_ID_1, "mode": "claude"}]},
+    )
+    assert r.status_code == 201
+    insert_call = m.table.return_value.insert.call_args[0][0]
+    assert insert_call[0]["prompt_used"] == "Specific prompt text"
+
+
+@patch("backend.routers.artifacts.get_client")
+@patch("backend.routers.artifacts.generate_artifact")
+def test_stream_emits_generating_then_done(mock_gen, mock_gc):
+    """GET /stream (mocked Claude) → all claude artifacts emit generating then done."""
+    m = MagicMock()
+    m.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"id": CALL_ID, "transcript": "Test transcript"},
+    ]
+    m.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        make_artifact(ART_ID_1, TYPE_ID_1, mode="claude"),
+        make_artifact(ART_ID_2, TYPE_ID_2, mode="claude"),
+    ]
+    m.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [{}]
+    mock_gc.return_value = m
+    mock_gen.side_effect = AsyncMock(return_value="Generated content")
+
+    with client.stream("GET", f"/api/calls/{CALL_ID}/artifacts/stream") as resp:
+        assert resp.status_code == 200
+        events = []
+        for line in resp.iter_lines():
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+
+    types = [e["type"] for e in events]
+    assert "status" in types
+    assert "done" in types
+    assert events[-1]["type"] == "complete"
+
+
+@patch("backend.routers.artifacts.get_client")
+@patch("backend.routers.artifacts.generate_artifact")
+def test_stream_one_error_does_not_block_others(mock_gen, mock_gc):
+    """One Claude error → error event emitted; stream still completes with done for others."""
+    m = MagicMock()
+    m.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"id": CALL_ID, "transcript": "Test transcript"},
+    ]
+    m.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        make_artifact(ART_ID_1, TYPE_ID_1, mode="claude"),
+        make_artifact(ART_ID_2, TYPE_ID_2, mode="claude"),
+    ]
+    m.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [{}]
+    mock_gc.return_value = m
+
+    call_count = 0
+
+    async def side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise Exception("Claude error")
+        return "Generated content"
+
+    mock_gen.side_effect = side_effect
+
+    with client.stream("GET", f"/api/calls/{CALL_ID}/artifacts/stream") as resp:
+        assert resp.status_code == 200
+        events = []
+        for line in resp.iter_lines():
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+
+    error_events = [e for e in events if e["type"] == "error"]
+    done_events = [e for e in events if e["type"] == "done"]
+    assert len(error_events) == 1
+    assert len(done_events) == 1
+    assert events[-1]["type"] == "complete"
+
+
+@patch("backend.routers.artifacts.get_client")
+def test_stream_no_pending_artifacts_emits_complete(mock_gc):
+    """If no pending claude artifacts exist, stream immediately emits complete."""
+    m = MagicMock()
+    m.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"id": CALL_ID, "transcript": "Test transcript"},
+    ]
+    m.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+    mock_gc.return_value = m
+
+    with client.stream("GET", f"/api/calls/{CALL_ID}/artifacts/stream") as resp:
+        events = []
+        for line in resp.iter_lines():
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+
+    assert events == [{"type": "complete"}]
