@@ -3,7 +3,7 @@ import json
 from typing import Literal
 
 from backend.database.supabase_client import get_client
-from backend.services.claude_service import generate_artifact
+from backend.services.llm_service import generate_artifact
 from backend.utils.logger import db_logger, get_logger
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -15,7 +15,7 @@ logger = get_logger("artifacts")
 
 class ArtifactSelection(BaseModel):
     artifact_type_id: str
-    mode: Literal["claude", "manual"]
+    mode: Literal["groq", "claude", "openai", "manual"]
 
 
 class ArtifactSelectionsPayload(BaseModel):
@@ -130,7 +130,7 @@ async def stream_artifacts(call_id: str):
 
     artifacts_result = (
         supabase.table("artifacts")
-        .select("id,prompt_used")
+        .select("id,prompt_used,mode")
         .eq("call_id", call_id)
         .eq("status", "pending")
         .execute()
@@ -150,7 +150,7 @@ async def stream_artifacts(call_id: str):
             await queue.put({"type": "status", "artifact_id": artifact_id, "status": "generating"})
             supabase.table("artifacts").update({"status": "generating"}).eq("id", artifact_id).execute()
             try:
-                content = await generate_artifact(prompt_used, transcript)
+                content = await generate_artifact(prompt_used, transcript, artifact["mode"])
                 supabase.table("artifacts").update(
                     {"status": "done", "content": content}
                 ).eq("id", artifact_id).execute()

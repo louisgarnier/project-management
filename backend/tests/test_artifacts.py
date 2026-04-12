@@ -244,3 +244,53 @@ def test_patch_artifact_not_found(mock_gc):
     mock_gc.return_value = m
     r = client.patch(f"/api/artifacts/{ART_ID_1}", json={"content": "x"})
     assert r.status_code == 404
+
+
+@patch("backend.routers.artifacts.get_client")
+@patch("backend.routers.artifacts.generate_artifact")
+def test_stream_uses_artifact_mode_as_llm(mock_gen, mock_gc):
+    """SSE stream passes artifact.mode to generate_artifact as the llm param."""
+    import asyncio
+
+    async def _run():
+        mock_gen.reset_mock()
+        mock_gen.return_value = "groq output"
+
+        m = MagicMock()
+        m.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+            {"id": "call-1", "transcript": "transcript text"}
+        ]
+        m.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+            {"id": ART_ID_1, "prompt_used": "do x", "mode": "groq"},
+        ]
+        m.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [{}]
+        mock_gc.return_value = m
+
+        r = client.get("/api/calls/call-1/artifacts/stream",
+                       headers={"Accept": "text/event-stream"})
+        assert r.status_code == 200
+        # generate_artifact must have been called with llm="groq"
+        mock_gen.assert_called_once()
+        _, _, llm_arg = mock_gen.call_args[0]
+        assert llm_arg == "groq"
+
+    asyncio.get_event_loop().run_until_complete(_run())
+
+
+@patch("backend.routers.artifacts.get_client")
+def test_create_selections_accepts_groq_mode(mock_gc):
+    """POST /artifacts accepts mode='groq' and stores it."""
+    m = MagicMock()
+    m.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [{"id": CALL_ID}]
+    m.table.return_value.select.return_value.in_.return_value.execute.return_value.data = [
+        {"id": TYPE_ID_1, "prompt": "prompt text"}
+    ]
+    artifact_row = make_artifact(ART_ID_1, TYPE_ID_1, mode="groq", status="pending")
+    m.table.return_value.insert.return_value.execute.return_value.data = [artifact_row]
+    mock_gc.return_value = m
+    r = client.post(f"/api/calls/{CALL_ID}/artifacts",
+                    json={"selections": [{"artifact_type_id": TYPE_ID_1, "mode": "groq"}]})
+    assert r.status_code == 201
+    inserted = m.table.return_value.insert.call_args[0][0]
+    assert inserted[0]["mode"] == "groq"
+    assert inserted[0]["status"] == "pending"

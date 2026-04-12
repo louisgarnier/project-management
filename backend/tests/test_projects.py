@@ -81,3 +81,53 @@ def test_delete_nonexistent_project_returns_404():
     ):
         response = client.delete("/api/projects/nonexistent-id")
     assert response.status_code == 404
+
+
+@patch("backend.routers.projects.get_client")
+def test_get_project_by_id(mock_gc):
+    """GET /api/projects/{id} returns the project."""
+    from uuid import uuid4
+    project_id = str(uuid4())
+    m = MagicMock()
+    m.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"id": project_id, "name": "Test", "description": "", "default_llm": "groq", "created_at": "2026-01-01"}
+    ]
+    mock_gc.return_value = m
+    r = client.get(f"/api/projects/{project_id}")
+    assert r.status_code == 200
+    assert r.json()["id"] == project_id
+
+
+@patch("backend.routers.projects.get_client")
+def test_get_project_not_found(mock_gc):
+    """GET /api/projects/{id} returns 404 for unknown project."""
+    from uuid import uuid4
+    m = MagicMock()
+    m.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+    mock_gc.return_value = m
+    r = client.get(f"/api/projects/{uuid4()}")
+    assert r.status_code == 404
+
+
+@patch("backend.routers.projects.get_client")
+def test_update_project_default_llm(mock_gc):
+    """PATCH /api/projects/{id} updates default_llm."""
+    from uuid import uuid4
+    project_id = str(uuid4())
+    m = MagicMock()
+    m.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [
+        {"id": project_id, "name": "Test", "description": "", "default_llm": "claude", "created_at": "2026-01-01"}
+    ]
+    mock_gc.return_value = m
+    r = client.patch(f"/api/projects/{project_id}", json={"default_llm": "claude"})
+    assert r.status_code == 200
+    assert r.json()["default_llm"] == "claude"
+
+
+@patch("backend.routers.projects.get_client")
+def test_update_project_invalid_llm(mock_gc):
+    """PATCH /api/projects/{id} rejects unknown LLM values."""
+    from uuid import uuid4
+    mock_gc.return_value = MagicMock()
+    r = client.patch(f"/api/projects/{uuid4()}", json={"default_llm": "unknown"})
+    assert r.status_code == 422

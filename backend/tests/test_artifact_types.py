@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
-import pytest
-from fastapi.testclient import TestClient
+
 from backend.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -99,3 +99,47 @@ def test_import_artifact_types(mock_gc):
     )
     assert r.status_code == 201
     assert len(r.json()) == 1
+
+
+@patch("backend.routers.artifact_types.get_client")
+def test_create_artifact_type_with_llm(mock_gc):
+    """POST artifact type accepts optional llm field."""
+    from uuid import uuid4
+    m = MagicMock()
+    created = {
+        "id": str(uuid4()), "project_id": str(uuid4()),
+        "name": "My Type", "prompt": "do x", "is_default": False,
+        "llm": "groq", "created_at": "2026-01-01T00:00:00",
+    }
+    m.table.return_value.insert.return_value.execute.return_value.data = [created]
+    mock_gc.return_value = m
+    r = client.post(f"/api/projects/{created['project_id']}/artifact-types",
+                    json={"name": "My Type", "prompt": "do x", "llm": "groq"})
+    assert r.status_code == 201
+    inserted = m.table.return_value.insert.call_args[0][0]
+    assert inserted["llm"] == "groq"
+
+
+@patch("backend.routers.artifact_types.get_client")
+def test_update_artifact_type_reset_llm_to_null(mock_gc):
+    """PATCH artifact type can set llm to null (reset to project default)."""
+    from uuid import uuid4
+    type_id = str(uuid4())
+    project_id = str(uuid4())
+    m = MagicMock()
+    m.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {"id": type_id}
+    ]
+    updated = {
+        "id": type_id, "project_id": project_id,
+        "name": "My Type", "prompt": "do x", "is_default": False,
+        "llm": None, "created_at": "2026-01-01T00:00:00",
+    }
+    m.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [updated]
+    mock_gc.return_value = m
+    r = client.patch(f"/api/projects/{project_id}/artifact-types/{type_id}",
+                     json={"llm": None})
+    assert r.status_code == 200
+    update_payload = m.table.return_value.update.call_args[0][0]
+    assert "llm" in update_payload
+    assert update_payload["llm"] is None

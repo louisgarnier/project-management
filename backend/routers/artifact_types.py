@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from typing import Literal
 
 from backend.database.supabase_client import get_client
 from backend.utils.logger import db_logger
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api", tags=["artifact-types"])
 
@@ -52,11 +53,13 @@ def seed_defaults(project_id: str) -> None:
 class ArtifactTypeCreate(BaseModel):
     name: str = Field(min_length=1)
     prompt: str = Field(min_length=1)
+    llm: Literal["groq", "claude", "openai"] | None = None
 
 
 class ArtifactTypeUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     prompt: str | None = Field(default=None, min_length=1)
+    llm: Literal["groq", "claude", "openai"] | None = Field(default=None)
 
 
 class ArtifactTypeImport(BaseModel):
@@ -89,6 +92,7 @@ def create_artifact_type(project_id: str, payload: ArtifactTypeCreate):
             "name": payload.name,
             "prompt": payload.prompt,
             "is_default": False,
+            "llm": payload.llm,
         })
         .execute()
     )
@@ -109,7 +113,7 @@ def update_artifact_type(project_id: str, type_id: str, payload: ArtifactTypeUpd
     )
     if not exists.data:
         raise HTTPException(status_code=404, detail="Artifact type not found")
-    update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    update = payload.model_dump(exclude_unset=True)
     if not update:
         raise HTTPException(status_code=422, detail="No fields to update")
     result = (
@@ -150,14 +154,20 @@ def import_artifact_types(project_id: str, payload: ArtifactTypeImport):
     # Auth is enforced at the API gateway layer; open reads across projects are acceptable.
     source = (
         client.table("artifact_types")
-        .select("name,prompt")
+        .select("name,prompt,llm")
         .in_("id", payload.type_ids)
         .execute()
     )
     if not source.data:
         raise HTTPException(status_code=404, detail="No matching artifact types found")
     copies = [
-        {"project_id": project_id, "name": t["name"], "prompt": t["prompt"], "is_default": False}
+        {
+            "project_id": project_id,
+            "name": t["name"],
+            "prompt": t["prompt"],
+            "is_default": False,
+            "llm": t.get("llm"),
+        }
         for t in source.data
     ]
     result = client.table("artifact_types").insert(copies).execute()
