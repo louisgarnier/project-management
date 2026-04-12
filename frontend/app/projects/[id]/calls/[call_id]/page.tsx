@@ -8,6 +8,7 @@ import type { Call } from "@/types";
 import TranscriptStage from "@/components/TranscriptStage";
 import TranscriptPanel from "@/components/TranscriptPanel";
 import ContextFiles from "@/components/ContextFiles";
+import ArtifactsStage from "@/components/ArtifactsStage";
 
 const STAGES = ["transcript", "artifacts", "topics", "done"] as const;
 
@@ -148,7 +149,27 @@ export default function CallDetailPage() {
         {call.kanban_stage === "transcript" && (
           <TranscriptStage call={call} onAdvance={loadCall} />
         )}
-        {isPastTranscript && (
+        {call.kanban_stage === "artifacts" && (
+          <>
+            <ArtifactsStage call={call} onAdvance={loadCall} />
+            {call.transcript && (
+              <TranscriptPanel
+                call={call}
+                onSaved={(updated) => setCall(updated)}
+              />
+            )}
+            <ContextFiles call={call} readonly />
+            <div className="mt-4 text-right">
+              <button
+                onClick={handleResetTranscript}
+                className="text-[11px] text-[#97a0af] hover:text-red-500 hover:underline"
+              >
+                ↩ Reset transcript
+              </button>
+            </div>
+          </>
+        )}
+        {isPastTranscript && call.kanban_stage !== "artifacts" && (
           <>
             <div className="flex items-center justify-center py-12">
               <p className="text-[13px] text-[#5e6c84]">
@@ -162,16 +183,6 @@ export default function CallDetailPage() {
               />
             )}
             <ContextFiles call={call} readonly />
-            {call.kanban_stage === "artifacts" && (
-              <div className="mt-4 text-right">
-                <button
-                  onClick={handleResetTranscript}
-                  className="text-[11px] text-[#97a0af] hover:text-red-500 hover:underline"
-                >
-                  ↩ Reset transcript
-                </button>
-              </div>
-            )}
           </>
         )}
       </div>
