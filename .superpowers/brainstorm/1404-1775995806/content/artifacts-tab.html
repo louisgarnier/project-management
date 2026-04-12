@@ -1,0 +1,105 @@
+<h2>Artifacts Tab — UI Mockup</h2>
+<p class="subtitle">How the Artifacts tab will look inside the app. Click a card to expand it.</p>
+
+<div style="display:flex;gap:0;border:1px solid #dfe1e6;border-radius:8px;overflow:hidden;background:#f4f5f7;max-width:960px;margin:0 auto;height:600px;">
+
+  <!-- Sidebar -->
+  <div style="width:200px;background:#f4f5f7;border-right:1px solid #dfe1e6;flex-shrink:0;padding:12px 0;font-family:-apple-system,sans-serif;">
+    <div style="padding:4px 12px 8px;font-size:10px;font-weight:700;color:#5e6c84;text-transform:uppercase;letter-spacing:.06em;">Projects</div>
+    <div style="padding:6px 12px;font-size:11px;font-weight:600;background:#0052cc;color:white;border-radius:4px;margin:0 8px 2px;display:flex;align-items:center;gap:8px;">
+      <span style="width:18px;height:18px;background:#36b37e;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;flex-shrink:0;">A</span>
+      Acme Corp
+    </div>
+    <div style="height:1px;background:#dfe1e6;margin:8px 12px;"></div>
+    <div style="padding:4px 12px 8px;font-size:10px;font-weight:700;color:#5e6c84;text-transform:uppercase;letter-spacing:.06em;">Acme Corp</div>
+    <div style="padding:6px 14px;font-size:11px;color:#172b4d;display:flex;align-items:center;gap:8px;cursor:pointer;">📋 Board</div>
+    <div style="padding:6px 14px;font-size:11px;font-weight:600;color:#0052cc;background:#e3f2fd;border-radius:4px;margin:0 8px;display:flex;align-items:center;gap:8px;cursor:pointer;">⚡ Artifacts</div>
+    <div style="padding:6px 14px;font-size:11px;color:#172b4d;display:flex;align-items:center;gap:8px;cursor:pointer;">🗺️ Topics</div>
+    <div style="padding:6px 14px;font-size:11px;color:#172b4d;display:flex;align-items:center;gap:8px;cursor:pointer;">📁 File History</div>
+  </div>
+
+  <!-- Main content -->
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:white;">
+
+    <!-- Header -->
+    <div style="padding:16px 20px 12px;border-bottom:1px solid #dfe1e6;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <h1 style="font-size:18px;font-weight:700;color:#172b4d;margin:0;font-family:-apple-system,sans-serif;">Artifact Types</h1>
+      <button style="background:#0052cc;color:white;border:none;padding:6px 14px;border-radius:4px;font-size:13px;font-weight:500;cursor:pointer;font-family:-apple-system,sans-serif;">+ Add artifact type</button>
+    </div>
+
+    <!-- Card list -->
+    <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:10px;font-family:-apple-system,sans-serif;">
+
+      <!-- Card 1 — collapsed -->
+      <div style="border:1px solid #dfe1e6;border-radius:8px;padding:14px 16px;background:white;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span style="font-size:9px;font-weight:700;background:#e9f0ff;color:#0052cc;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;">Default</span>
+            <span style="font-size:14px;font-weight:600;color:#172b4d;">Executive Summary</span>
+          </div>
+          <span style="font-size:11px;color:#5e6c84;cursor:pointer;white-space:nowrap;">Edit</span>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#5e6c84;cursor:pointer;">▸ View prompt</div>
+      </div>
+
+      <!-- Card 2 — expanded -->
+      <div style="border:1px solid #0052cc;border-radius:8px;padding:14px 16px;background:white;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span style="font-size:9px;font-weight:700;background:#e9f0ff;color:#0052cc;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;">Default</span>
+            <span style="font-size:14px;font-weight:600;color:#172b4d;">Next Steps & Action Items</span>
+          </div>
+          <span style="font-size:11px;color:#5e6c84;cursor:pointer;white-space:nowrap;">Edit</span>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#5e6c84;cursor:pointer;">▾ Hide prompt</div>
+        <div style="margin-top:8px;font-size:12px;color:#5e6c84;line-height:1.6;background:#f4f5f7;border-radius:4px;padding:10px;">
+          Extract all action items and next steps from this call. For each item, state: what needs to be done, who is responsible (if mentioned), and any deadline discussed.
+        </div>
+      </div>
+
+      <!-- Card 3 — collapsed -->
+      <div style="border:1px solid #dfe1e6;border-radius:8px;padding:14px 16px;background:white;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span style="font-size:9px;font-weight:700;background:#e9f0ff;color:#0052cc;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;">Default</span>
+            <span style="font-size:14px;font-weight:600;color:#172b4d;">Email Summary (1-pager)</span>
+          </div>
+          <span style="font-size:11px;color:#5e6c84;cursor:pointer;white-space:nowrap;">Edit</span>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#5e6c84;cursor:pointer;">▸ View prompt</div>
+      </div>
+
+      <!-- Card 4 — custom -->
+      <div style="border:1px solid #dfe1e6;border-radius:8px;padding:14px 16px;background:white;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span style="font-size:9px;font-weight:700;background:#f3f0ff;color:#5243aa;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;">Custom</span>
+            <span style="font-size:14px;font-weight:600;color:#172b4d;">Product Feedback</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:11px;color:#5e6c84;cursor:pointer;">Edit</span>
+            <span style="font-size:13px;color:#97a0af;cursor:pointer;" title="Delete">✕</span>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#5e6c84;cursor:pointer;">▸ View prompt</div>
+      </div>
+
+      <!-- Card 5 — custom, in edit mode -->
+      <div style="border:1px solid #ff8b00;border-radius:8px;padding:14px 16px;background:#fffdf5;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
+            <span style="font-size:9px;font-weight:700;background:#f3f0ff;color:#5243aa;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;">Custom</span>
+            <input value="Risk Register" style="font-size:14px;font-weight:600;color:#172b4d;border:none;border-bottom:2px solid #0052cc;outline:none;flex:1;min-width:0;background:transparent;font-family:-apple-system,sans-serif;" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:11px;color:#97a0af;cursor:pointer;">Cancel</span>
+            <span style="font-size:11px;color:#0052cc;cursor:pointer;font-weight:500;">Save</span>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#5e6c84;cursor:pointer;">▾ Hide prompt</div>
+        <textarea style="margin-top:8px;width:100%;font-size:12px;color:#172b4d;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;padding:8px;resize:none;height:80px;outline:none;font-family:-apple-system,sans-serif;box-sizing:border-box;">Identify and list all risks mentioned in this call. For each risk: description, likelihood, impact, and any proposed mitigation.</textarea>
+      </div>
+
+    </div>
+  </div>
+</div>
