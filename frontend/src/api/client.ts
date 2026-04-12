@@ -18,7 +18,7 @@ async function proxyFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
+    throw new Error((error && error.detail) || `HTTP ${response.status}`);
   }
 
   if (response.status === 204) return {} as T;
@@ -84,7 +84,7 @@ async function proxyFetchForm<T>(path: string, formData: FormData): Promise<T> {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
+    throw new Error((error && error.detail) || `HTTP ${response.status}`);
   }
   return response.json();
 }

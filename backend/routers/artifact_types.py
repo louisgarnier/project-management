@@ -116,12 +116,16 @@ def update_artifact_type(project_id: str, type_id: str, payload: ArtifactTypeUpd
     update = payload.model_dump(exclude_unset=True)
     if not update:
         raise HTTPException(status_code=422, detail="No fields to update")
-    result = (
-        client.table("artifact_types")
-        .update(update)
-        .eq("id", type_id)
-        .execute()
-    )
+    try:
+        result = (
+            client.table("artifact_types")
+            .update(update)
+            .eq("id", type_id)
+            .execute()
+        )
+    except Exception as e:
+        db_logger.error(f"❌ [DB] Failed to update artifact type {type_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
     db_logger.info(f"✅ [DB] Updated artifact type: {type_id}")
     return result.data[0]
 

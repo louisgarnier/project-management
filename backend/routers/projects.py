@@ -54,12 +54,16 @@ def get_project(project_id: str):
 def update_project(project_id: str, payload: ProjectUpdate):
     client = get_client()
     db_logger.info(f"🗄️ [DB] Updating project: {project_id}")
-    result = (
-        client.table("projects")
-        .update(payload.model_dump())
-        .eq("id", project_id)
-        .execute()
-    )
+    try:
+        result = (
+            client.table("projects")
+            .update(payload.model_dump())
+            .eq("id", project_id)
+            .execute()
+        )
+    except Exception as e:
+        logger.error(f"❌ [DB] Failed to update project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
     if not result.data:
         raise HTTPException(status_code=404, detail="Project not found")
     db_logger.info(f"✅ [DB] Updated project: {project_id}")
