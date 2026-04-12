@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call, CallFile, ArtifactType } from "@/types";
+import type { Project, Call, CallFile, ArtifactType, Artifact } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -165,4 +165,20 @@ export const artifactTypesAPI = {
     }),
 };
 
-// Further API modules added per epic (artifacts, topics)
+export const artifactsAPI = {
+  createSelections: (
+    callId: string,
+    selections: { artifact_type_id: string; mode: "claude" | "manual" }[]
+  ) =>
+    proxyFetch<Artifact[]>(`/api/calls/${callId}/artifacts`, {
+      method: "POST",
+      body: JSON.stringify({ selections }),
+    }),
+  list: (callId: string) =>
+    proxyFetch<Artifact[]>(`/api/calls/${callId}/artifacts`),
+  update: (artifactId: string, data: { content?: string; status?: string }) =>
+    proxyFetch<Artifact>(`/api/artifacts/${artifactId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+};
