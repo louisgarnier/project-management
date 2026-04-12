@@ -1,9 +1,10 @@
-from backend.database.supabase_client import get_client
-from backend.routers.artifact_types import seed_defaults
-from backend.utils.logger import db_logger, get_logger
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
+
+from backend.database.supabase_client import get_client
+from backend.routers.artifact_types import seed_defaults
+from backend.utils.logger import db_logger, get_logger
 
 logger = get_logger("projects")
 router = APIRouter(prefix="/api/projects", tags=["projects"])
