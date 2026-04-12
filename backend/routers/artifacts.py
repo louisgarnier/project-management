@@ -71,6 +71,40 @@ def create_artifact_selections(call_id: str, payload: ArtifactSelectionsPayload)
     return result.data
 
 
+@router.get("/calls/{call_id}/artifacts")
+def list_artifacts(call_id: str):
+    client = get_client()
+    db_logger.info(f"🗄️ [DB] Fetching artifacts for call: {call_id}")
+    result = (
+        client.table("artifacts")
+        .select("*")
+        .eq("call_id", call_id)
+        .order("created_at")
+        .execute()
+    )
+    db_logger.info(f"✅ [DB] Retrieved {len(result.data)} artifacts")
+    return result.data
+
+
+class ArtifactUpdate(BaseModel):
+    content: str | None = None
+    status: Literal["pending", "generating", "done", "error"] | None = None
+
+
+@router.patch("/artifacts/{artifact_id}")
+def update_artifact(artifact_id: str, payload: ArtifactUpdate):
+    client = get_client()
+    db_logger.info(f"🗄️ [DB] Updating artifact: {artifact_id}")
+    update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=422, detail="No fields to update")
+    result = client.table("artifacts").update(update).eq("id", artifact_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    db_logger.info(f"✅ [DB] Updated artifact: {artifact_id}")
+    return result.data[0]
+
+
 @router.get("/calls/{call_id}/artifacts/stream")
 async def stream_artifacts(call_id: str):
     """

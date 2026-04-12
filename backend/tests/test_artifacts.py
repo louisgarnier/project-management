@@ -185,3 +185,32 @@ def test_stream_no_pending_artifacts_emits_complete(mock_gc):
                 events.append(json.loads(line[6:]))
 
     assert events == [{"type": "complete"}]
+
+
+@patch("backend.routers.artifacts.get_client")
+def test_list_artifacts_for_call(mock_gc):
+    """GET /api/calls/{call_id}/artifacts returns all artifacts for the call."""
+    m = MagicMock()
+    m.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
+        make_artifact(ART_ID_1, TYPE_ID_1, mode="claude", status="done"),
+        make_artifact(ART_ID_2, TYPE_ID_2, mode="manual", status="done"),
+    ]
+    mock_gc.return_value = m
+    r = client.get(f"/api/calls/{CALL_ID}/artifacts")
+    assert r.status_code == 200
+    assert len(r.json()) == 2
+
+
+@patch("backend.routers.artifacts.get_client")
+def test_patch_artifact_content(mock_gc):
+    """PATCH /api/artifacts/{id} updates content and/or status."""
+    m = MagicMock()
+    updated = {**make_artifact(ART_ID_1, TYPE_ID_1), "content": "New content", "status": "done"}
+    m.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [updated]
+    mock_gc.return_value = m
+    r = client.patch(
+        f"/api/artifacts/{ART_ID_1}",
+        json={"content": "New content", "status": "done"},
+    )
+    assert r.status_code == 200
+    assert r.json()["content"] == "New content"
