@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call, CallFile, ArtifactType, Artifact } from "@/types";
+import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -31,9 +31,15 @@ export const healthAPI = {
 
 export const projectsAPI = {
   list: () => proxyFetch<Project[]>("/api/projects"),
+  get: (id: string) => proxyFetch<Project>(`/api/projects/${id}`),
   create: (data: { name: string; description: string }) =>
     proxyFetch<Project>("/api/projects", {
       method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: { default_llm: LLMProvider }) =>
+    proxyFetch<Project>(`/api/projects/${id}`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     }),
   delete: (id: string) => proxyFetch<void>(`/api/projects/${id}`, { method: "DELETE" }),
@@ -154,7 +160,11 @@ export const artifactTypesAPI = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  update: (projectId: string, typeId: string, data: { name?: string; prompt?: string }) =>
+  update: (
+    projectId: string,
+    typeId: string,
+    data: { name?: string; prompt?: string; llm?: LLMProvider | null }
+  ) =>
     proxyFetch<ArtifactType>(`/api/projects/${projectId}/artifact-types/${typeId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -173,7 +183,7 @@ export const artifactTypesAPI = {
 export const artifactsAPI = {
   createSelections: (
     callId: string,
-    selections: { artifact_type_id: string; mode: "claude" | "manual" }[]
+    selections: { artifact_type_id: string; mode: ArtifactMode }[]
   ) =>
     proxyFetch<Artifact[]>(`/api/calls/${callId}/artifacts`, {
       method: "POST",

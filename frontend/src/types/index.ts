@@ -1,10 +1,13 @@
 // Call Tracker — TypeScript types
 // Mirrors the Supabase schema defined in backend/database/migrations/001_initial_schema.sql
 
+export type LLMProvider = "groq" | "claude" | "openai";
+
 export interface Project {
   id: string;
   name: string;
   description: string | null;
+  default_llm: LLMProvider;
   created_at: string;
 }
 
@@ -20,7 +23,7 @@ export interface Call {
   created_at: string;
 }
 
-export type ArtifactMode = "claude" | "manual";
+export type ArtifactMode = LLMProvider | "manual";
 export type ArtifactStatus = "pending" | "generating" | "done" | "error";
 
 export interface ArtifactType {
@@ -29,6 +32,7 @@ export interface ArtifactType {
   name: string;
   prompt: string;
   is_default: boolean;
+  llm: LLMProvider | null;
   created_at: string;
 }
 
