@@ -32,6 +32,8 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
   const [selectedTypeIds, setSelectedTypeIds] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [projectsLoadError, setProjectsLoadError] = useState(false);
+  const [typesLoadError, setTypesLoadError] = useState(false);
 
   async function handleSwitchToImport() {
     setMode("import");
@@ -42,6 +44,7 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
       setProjects(all.filter((p) => p.id !== projectId));
     } catch (err) {
       logger.error("Failed to load projects for import", { component: "AddArtifactTypeModal", data: err });
+      setProjectsLoadError(true);
       setProjects([]);
     } finally {
       setLoadingProjects(false);
@@ -52,6 +55,7 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
     setSelectedProjectId(pid);
     setSourceTypes([]);
     setSelectedTypeIds(new Set());
+    setTypesLoadError(false);
     if (!pid) return;
     setLoadingTypes(true);
     try {
@@ -59,6 +63,7 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
       setSourceTypes(types);
     } catch (err) {
       logger.error("Failed to load source artifact types", { component: "AddArtifactTypeModal", data: err });
+      setTypesLoadError(true);
     } finally {
       setLoadingTypes(false);
     }
@@ -188,7 +193,19 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
               {loadingProjects ? (
                 <p className="text-[13px] text-[#5e6c84]">Loading projects…</p>
               ) : !projects || projects.length === 0 ? (
-                <p className="text-[13px] text-[#5e6c84]">No other projects found.</p>
+                projectsLoadError ? (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[13px] text-red-600">Failed to load projects.</p>
+                    <button
+                      onClick={() => { setProjectsLoadError(false); setProjects(null); handleSwitchToImport(); }}
+                      className="text-[13px] text-[#0052cc] underline self-start"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-[13px] text-[#5e6c84]">No other projects found.</p>
+                )
               ) : (
                 <>
                   <div>
@@ -204,6 +221,10 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
                       ))}
                     </select>
                   </div>
+
+                  {typesLoadError && (
+                    <p className="text-[13px] text-red-600">Failed to load artifact types. Try selecting the project again.</p>
+                  )}
 
                   {loadingTypes && (
                     <p className="text-[13px] text-[#5e6c84]">Loading types…</p>
