@@ -1,4 +1,5 @@
 from backend.database.supabase_client import get_client
+from backend.routers.artifact_types import seed_defaults
 from backend.utils.logger import db_logger, get_logger
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
@@ -27,8 +28,10 @@ def create_project(payload: ProjectCreate):
     client = get_client()
     db_logger.info(f"🗄️ [DB] Creating project: {payload.name}")
     result = client.table("projects").insert(payload.model_dump()).execute()
-    db_logger.info(f"✅ [DB] Created project: {result.data[0]['id']}")
-    return result.data[0]
+    project = result.data[0]
+    db_logger.info(f"✅ [DB] Created project: {project['id']}")
+    seed_defaults(project["id"])
+    return project
 
 
 @router.delete("/{project_id}", status_code=204)

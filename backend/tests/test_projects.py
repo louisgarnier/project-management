@@ -52,6 +52,9 @@ def test_post_project_creates_and_returns_project():
     with patch(
         "backend.routers.projects.get_client",
         return_value=_mock_client(data=[MOCK_PROJECT]),
+    ), patch(
+        "backend.routers.artifact_types.get_client",
+        return_value=_mock_client(data=[]),
     ):
         response = client.post(
             "/api/projects",
