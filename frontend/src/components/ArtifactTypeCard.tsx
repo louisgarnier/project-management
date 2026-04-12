@@ -1,19 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import type { ArtifactType } from "@/types";
+import type { ArtifactType, LLMProvider } from "@/types";
 
 type Props = {
   type: ArtifactType;
+  projectDefaultLlm: LLMProvider;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, data: { name?: string; prompt?: string }) => Promise<void>;
+  onUpdate: (id: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null }) => Promise<void>;
 };
 
-export default function ArtifactTypeCard({ type, onDelete, onUpdate }: Props) {
+export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, onUpdate }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(type.name);
   const [prompt, setPrompt] = useState(type.prompt);
+  const [llm, setLlm] = useState<LLMProvider | null>(type.llm);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -21,6 +23,7 @@ export default function ArtifactTypeCard({ type, onDelete, onUpdate }: Props) {
     setEditing(false);
     setName(type.name);
     setPrompt(type.prompt);
+    setLlm(type.llm);
     setSaveError(null);
   }
 
@@ -28,7 +31,7 @@ export default function ArtifactTypeCard({ type, onDelete, onUpdate }: Props) {
     setSaving(true);
     setSaveError(null);
     try {
-      await onUpdate(type.id, { name, prompt });
+      await onUpdate(type.id, { name, prompt, llm });
       setEditing(false);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");
@@ -123,15 +126,43 @@ export default function ArtifactTypeCard({ type, onDelete, onUpdate }: Props) {
       {/* Prompt — read or edit */}
       {expanded &&
         (editing ? (
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            className="mt-2 w-full text-[12px] text-[#172b4d] bg-[#f4f5f7] border border-[#dfe1e6] rounded p-3 resize-none h-32 focus:outline-none focus:border-[#0052cc]"
-          />
+          <>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              className="mt-2 w-full text-[12px] text-[#172b4d] bg-[#f4f5f7] border border-[#dfe1e6] rounded p-3 resize-none h-32 focus:outline-none focus:border-[#0052cc]"
+            />
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-[11px] text-[#5e6c84] flex-shrink-0">LLM:</span>
+              <select
+                value={llm ?? ""}
+                onChange={(e) => setLlm((e.target.value as LLMProvider) || null)}
+                className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
+              >
+                <option value="">Project default ({
+                  { groq: "Groq (free)", claude: "Claude", openai: "ChatGPT (OpenAI)" }[projectDefaultLlm]
+                })</option>
+                <option value="groq">Groq (free)</option>
+                <option value="claude">Claude</option>
+                <option value="openai">ChatGPT (OpenAI)</option>
+              </select>
+            </div>
+          </>
         ) : (
-          <p className="mt-2 text-[12px] text-[#5e6c84] leading-relaxed whitespace-pre-wrap bg-[#f4f5f7] rounded p-3">
-            {type.prompt}
-          </p>
+          <>
+            <p className="mt-2 text-[12px] text-[#5e6c84] leading-relaxed whitespace-pre-wrap bg-[#f4f5f7] rounded p-3">
+              {type.prompt}
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-[10px] text-[#97a0af] uppercase tracking-wide">LLM:</span>
+              <span className="text-[11px] text-[#5e6c84]">
+                {type.llm
+                  ? { groq: "Groq (free)", claude: "Claude", openai: "ChatGPT (OpenAI)" }[type.llm]
+                  : `Project default (${{ groq: "Groq (free)", claude: "Claude", openai: "ChatGPT (OpenAI)" }[projectDefaultLlm]})`
+                }
+              </span>
+            </div>
+          </>
         ))}
 
       {saveError && <p className="mt-2 text-[11px] text-red-600">{saveError}</p>}

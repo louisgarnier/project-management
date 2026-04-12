@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { artifactTypesAPI } from "@/api/client";
+import { artifactTypesAPI, projectsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { ArtifactType } from "@/types";
+import type { ArtifactType, LLMProvider, Project } from "@/types";
 import ArtifactTypeCard from "@/components/ArtifactTypeCard";
 import AddArtifactTypeModal from "@/components/AddArtifactTypeModal";
 
@@ -16,16 +16,22 @@ export default function ArtifactsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [project, setProject] = useState<Project | null>(null);
+  const [savingLlm, setSavingLlm] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       logger.info("Fetching artifact types", { component: "ArtifactsPage", data: { projectId } });
-      const data = await artifactTypesAPI.list(projectId);
+      const [data, proj] = await Promise.all([
+        artifactTypesAPI.list(projectId),
+        projectsAPI.get(projectId),
+      ]);
       setTypes(data);
+      setProject(proj);
     } catch (err) {
-      logger.error("Failed to load artifact types", { component: "ArtifactsPage", data: err });
+      logger.error("Failed to load", { component: "ArtifactsPage", data: err });
       setError("Failed to load artifact types.");
     } finally {
       setLoading(false);
@@ -44,7 +50,21 @@ export default function ArtifactsPage() {
     }
   }
 
-  async function handleUpdate(typeId: string, data: { name?: string; prompt?: string }) {
+  async function handleUpdateDefaultLlm(llm: LLMProvider) {
+    if (!project) return;
+    setSavingLlm(true);
+    try {
+      const updated = await projectsAPI.update(projectId, { default_llm: llm });
+      setProject(updated);
+      logger.info("Updated project default LLM", { component: "ArtifactsPage", data: { llm } });
+    } catch (err) {
+      logger.error("Failed to update default LLM", { component: "ArtifactsPage", data: err });
+    } finally {
+      setSavingLlm(false);
+    }
+  }
+
+  async function handleUpdate(typeId: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null }) {
     const updated = await artifactTypesAPI.update(projectId, typeId, data);
     setTypes((prev) => prev.map((t) => (t.id === typeId ? updated : t)));
   }
@@ -53,12 +73,29 @@ export default function ArtifactsPage() {
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
         <h1 className="text-[18px] font-bold text-[#172b4d]">Artifact Types</h1>
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-[#0052cc] text-white px-4 py-[6px] rounded text-[13px] font-medium hover:bg-[#0065ff]"
-        >
-          + Add artifact type
-        </button>
+        <div className="flex items-center gap-3">
+          {project && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-[#5e6c84]">Project default:</span>
+              <select
+                value={project.default_llm}
+                onChange={(e) => handleUpdateDefaultLlm(e.target.value as LLMProvider)}
+                disabled={savingLlm}
+                className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc] disabled:opacity-50"
+              >
+                <option value="groq">Groq (free)</option>
+                <option value="claude">Claude</option>
+                <option value="openai">ChatGPT (OpenAI)</option>
+              </select>
+            </div>
+          )}
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-[#0052cc] text-white px-4 py-[6px] rounded text-[13px] font-medium hover:bg-[#0065ff]"
+          >
+            + Add artifact type
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
@@ -77,6 +114,7 @@ export default function ArtifactsPage() {
               <ArtifactTypeCard
                 key={t.id}
                 type={t}
+                projectDefaultLlm={project?.default_llm ?? "groq"}
                 onDelete={handleDelete}
                 onUpdate={handleUpdate}
               />
