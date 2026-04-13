@@ -1,18 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { topicsAPI } from "@/api/client";
+import { callsAPI, topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { TopicData } from "@/types";
+import type { TopicData, Call, ExtractionResult } from "@/types";
 import AddTopicForm from "@/components/AddTopicForm";
 
 type Props = {
   callId: string;
   projectId: string;
   defaultOpen?: boolean;
+  call?: Call; // when provided, enables stale banner and lock enforcement
 };
 
-export default function TopicsPanel({ callId, projectId, defaultOpen = false }: Props) {
+export default function TopicsPanel({ callId, projectId, defaultOpen = false, call }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const [topics, setTopics] = useState<TopicData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -20,6 +21,8 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false }: 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
+  const [reExtracting, setReExtracting] = useState(false);
+  const [reExtractError, setReExtractError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!open) return;
@@ -56,6 +59,36 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false }: 
     }
   }
 
+  async function handleReExtract() {
+    setReExtracting(true);
+    setReExtractError(null);
+    try {
+      const result: ExtractionResult = await topicsAPI.extract(callId);
+      const allTopics = [
+        ...result.followed_up,
+        ...result.not_discussed,
+        ...result.new_topics,
+      ];
+      await topicsAPI.save(callId, allTopics.map((t) => ({
+        ...t,
+        topic_id: t.topic_id ?? null,
+        disposition: null,
+      })));
+      await callsAPI.clearTopicsStale(callId);
+      await load();
+    } catch (err) {
+      setReExtractError(err instanceof Error ? err.message : "Re-extraction failed");
+    } finally {
+      setReExtracting(false);
+    }
+  }
+
+  async function handleDismissStale() {
+    try {
+      await callsAPI.clearTopicsStale(callId);
+    } catch { /* ignore */ }
+  }
+
   return (
     <div style={{ background: "white", border: "1px solid #dfe1e6", borderRadius: 8, marginBottom: 12 }}>
       <button
@@ -71,6 +104,31 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false }: 
 
       {open && (
         <div style={{ borderTop: "1px solid #f4f5f7" }}>
+          {call?.topics_stale && !call.is_locked && (
+            <div style={{ margin: "0 14px 10px", background: "#fff4e6", border: "1px solid #ffe0a0",
+              borderRadius: 6, padding: "8px 12px", fontSize: 11, color: "#974f0c" }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ Transcript was updated — topics may be out of date</div>
+              {reExtractError && <div style={{ color: "#ae2a19", marginBottom: 4 }}>{reExtractError}</div>}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={handleReExtract}
+                  disabled={reExtracting}
+                  style={{ fontSize: 10, fontWeight: 600, background: "#974f0c", color: "white",
+                    border: "none", padding: "3px 10px", borderRadius: 4,
+                    cursor: reExtracting ? "not-allowed" : "pointer", opacity: reExtracting ? 0.6 : 1 }}
+                >
+                  {reExtracting ? "Re-extracting…" : "Re-extract topics"}
+                </button>
+                <button
+                  onClick={handleDismissStale}
+                  style={{ fontSize: 10, color: "#974f0c", background: "none", border: "none",
+                    cursor: "pointer", textDecoration: "underline" }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
           {loading ? (
             <p style={{ fontSize: 12, color: "#5e6c84", padding: "10px 14px" }}>Loading…</p>
           ) : (
@@ -80,7 +138,7 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false }: 
               ) : (
                 <div style={{ padding: "8px 14px" }}>
                   {topics.map((t) => (
-                    <TopicRow key={t.topic_id ?? t.name} topic={t} callId={callId} onSaved={load} />
+                    <TopicRow key={t.topic_id ?? t.name} topic={t} callId={callId} onSaved={load} callIsLocked={!!(call?.is_locked)} />
                   ))}
                 </div>
               )}
@@ -108,13 +166,15 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false }: 
                     </button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setShowAdd(true)}
-                    style={{ fontSize: 12, color: "#0052cc", background: "none", border: "none",
-                      cursor: "pointer", fontWeight: 600 }}
-                  >
-                    + Add topic
-                  </button>
+                  !call?.is_locked && (
+                    <button
+                      onClick={() => setShowAdd(true)}
+                      style={{ fontSize: 12, color: "#0052cc", background: "none", border: "none",
+                        cursor: "pointer", fontWeight: 600 }}
+                    >
+                      + Add topic
+                    </button>
+                  )
                 )}
               </div>
             </>
@@ -125,7 +185,9 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false }: 
   );
 }
 
-function TopicRow({ topic, callId, onSaved }: { topic: TopicData; callId: string; onSaved: () => void }) {
+function TopicRow({ topic, callId, onSaved, callIsLocked }: {
+  topic: TopicData; callId: string; onSaved: () => void; callIsLocked: boolean;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<TopicData>(topic);
   const [saving, setSaving] = useState(false);
@@ -297,11 +359,13 @@ function TopicRow({ topic, callId, onSaved }: { topic: TopicData; callId: string
           fontWeight: 700, textTransform: "uppercase" }}>
           {topic.sentiment}
         </span>
-        <button onClick={() => setEditing(true)}
-          style={{ fontSize: 11, color: "#97a0af", background: "none", border: "none",
-            cursor: "pointer", padding: 0 }} title="Edit">
-          ✎
-        </button>
+        {!callIsLocked && (
+          <button onClick={() => setEditing(true)}
+            style={{ fontSize: 11, color: "#97a0af", background: "none", border: "none",
+              cursor: "pointer", padding: 0 }} title="Edit">
+            ✎
+          </button>
+        )}
       </div>
     </div>
   );

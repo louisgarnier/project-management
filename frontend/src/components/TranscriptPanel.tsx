@@ -75,9 +75,15 @@ export default function TranscriptPanel({ call, onSaved, defaultOpen = false }: 
           <div className="p-4 flex flex-col">
             <textarea
               className="w-full font-mono text-[12px] text-[#172b4d] border border-[#dfe1e6] rounded p-3 resize-none focus:outline-none focus:border-[#0052cc]"
-              style={{ minHeight: "280px" }}
+              style={{
+                minHeight: "280px",
+                opacity: call.is_locked ? 0.7 : 1,
+                cursor: call.is_locked ? "not-allowed" : "auto",
+              }}
               value={text}
               onChange={(e) => setText(e.target.value)}
+              disabled={call.is_locked}
+              placeholder="Paste transcript here…"
             />
             {error && (
               <div className="mt-2 text-[12px] text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
@@ -92,13 +98,17 @@ export default function TranscriptPanel({ call, onSaved, defaultOpen = false }: 
             >
               ↓ Download .txt
             </button>
-            <button
-              onClick={handleSave}
-              disabled={!isDirty || saving || !text.trim()}
-              className="text-[13px] font-medium bg-[#0052cc] text-white px-4 py-1.5 rounded hover:bg-[#0747a6] disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </button>
+            {call.is_locked ? (
+              <span style={{ fontSize: 11, color: "#97a0af" }}>🔒 Locked — unlock to edit</span>
+            ) : (
+              <button
+                onClick={handleSave}
+                disabled={!isDirty || saving || !text.trim()}
+                className="text-[13px] font-medium bg-[#0052cc] text-white px-4 py-1.5 rounded hover:bg-[#0747a6] disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {saving ? "Saving…" : "Save changes"}
+              </button>
+            )}
           </div>
         </div>
       )}
