@@ -72,7 +72,7 @@ def delete_call(call_id: str):
     client.table("calls").delete().eq("id", call_id).execute()
     db_logger.info(f"✅ [DB] Deleted call: {call_id}")
 
-    # 3. Recalculate calls_open for affected topics (their update count changed)
+    # 3. Recalculate calls_open for affected topics; delete orphans with no remaining updates
     for topic_id in affected_topic_ids:
         remaining = (
             client.table("topic_updates")
@@ -81,9 +81,14 @@ def delete_call(call_id: str):
             .execute()
             .data
         )
-        calls_open = sum(1 for r in remaining if r["status"] in ("open", "in_progress"))
-        client.table("topics").update({"calls_open": calls_open}).eq("id", topic_id).execute()
-        db_logger.info(f"🗄️ [DB] Recalculated calls_open={calls_open} for topic: {topic_id}")
+        if not remaining:
+            # Topic only existed in the deleted call — remove it entirely
+            client.table("topics").delete().eq("id", topic_id).execute()
+            db_logger.info(f"🗄️ [DB] Deleted orphan topic (no remaining updates): {topic_id}")
+        else:
+            calls_open = sum(1 for r in remaining if r["status"] in ("open", "in_progress"))
+            client.table("topics").update({"calls_open": calls_open}).eq("id", topic_id).execute()
+            db_logger.info(f"🗄️ [DB] Recalculated calls_open={calls_open} for topic: {topic_id}")
 
 
 @router.get("/calls/{call_id}")
