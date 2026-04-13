@@ -29,6 +29,8 @@ export default function CallDetailPage() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetDeleteArtifacts, setResetDeleteArtifacts] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [isLocking, setIsLocking] = useState(false);
+  const [lockError, setLockError] = useState<string | null>(null);
 
   async function handleConfirmReset() {
     setResetting(true);
@@ -64,6 +66,34 @@ export default function CallDetailPage() {
   useEffect(() => {
     loadCall();
   }, [loadCall]);
+
+  async function handleLock() {
+    setIsLocking(true);
+    setLockError(null);
+    try {
+      const updated = await callsAPI.lock(callId);
+      setCall(updated);
+    } catch (err) {
+      logger.error("Failed to lock call", { component: "CallDetailPage", data: err });
+      setLockError("Failed to lock call. Please try again.");
+    } finally {
+      setIsLocking(false);
+    }
+  }
+
+  async function handleUnlock() {
+    setIsLocking(true);
+    setLockError(null);
+    try {
+      const updated = await callsAPI.unlock(callId);
+      setCall(updated);
+    } catch (err) {
+      logger.error("Failed to unlock call", { component: "CallDetailPage", data: err });
+      setLockError("Failed to unlock call. Please try again.");
+    } finally {
+      setIsLocking(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -266,19 +296,23 @@ export default function CallDetailPage() {
               <span style={{ fontWeight: 600 }}>✓ Call complete — all topics validated and artifacts saved.</span>
               {call.is_locked ? (
                 <button
-                  onClick={async () => { const updated = await callsAPI.unlock(callId); setCall(updated); }}
+                  onClick={handleUnlock}
+                  disabled={isLocking}
                   style={{ fontSize: 12, fontWeight: 600, background: "white", color: "#5e6c84",
-                    border: "1px solid #dfe1e6", borderRadius: 6, padding: "5px 14px", cursor: "pointer" }}
+                    border: "1px solid #dfe1e6", borderRadius: 6, padding: "5px 14px",
+                    cursor: isLocking ? "not-allowed" : "pointer", opacity: isLocking ? 0.6 : 1 }}
                 >
-                  🔓 Unlock
+                  {isLocking ? "…" : "🔓 Unlock"}
                 </button>
               ) : (
                 <button
-                  onClick={async () => { const updated = await callsAPI.lock(callId); setCall(updated); }}
+                  onClick={handleLock}
+                  disabled={isLocking}
                   style={{ fontSize: 12, fontWeight: 600, background: "#172b4d", color: "white",
-                    border: "none", borderRadius: 6, padding: "5px 14px", cursor: "pointer" }}
+                    border: "none", borderRadius: 6, padding: "5px 14px",
+                    cursor: isLocking ? "not-allowed" : "pointer", opacity: isLocking ? 0.6 : 1 }}
                 >
-                  🔒 Lock Call
+                  {isLocking ? "…" : "🔒 Lock Call"}
                 </button>
               )}
             </div>
@@ -286,6 +320,12 @@ export default function CallDetailPage() {
               <div style={{ fontSize: 11, color: "#97a0af", background: "#f4f5f7",
                 borderRadius: 6, padding: "6px 12px", marginBottom: 12 }}>
                 🔒 This call is locked. Unlock to edit transcript, topics, or regenerate artifacts.
+              </div>
+            )}
+            {lockError && (
+              <div style={{ fontSize: 11, color: "#ae2a19", background: "#fff1f0",
+                border: "1px solid #ffc2c2", borderRadius: 4, padding: "5px 10px", marginBottom: 8 }}>
+                {lockError}
               </div>
             )}
             <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
