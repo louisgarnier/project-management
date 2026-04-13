@@ -158,9 +158,11 @@ export default function KanbanBoard({ calls, onNewCall, onDeleteCall }: Props) {
                   <div
                     key={s.key}
                     onClick={() => {
-                      if (state === "active") {
+                      if (!clickable) return;
+                      if (s.key === call.kanban_stage) {
+                        // Always go to the active page for the current stage (even if locked/green)
                         router.push(`/projects/${projectId}/calls/${call.id}`);
-                      } else if (state === "done") {
+                      } else {
                         router.push(`/projects/${projectId}/calls/${call.id}?view=${s.key}`);
                       }
                     }}
