@@ -33,7 +33,7 @@ const STATUS_LABEL: Record<CellState, string> = {
 };
 
 const STATUS_BADGE: Record<CellState, React.CSSProperties> = {
-  done:    { background: "#e3fcef", color: "#006644" },
+  done:    { background: "#bbf7d0", color: "#15803d" },
   active:  { background: "#fff4e6", color: "#974f0c" },
   locked:  { background: "#f4f5f7", color: "#97a0af" },
   pending: { background: "#f4f5f7", color: "#b3bac5" },
