@@ -1,0 +1,200 @@
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f4f5f7; padding: 24px; }
+
+  .page-title { font-size: 16px; font-weight: 700; color: #172b4d; margin-bottom: 4px; }
+  .page-sub { font-size: 12px; color: #5e6c84; margin-bottom: 20px; }
+
+  .options { display: flex; gap: 20px; align-items: flex-start; }
+  .option { flex: 1; background: white; border: 2px solid #dfe1e6; border-radius: 10px; overflow: hidden; }
+  .option-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #5e6c84; padding: 10px 14px 0; }
+  .option-title { font-size: 13px; font-weight: 700; color: #172b4d; padding: 2px 14px 10px; border-bottom: 1px solid #dfe1e6; }
+
+  /* ── Option A: Table ── */
+  .topics-table { width: 100%; border-collapse: collapse; }
+  .topics-table th { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #97a0af; padding: 8px 12px; text-align: left; border-bottom: 1px solid #dfe1e6; background: #f4f5f7; }
+  .topics-table td { font-size: 11px; color: #172b4d; padding: 9px 12px; border-bottom: 1px solid #f4f5f7; vertical-align: top; }
+  .topics-table tr:last-child td { border-bottom: none; }
+  .topics-table tr:hover td { background: #f8f9ff; }
+
+  .badge { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
+  .badge-open     { background: #fff4e6; color: #974f0c; }
+  .badge-progress { background: #e9f0ff; color: #0052cc; }
+  .badge-resolved { background: #bbf7d0; color: #15803d; }
+  .badge-concern  { background: #fff1f0; color: #ae2a19; }
+  .badge-neutral  { background: #f4f5f7; color: #5e6c84; }
+  .badge-positive { background: #e3fcef; color: #006644; }
+
+  .topic-name { font-weight: 600; font-size: 12px; }
+  .topic-summary { font-size: 10px; color: #5e6c84; margin-top: 2px; line-height: 1.4; }
+  .follow-ups { font-size: 10px; color: #5e6c84; }
+  .follow-up-item { display: flex; align-items: flex-start; gap: 4px; margin-top: 2px; }
+  .follow-up-item::before { content: "→"; color: #97a0af; flex-shrink: 0; }
+  .call-ref { font-size: 9px; color: #97a0af; background: #f4f5f7; padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+
+  /* ── Option B: Cards grouped by status ── */
+  .status-group { padding: 12px 14px; }
+  .status-group + .status-group { border-top: 1px solid #f4f5f7; }
+  .status-heading { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #97a0af; margin-bottom: 8px; display: flex; align-items: center; gap-6px; }
+  .status-count { background: #dfe1e6; color: #5e6c84; font-size: 9px; font-weight: 700; border-radius: 10px; padding: 1px 6px; margin-left: 6px; }
+
+  .topic-card { background: white; border: 1px solid #dfe1e6; border-left: 3px solid #dfe1e6; border-radius: 6px; padding: 10px 12px; margin-bottom: 6px; }
+  .topic-card.open     { border-left-color: #ff8b00; }
+  .topic-card.progress { border-left-color: #0052cc; }
+  .topic-card.resolved { border-left-color: #36b37e; background: #f0fdf4; }
+
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .card-name { font-size: 12px; font-weight: 600; color: #172b4d; }
+  .card-meta { display: flex; align-items: center; gap: 6px; }
+  .card-summary { font-size: 10px; color: #5e6c84; margin-bottom: 6px; line-height: 1.4; }
+  .card-followups { font-size: 10px; color: #5e6c84; }
+  .card-followup { display: flex; gap: 4px; margin-top: 2px; }
+  .card-followup::before { content: "→"; color: #97a0af; }
+</style>
+
+<div class="page-title">Topics Dashboard</div>
+<div class="page-sub">All topics tracked across calls in this project. Compare the two layout options below.</div>
+
+<div class="options">
+
+  <!-- Option A: Table -->
+  <div class="option">
+    <div class="option-label">Option A</div>
+    <div class="option-title">Table — scan everything at once</div>
+    <table class="topics-table">
+      <thead>
+        <tr>
+          <th>Topic</th>
+          <th>Status</th>
+          <th>Owner</th>
+          <th>Sentiment</th>
+          <th>Follow-ups</th>
+          <th>Call</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="topic-name">Pricing</div>
+            <div class="topic-summary">Pushed back on annual plan, prefer monthly billing with quarterly review option.</div>
+          </td>
+          <td><span class="badge badge-open">Open</span></td>
+          <td style="font-size:11px;white-space:nowrap">Client</td>
+          <td><span class="badge badge-concern">Concern</span></td>
+          <td class="follow-ups">
+            <div class="follow-up-item">Send monthly breakdown</div>
+            <div class="follow-up-item">Confirm discount threshold</div>
+          </td>
+          <td><span class="call-ref">Call 2</span></td>
+        </tr>
+        <tr>
+          <td>
+            <div class="topic-name">Technical Integration</div>
+            <div class="topic-summary">API auth confirmed. Webhook setup pending on their infra team.</div>
+          </td>
+          <td><span class="badge badge-progress">In progress</span></td>
+          <td style="font-size:11px">Both</td>
+          <td><span class="badge badge-neutral">Neutral</span></td>
+          <td class="follow-ups">
+            <div class="follow-up-item">Share webhook docs</div>
+          </td>
+          <td><span class="call-ref">Call 1</span></td>
+        </tr>
+        <tr>
+          <td>
+            <div class="topic-name">Legal Review</div>
+            <div class="topic-summary">DPA signed. Security questionnaire completed and approved.</div>
+          </td>
+          <td><span class="badge badge-resolved">Resolved</span></td>
+          <td style="font-size:11px">—</td>
+          <td><span class="badge badge-positive">Positive</span></td>
+          <td class="follow-ups" style="color:#97a0af">None</td>
+          <td><span class="call-ref">Call 1</span></td>
+        </tr>
+        <tr>
+          <td>
+            <div class="topic-name">Onboarding Timeline</div>
+            <div class="topic-summary">Target go-live end of Q2. Needs sign-off from their VP before we schedule.</div>
+          </td>
+          <td><span class="badge badge-open">Open</span></td>
+          <td style="font-size:11px">Client</td>
+          <td><span class="badge badge-neutral">Neutral</span></td>
+          <td class="follow-ups">
+            <div class="follow-up-item">Confirm VP sign-off date</div>
+          </td>
+          <td><span class="call-ref">Call 2</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Option B: Cards by status -->
+  <div class="option">
+    <div class="option-label">Option B</div>
+    <div class="option-title">Cards grouped by status</div>
+
+    <div class="status-group">
+      <div class="status-heading">Open <span class="status-count">2</span></div>
+      <div class="topic-card open">
+        <div class="card-header">
+          <div class="card-name">Pricing</div>
+          <div class="card-meta">
+            <span class="badge badge-concern">Concern</span>
+            <span class="call-ref">Call 2</span>
+          </div>
+        </div>
+        <div class="card-summary">Pushed back on annual plan, prefer monthly billing with quarterly review.</div>
+        <div class="card-followups">
+          <div class="card-followup">Send monthly breakdown</div>
+          <div class="card-followup">Confirm discount threshold</div>
+        </div>
+      </div>
+      <div class="topic-card open">
+        <div class="card-header">
+          <div class="card-name">Onboarding Timeline</div>
+          <div class="card-meta">
+            <span class="badge badge-neutral">Neutral</span>
+            <span class="call-ref">Call 2</span>
+          </div>
+        </div>
+        <div class="card-summary">Target go-live end of Q2. Needs VP sign-off before scheduling.</div>
+        <div class="card-followups">
+          <div class="card-followup">Confirm VP sign-off date</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-group">
+      <div class="status-heading">In progress <span class="status-count">1</span></div>
+      <div class="topic-card progress">
+        <div class="card-header">
+          <div class="card-name">Technical Integration</div>
+          <div class="card-meta">
+            <span class="badge badge-neutral">Neutral</span>
+            <span class="call-ref">Call 1</span>
+          </div>
+        </div>
+        <div class="card-summary">API auth confirmed. Webhook setup pending on their infra team.</div>
+        <div class="card-followups">
+          <div class="card-followup">Share webhook docs</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-group">
+      <div class="status-heading">Resolved <span class="status-count">1</span></div>
+      <div class="topic-card resolved">
+        <div class="card-header">
+          <div class="card-name">Legal Review</div>
+          <div class="card-meta">
+            <span class="badge badge-positive">Positive</span>
+            <span class="call-ref">Call 1</span>
+          </div>
+        </div>
+        <div class="card-summary">DPA signed. Security questionnaire completed and approved.</div>
+      </div>
+    </div>
+
+  </div>
+
+</div>

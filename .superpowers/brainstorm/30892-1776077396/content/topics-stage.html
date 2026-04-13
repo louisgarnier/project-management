@@ -1,0 +1,258 @@
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f4f5f7; padding: 24px; color: #172b4d; }
+
+  .page-title { font-size: 15px; font-weight: 700; color: #172b4d; margin-bottom: 2px; }
+  .page-sub   { font-size: 12px; color: #5e6c84; margin-bottom: 20px; }
+
+  .section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #97a0af; margin-bottom: 10px; }
+
+  /* Brief panel */
+  .brief-panel { background: white; border: 1px solid #dfe1e6; border-left: 3px solid #0052cc; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+  .brief-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; cursor: pointer; }
+  .brief-title { font-size: 12px; font-weight: 700; color: #172b4d; display: flex; align-items: center; gap: 8px; }
+  .brief-tag { font-size: 9px; font-weight: 700; text-transform: uppercase; background: #e9f0ff; color: #0052cc; padding: 2px 6px; border-radius: 3px; }
+  .brief-toggle { font-size: 11px; color: #97a0af; }
+  .brief-body { padding: 0 14px 12px; border-top: 1px solid #f4f5f7; display: flex; gap: 20px; }
+  .brief-col { flex: 1; padding-top: 12px; }
+  .brief-col-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #5e6c84; margin-bottom: 8px; }
+  .brief-item { font-size: 11px; color: #172b4d; padding: 5px 8px; border-radius: 4px; margin-bottom: 4px; display: flex; align-items: flex-start; gap: 6px; }
+  .brief-item.concern { background: #fff1f0; }
+  .brief-item.neutral  { background: #f4f5f7; }
+  .stale-badge { font-size: 9px; font-weight: 700; background: #fff4e6; color: #974f0c; padding: 1px 5px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
+
+  /* Extraction choice */
+  .choice-row { display: flex; gap: 12px; margin-bottom: 20px; }
+  .choice-card { flex: 1; background: white; border: 1.5px solid #dfe1e6; border-radius: 10px; padding: 16px; cursor: pointer; transition: border-color .15s; }
+  .choice-card:hover { border-color: #0052cc; }
+  .choice-card.selected { border-color: #0052cc; background: #f0f4ff; }
+  .choice-icon { font-size: 20px; margin-bottom: 8px; }
+  .choice-title { font-size: 13px; font-weight: 700; color: #172b4d; margin-bottom: 4px; }
+  .choice-desc { font-size: 11px; color: #5e6c84; line-height: 1.5; }
+
+  /* Three-bucket area */
+  .bucket { background: white; border: 1px solid #dfe1e6; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+  .bucket-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #f4f5f7; }
+  .bucket-name { font-size: 11px; font-weight: 700; color: #172b4d; }
+  .bucket-count { font-size: 9px; font-weight: 700; background: #dfe1e6; color: #5e6c84; padding: 1px 6px; border-radius: 10px; }
+  .bucket.not-discussed .bucket-header { background: #fffbf0; border-bottom-color: #ffe0a0; }
+  .bucket.not-discussed .bucket-name { color: #974f0c; }
+  .bucket.not-discussed .bucket-count { background: #fff4e6; color: #974f0c; }
+  .bucket-warn { font-size: 10px; color: #974f0c; background: #fff4e6; padding: 6px 14px; border-bottom: 1px solid #ffe0a0; display: flex; align-items: center; gap: 6px; }
+  .bucket.new-topics .bucket-header { background: #f0f7ff; }
+  .bucket.new-topics .bucket-name  { color: #0052cc; }
+  .bucket.new-topics .bucket-count { background: #e9f0ff; color: #0052cc; }
+
+  /* Topic row */
+  .topic-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #f4f5f7; }
+  .topic-row:last-child { border-bottom: none; }
+  .topic-main { flex: 1; }
+  .topic-name { font-size: 12px; font-weight: 600; color: #172b4d; margin-bottom: 3px; }
+  .topic-summary { font-size: 10px; color: #5e6c84; line-height: 1.4; margin-bottom: 6px; }
+  .topic-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .badge { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
+  .badge-open     { background: #fff4e6; color: #974f0c; }
+  .badge-progress { background: #e9f0ff; color: #0052cc; }
+  .badge-resolved { background: #bbf7d0; color: #15803d; }
+  .badge-concern  { background: #fff1f0; color: #ae2a19; }
+  .badge-neutral  { background: #f4f5f7; color: #5e6c84; }
+  .badge-positive { background: #e3fcef; color: #006644; }
+  .stale { background: #fff4e6; color: #974f0c; }
+  .owner-badge { background: #f4f5f7; color: #5e6c84; font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 3px; }
+  .follow-ups { font-size: 10px; color: #5e6c84; margin-top: 5px; }
+  .follow-up-item { display: flex; gap: 4px; margin-top: 2px; }
+  .follow-up-item::before { content: "→"; color: #97a0af; }
+  .decisions { font-size: 10px; color: #36b37e; margin-top: 4px; }
+  .decisions::before { content: "✓ "; }
+
+  /* Disposition row for not-discussed */
+  .disposition { display: flex; gap: 6px; margin-top: 8px; }
+  .disp-btn { font-size: 10px; font-weight: 600; border: 1px solid #dfe1e6; background: white; color: #172b4d; padding: 3px 10px; border-radius: 4px; cursor: pointer; }
+  .disp-btn:hover { background: #f4f5f7; }
+  .disp-btn.selected { background: #e9f0ff; border-color: #0052cc; color: #0052cc; }
+
+  /* Action bar */
+  .action-bar { display: flex; align-items: center; justify-content: space-between; background: white; border: 1px solid #dfe1e6; border-radius: 8px; padding: 12px 16px; margin-top: 16px; }
+  .action-bar-left { font-size: 11px; color: #ae2a19; background: #fff1f0; padding: 5px 10px; border-radius: 4px; }
+  .validate-btn { font-size: 13px; font-weight: 700; background: #36b37e; color: white; border: none; padding: 9px 20px; border-radius: 6px; cursor: pointer; }
+  .validate-btn.disabled { background: #dfe1e6; color: #97a0af; cursor: not-allowed; }
+
+  .add-btn { font-size: 11px; color: #0052cc; border: 1px dashed #b3c6e8; background: white; padding: 5px 12px; border-radius: 4px; cursor: pointer; margin: 8px 14px 10px; display: block; text-align: center; }
+  .add-btn:hover { background: #e9f0ff; }
+
+  /* edit icon placeholder */
+  .edit-icon { font-size: 11px; color: #97a0af; cursor: pointer; flex-shrink: 0; padding-top: 2px; }
+  .edit-icon:hover { color: #0052cc; }
+</style>
+
+<div class="page-title">Topics — Call 2</div>
+<div class="page-sub">Review and validate topics before completing this call.</div>
+
+<!-- Pre-call brief -->
+<div class="section-label">Pre-call brief</div>
+<div class="brief-panel">
+  <div class="brief-header">
+    <div class="brief-title">
+      📋 Call 2 Prep Note
+      <span class="brief-tag">2 open · 1 concern</span>
+    </div>
+    <div class="brief-toggle">▲ collapse</div>
+  </div>
+  <div class="brief-body">
+    <div class="brief-col">
+      <div class="brief-col-title">Priority topics</div>
+      <div class="brief-item concern">
+        <span>Pricing</span>
+        <span class="stale-badge">Open · 2 calls</span>
+      </div>
+      <div class="brief-item neutral">Onboarding Timeline</div>
+    </div>
+    <div class="brief-col">
+      <div class="brief-col-title">Decisions to confirm</div>
+      <div class="brief-item neutral">Annual vs monthly billing — still open</div>
+    </div>
+    <div class="brief-col">
+      <div class="brief-col-title">Watch list</div>
+      <div class="brief-item concern">Pricing — client pushed back on annual plan</div>
+    </div>
+  </div>
+</div>
+
+<!-- Extraction choice -->
+<div class="section-label">Extract or enter topics</div>
+<div class="choice-row">
+  <div class="choice-card selected" onclick="this.classList.toggle('selected')">
+    <div class="choice-icon">✨</div>
+    <div class="choice-title">Extract via Claude</div>
+    <div class="choice-desc">Claude reads the transcript and surfaces topics automatically. You review and edit before saving.</div>
+  </div>
+  <div class="choice-card" onclick="this.classList.toggle('selected')">
+    <div class="choice-icon">✏️</div>
+    <div class="choice-title">Add Manually</div>
+    <div class="choice-desc">Start with a blank list and enter topics yourself.</div>
+  </div>
+</div>
+
+<!-- Three-bucket topic list (shown after "Extract via Claude") -->
+<div class="section-label">Topics — 3 followed-up · 1 not discussed · 2 new</div>
+
+<!-- Bucket 1: Followed-up -->
+<div class="bucket">
+  <div class="bucket-header">
+    <span class="bucket-name">Followed-up</span>
+    <span class="bucket-count">3</span>
+  </div>
+  <div class="topic-row">
+    <div class="topic-main">
+      <div class="topic-name">Technical Integration</div>
+      <div class="topic-summary">Webhook setup now complete on client infra. API auth fully confirmed.</div>
+      <div class="topic-meta">
+        <span class="badge badge-resolved">Resolved</span>
+        <span class="owner-badge">Both</span>
+        <span class="badge badge-positive">Positive</span>
+      </div>
+      <div class="decisions">Webhook endpoint confirmed: api.client.com/hooks</div>
+    </div>
+    <div class="edit-icon">✎</div>
+  </div>
+  <div class="topic-row">
+    <div class="topic-main">
+      <div class="topic-name">Onboarding Timeline</div>
+      <div class="topic-summary">VP sign-off confirmed. Go-live target set for June 30.</div>
+      <div class="topic-meta">
+        <span class="badge badge-progress">In progress</span>
+        <span class="owner-badge">Client</span>
+        <span class="badge badge-neutral">Neutral</span>
+      </div>
+      <div class="follow-ups">
+        <div class="follow-up-item">Send onboarding checklist by Friday</div>
+      </div>
+    </div>
+    <div class="edit-icon">✎</div>
+  </div>
+  <div class="topic-row">
+    <div class="topic-main">
+      <div class="topic-name">Legal Review</div>
+      <div class="topic-summary">DPA and security questionnaire remain signed off. No new legal items.</div>
+      <div class="topic-meta">
+        <span class="badge badge-resolved">Resolved</span>
+        <span class="owner-badge">—</span>
+        <span class="badge badge-positive">Positive</span>
+      </div>
+    </div>
+    <div class="edit-icon">✎</div>
+  </div>
+  <a class="add-btn">+ Add topic</a>
+</div>
+
+<!-- Bucket 2: Not discussed -->
+<div class="bucket not-discussed">
+  <div class="bucket-header">
+    <span class="bucket-name">⚠ Not discussed this call</span>
+    <span class="bucket-count">1</span>
+  </div>
+  <div class="bucket-warn">These topics were open last call but not mentioned in this transcript. Set a disposition for each before validating.</div>
+  <div class="topic-row">
+    <div class="topic-main">
+      <div class="topic-name">Pricing</div>
+      <div class="topic-summary">Last call: pushed back on annual plan, prefer monthly billing.</div>
+      <div class="topic-meta">
+        <span class="badge badge-open">Open</span>
+        <span class="owner-badge">Client</span>
+        <span class="badge badge-concern">Concern</span>
+        <span class="stale-badge">Open · 2 calls</span>
+      </div>
+      <div class="disposition">
+        <button class="disp-btn">Update status</button>
+        <button class="disp-btn selected">Keep as-is</button>
+        <button class="disp-btn">Archive</button>
+      </div>
+    </div>
+    <div class="edit-icon">✎</div>
+  </div>
+</div>
+
+<!-- Bucket 3: New -->
+<div class="bucket new-topics">
+  <div class="bucket-header">
+    <span class="bucket-name">New this call</span>
+    <span class="bucket-count">2</span>
+  </div>
+  <div class="topic-row">
+    <div class="topic-main">
+      <div class="topic-name">Support SLA</div>
+      <div class="topic-summary">Client asked about response time guarantees. 4h SLA for P1 discussed but not confirmed.</div>
+      <div class="topic-meta">
+        <span class="badge badge-open">Open</span>
+        <span class="owner-badge">Us</span>
+        <span class="badge badge-neutral">Neutral</span>
+      </div>
+      <div class="follow-ups">
+        <div class="follow-up-item">Send SLA documentation by EOW</div>
+      </div>
+    </div>
+    <div class="edit-icon">✎</div>
+  </div>
+  <div class="topic-row">
+    <div class="topic-main">
+      <div class="topic-name">Data Residency</div>
+      <div class="topic-summary">Client's compliance team requires EU data residency. Checking feasibility on our side.</div>
+      <div class="topic-meta">
+        <span class="badge badge-open">Open</span>
+        <span class="owner-badge">Us</span>
+        <span class="badge badge-concern">Concern</span>
+      </div>
+      <div class="follow-ups">
+        <div class="follow-up-item">Confirm EU region availability with infra team</div>
+      </div>
+    </div>
+    <div class="edit-icon">✎</div>
+  </div>
+  <a class="add-btn">+ Add topic</a>
+</div>
+
+<!-- Action bar -->
+<div class="action-bar">
+  <div class="action-bar-left">1 topic needs a disposition before you can validate</div>
+  <button class="validate-btn disabled">Validate &amp; Complete Call →</button>
+</div>
