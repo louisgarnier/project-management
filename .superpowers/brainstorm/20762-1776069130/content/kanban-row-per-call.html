@@ -1,0 +1,433 @@
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f4f5f7; min-height: 100vh; padding: 24px; }
+
+  .board-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-left: 140px;
+    gap: 0;
+  }
+  .col-label {
+    flex: 1;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #5e6c84;
+    padding: 0 8px;
+  }
+
+  .call-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 12px;
+    min-height: 90px;
+  }
+
+  .call-label {
+    width: 132px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 12px 16px 12px 0;
+  }
+  .call-number {
+    font-size: 12px;
+    font-weight: 700;
+    color: #172b4d;
+    margin-bottom: 3px;
+  }
+  .call-title {
+    font-size: 11px;
+    color: #5e6c84;
+    line-height: 1.3;
+  }
+  .call-date {
+    font-size: 10px;
+    color: #97a0af;
+    margin-top: 4px;
+  }
+
+  .stage-cells {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    background: #fff;
+    border: 1px solid #dfe1e6;
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  .stage-cell {
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 70px;
+    position: relative;
+  }
+
+  /* Done / completed stage */
+  .stage-cell.done-stage {
+    background: #f4f5f7;
+    border: 1px solid #dfe1e6;
+  }
+  .stage-cell.done-stage .stage-name {
+    color: #97a0af;
+  }
+  .stage-cell.done-stage .stage-status {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #36b37e;
+    letter-spacing: 0.04em;
+  }
+
+  /* Active / current stage */
+  .stage-cell.active-stage {
+    background: #fff;
+    border: 1.5px solid #0052cc;
+  }
+  .stage-cell.active-stage .stage-name {
+    color: #172b4d;
+  }
+  .stage-cell.active-stage .stage-status {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #0052cc;
+    letter-spacing: 0.04em;
+  }
+
+  /* Locked stage */
+  .stage-cell.locked-stage {
+    background: #f4f5f7;
+    border: 1px dashed #b3c6e8;
+    opacity: 0.7;
+  }
+  .stage-cell.locked-stage .stage-name {
+    color: #b3bac5;
+  }
+  .stage-cell.locked-stage .stage-status {
+    font-size: 9px;
+    color: #b3bac5;
+  }
+
+  /* Pending (not started, but unlocked) */
+  .stage-cell.pending-stage {
+    background: #f4f5f7;
+    border: 1px dashed #dfe1e6;
+  }
+  .stage-cell.pending-stage .stage-name {
+    color: #5e6c84;
+  }
+  .stage-cell.pending-stage .stage-status {
+    font-size: 9px;
+    color: #97a0af;
+  }
+
+  .stage-name {
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .stage-meta {
+    font-size: 10px;
+    color: #97a0af;
+    margin-bottom: 6px;
+  }
+  .stage-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .stage-action {
+    font-size: 10px;
+    color: #0052cc;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .stage-action.locked {
+    color: #97a0af;
+    cursor: default;
+  }
+
+  .lock-icon {
+    font-size: 11px;
+    margin-right: 4px;
+  }
+
+  .done-check {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #e3fcef;
+    color: #36b37e;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Add call row */
+  .add-call-row {
+    display: flex;
+    align-items: center;
+    margin-top: 8px;
+    padding-left: 132px;
+    gap: 12px;
+  }
+  .add-call-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #0052cc;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 8px 16px;
+    border: 1.5px dashed #b3c6e8;
+    border-radius: 6px;
+    background: white;
+    flex: 1;
+  }
+  .add-call-hint {
+    font-size: 10px;
+    color: #97a0af;
+  }
+
+  /* Section label */
+  .section-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #172b4d;
+    margin-bottom: 6px;
+  }
+  .section-sub {
+    font-size: 12px;
+    color: #5e6c84;
+    margin-bottom: 20px;
+  }
+
+  /* Dependency note */
+  .dep-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: #fff;
+    border: 1px solid #dfe1e6;
+    border-left: 3px solid #ff8b00;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 20px;
+    font-size: 11px;
+    color: #5e6c84;
+    line-height: 1.5;
+  }
+  .dep-note strong { color: #172b4d; }
+
+  .call-row-connector {
+    width: 132px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 16px;
+  }
+  .connector-line {
+    width: 1px;
+    height: 100%;
+    background: #dfe1e6;
+    margin-right: 14px;
+  }
+</style>
+
+<div class="section-title">Call Progress Board</div>
+<div class="section-sub">Each row tracks one call through all stages — left to right.</div>
+
+<div class="dep-note">
+  <span>⚠️</span>
+  <span><strong>Dependency rule:</strong> Artifacts and Topics for a new call are locked until the previous call has fully completed both stages. You can always add a transcript to a new call in the meantime.</span>
+</div>
+
+<!-- Column headers -->
+<div class="board-header">
+  <div class="col-label">Transcript</div>
+  <div class="col-label">Artifacts</div>
+  <div class="col-label">Topics</div>
+  <div class="col-label">Done</div>
+</div>
+
+<!-- CALL 1 — fully done -->
+<div class="call-row">
+  <div class="call-label">
+    <div class="call-number">Call 1</div>
+    <div class="call-title">Q1 Sales Review</div>
+    <div class="call-date">Apr 2</div>
+  </div>
+  <div class="stage-cells">
+    <!-- Transcript: done -->
+    <div class="stage-cell done-stage">
+      <div>
+        <div class="stage-name">Transcript</div>
+        <div class="stage-meta">142 lines · Fireflies</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">✓ Done</span>
+        <div class="done-check">✓</div>
+      </div>
+    </div>
+    <!-- Artifacts: done -->
+    <div class="stage-cell done-stage">
+      <div>
+        <div class="stage-name">Artifacts</div>
+        <div class="stage-meta">3 generated</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">✓ Done</span>
+        <div class="done-check">✓</div>
+      </div>
+    </div>
+    <!-- Topics: done -->
+    <div class="stage-cell done-stage">
+      <div>
+        <div class="stage-name">Topics</div>
+        <div class="stage-meta">5 topics logged</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">✓ Done</span>
+        <div class="done-check">✓</div>
+      </div>
+    </div>
+    <!-- Done -->
+    <div class="stage-cell done-stage" style="background:#e3fcef; border-color:#36b37e;">
+      <div>
+        <div class="stage-name" style="color:#006644;">Complete</div>
+        <div class="stage-meta">Apr 3</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">✓ Closed</span>
+        <div class="done-check" style="background:#36b37e;color:white;">✓</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CALL 2 — active in Artifacts -->
+<div class="call-row">
+  <div class="call-label">
+    <div class="call-number">Call 2</div>
+    <div class="call-title">Product Demo – Acme Corp</div>
+    <div class="call-date">Apr 9</div>
+  </div>
+  <div class="stage-cells">
+    <!-- Transcript: done -->
+    <div class="stage-cell done-stage">
+      <div>
+        <div class="stage-name">Transcript</div>
+        <div class="stage-meta">98 lines · Manual</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">✓ Done</span>
+        <div class="done-check">✓</div>
+      </div>
+    </div>
+    <!-- Artifacts: ACTIVE -->
+    <div class="stage-cell active-stage">
+      <div>
+        <div class="stage-name">Artifacts</div>
+        <div class="stage-meta">2 / 3 done · Generating…</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">→ In progress</span>
+        <span class="stage-action">Open →</span>
+      </div>
+    </div>
+    <!-- Topics: pending (unlocked since prev call is done) -->
+    <div class="stage-cell pending-stage">
+      <div>
+        <div class="stage-name">Topics</div>
+        <div class="stage-meta">Waiting on artifacts</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">Upcoming</span>
+      </div>
+    </div>
+    <!-- Done: pending -->
+    <div class="stage-cell pending-stage">
+      <div>
+        <div class="stage-name">Done</div>
+        <div class="stage-meta">—</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">Not yet</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CALL 3 — transcript done, artifacts LOCKED -->
+<div class="call-row">
+  <div class="call-label">
+    <div class="call-number">Call 3</div>
+    <div class="call-title">Onboarding Follow-up</div>
+    <div class="call-date">Apr 11</div>
+  </div>
+  <div class="stage-cells">
+    <!-- Transcript: done -->
+    <div class="stage-cell done-stage">
+      <div>
+        <div class="stage-name">Transcript</div>
+        <div class="stage-meta">61 lines · Fireflies</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">✓ Done</span>
+        <div class="done-check">✓</div>
+      </div>
+    </div>
+    <!-- Artifacts: LOCKED -->
+    <div class="stage-cell locked-stage">
+      <div>
+        <div class="stage-name">Artifacts</div>
+        <div class="stage-meta">Locked until Call 2 completes</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">🔒 Locked</span>
+      </div>
+    </div>
+    <!-- Topics: LOCKED -->
+    <div class="stage-cell locked-stage">
+      <div>
+        <div class="stage-name">Topics</div>
+        <div class="stage-meta">Locked until Call 2 completes</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">🔒 Locked</span>
+      </div>
+    </div>
+    <!-- Done: locked -->
+    <div class="stage-cell locked-stage">
+      <div>
+        <div class="stage-name">Done</div>
+        <div class="stage-meta">—</div>
+      </div>
+      <div class="stage-bottom">
+        <span class="stage-status">🔒 Locked</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add call -->
+<div class="add-call-row">
+  <div class="add-call-btn">+ Add new call</div>
+  <span class="add-call-hint">Next: Call 4 · Artifacts locked until Call 3 is done</span>
+</div>
