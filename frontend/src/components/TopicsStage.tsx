@@ -105,6 +105,7 @@ export default function TopicsStage({ call, onAdvance }: Props) {
         status: t.status,
         owner: t.owner,
         sentiment: t.sentiment,
+        calls_open: t.calls_open,
         disposition: t._disposition,
       }));
       await topicsAPI.save(call.id, payload);
