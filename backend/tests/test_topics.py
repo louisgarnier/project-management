@@ -89,3 +89,46 @@ def test_topic_update_new_topic_no_id():
     )
     assert tu.topic_id is None
     assert tu.disposition is None
+
+
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+from backend.main import app
+from fastapi.testclient import TestClient
+
+http = TestClient(app)
+
+CALL_ID    = "aaaaaaaa-0000-0000-0000-000000000001"
+PROJECT_ID = "bbbbbbbb-0000-0000-0000-000000000001"
+
+SAMPLE_TOPIC = {
+    "name": "Pricing",
+    "summary": "Client prefers monthly billing.",
+    "follow_up_items": ["Send monthly breakdown"],
+    "decisions": [],
+    "status": "open",
+    "owner": "Client",
+    "sentiment": "concern",
+}
+
+
+@patch("backend.routers.topics.get_client")
+@patch("backend.routers.topics.extract_topics")
+def test_extract_call1_returns_flat_list(mock_extract, mock_gc):
+    """POST /extract on Call 1 returns a flat list with no buckets."""
+    mock_gc.return_value = MagicMock()
+    async def _fake():
+        return {
+            "call_number": 1,
+            "followed_up": [],
+            "not_discussed": [],
+            "new_topics": [SAMPLE_TOPIC],
+        }
+    mock_extract.return_value = _fake()
+
+    r = http.post(f"/api/calls/{CALL_ID}/topics/extract")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["call_number"] == 1
+    assert len(body["new_topics"]) == 1
+    assert body["new_topics"][0]["name"] == "Pricing"
