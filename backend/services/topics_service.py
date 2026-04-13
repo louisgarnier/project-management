@@ -333,13 +333,24 @@ async def _extract_topics_impl(call_id: str) -> dict:
     )
     raw = await _call_llm(prompt, llm)
 
+    # Build a name→topic_id map so we can re-attach IDs the LLM stripped out
+    prev_by_name = {t["name"].lower().strip(): t["topic_id"] for t in previous}
+
+    def _reattach_id(topic: dict) -> dict:
+        """Re-attach topic_id from previous by name match (LLM never echoes it back)."""
+        if not topic.get("topic_id"):
+            key = topic.get("name", "").lower().strip()
+            if key in prev_by_name:
+                topic = {**topic, "topic_id": prev_by_name[key]}
+        return topic
+
     if isinstance(raw, list):
-        followed_up = [t for t in raw if t["name"] in prev_names]
+        followed_up = [_reattach_id(t) for t in raw if t["name"] in prev_names]
         not_discussed = [t for t in previous if t["name"] not in {x["name"] for x in raw}]
         new_topics = [t for t in raw if t["name"] not in prev_names]
     else:
-        followed_up = raw.get("followed_up", [])
-        not_discussed = raw.get("not_discussed", [])
+        followed_up = [_reattach_id(t) for t in raw.get("followed_up", [])]
+        not_discussed = [_reattach_id(t) for t in raw.get("not_discussed", [])]
         new_topics = raw.get("new_topics", [])
 
     return {
