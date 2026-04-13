@@ -6,6 +6,22 @@ import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, Arti
 
 const PROXY_BASE = "/api/proxy";
 
+function parseApiError(error: unknown, status: number): string {
+  if (!error || typeof error !== "object") return `HTTP ${status}`;
+  const e = error as Record<string, unknown>;
+  const detail = e.detail;
+  if (Array.isArray(detail)) {
+    // Pydantic v2 validation error array: [{loc, msg, type}, ...]
+    return detail.map((d) => (typeof d === "object" && d !== null && "msg" in d ? (d as {msg: string}).msg : JSON.stringify(d))).join("; ");
+  }
+  if (detail && typeof detail === "object") {
+    // Structured error e.g. {error: "unacknowledged_topics", ids: [...]}
+    const de = detail as Record<string, unknown>;
+    return typeof de.error === "string" ? de.error : JSON.stringify(detail);
+  }
+  return typeof detail === "string" ? detail : `HTTP ${status}`;
+}
+
 async function proxyFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${PROXY_BASE}${path}`;
   const response = await fetch(url, {
@@ -18,7 +34,7 @@ async function proxyFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error((error && error.detail) || `HTTP ${response.status}`);
+    throw new Error(parseApiError(error, response.status));
   }
 
   if (response.status === 204) return {} as T;
@@ -85,7 +101,7 @@ async function proxyFetchForm<T>(path: string, formData: FormData): Promise<T> {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error((error && error.detail) || `HTTP ${response.status}`);
+    throw new Error(parseApiError(error, response.status));
   }
   return response.json();
 }

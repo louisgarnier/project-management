@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from typing import Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+_STATUS_MAP  = {"open": "open", "in_progress": "in_progress", "in progress": "in_progress", "resolved": "resolved"}
+_OWNER_MAP   = {"us": "Us", "client": "Client", "both": "Both"}
+_SENTIMENT_MAP = {"positive": "positive", "neutral": "neutral", "concern": "concern", "negative": "concern"}
 
 
 class TopicIn(BaseModel):
@@ -13,6 +17,27 @@ class TopicIn(BaseModel):
     status: Literal["open", "in_progress", "resolved"]
     owner: Literal["Us", "Client", "Both"]
     sentiment: Literal["positive", "neutral", "concern"]
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, v: object) -> object:
+        if isinstance(v, str):
+            return _STATUS_MAP.get(v.lower().replace("-", "_"), v)
+        return v
+
+    @field_validator("owner", mode="before")
+    @classmethod
+    def normalize_owner(cls, v: object) -> object:
+        if isinstance(v, str):
+            return _OWNER_MAP.get(v.lower(), v)
+        return v
+
+    @field_validator("sentiment", mode="before")
+    @classmethod
+    def normalize_sentiment(cls, v: object) -> object:
+        if isinstance(v, str):
+            return _SENTIMENT_MAP.get(v.lower(), v)
+        return v
 
 
 class TopicUpdate(TopicIn):
