@@ -80,10 +80,12 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   const [aggregating, setAggregating] = useState(false);
   const [extracted, setExtracted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rateLimited, setRateLimited] = useState(false);
 
   async function handleExtract() {
     setExtracting(true);
     setError(null);
+    setRateLimited(false);
     try {
       logger.info("Extracting call topics (Step 1)", { component: "CallTopicsStage" });
       const result = await topicsAPI.extractCall(call.id);
@@ -91,8 +93,12 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
       setExtracted(true);
       logger.info(`Extracted ${result.length} topics`, { component: "CallTopicsStage" });
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "Extraction failed";
       logger.error("Step 1 extraction failed", { component: "CallTopicsStage", data: err });
-      setError(err instanceof Error ? err.message : "Extraction failed");
+      if (msg.includes("wait a moment")) {
+        setRateLimited(true);
+      }
+      setError(msg);
     } finally {
       setExtracting(false);
     }
@@ -111,8 +117,12 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
         onAggregateComplete(result);
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "Aggregation failed";
       logger.error("Step 2 aggregation failed", { component: "CallTopicsStage", data: err });
-      setError(err instanceof Error ? err.message : "Aggregation failed");
+      if (msg.includes("wait a moment")) {
+        setRateLimited(true);
+      }
+      setError(msg);
     } finally {
       setAggregating(false);
     }
@@ -132,8 +142,21 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
 
       {error && (
         <div style={{ background: "#fff1f0", border: "1px solid #ffbdad",
-          borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#ae2a19" }}>
-          {error}
+          borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#ae2a19",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span>{error}</span>
+          {rateLimited && (
+            <button
+              onClick={extracted ? handleContinue : handleExtract}
+              style={{
+                padding: "4px 12px", borderRadius: 4, border: "1px solid #ae2a19",
+                background: "transparent", color: "#ae2a19", fontSize: 11,
+                fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+              }}
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
 

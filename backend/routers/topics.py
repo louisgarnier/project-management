@@ -1,10 +1,12 @@
 from backend.database.supabase_client import get_client
 from backend.services.topics_service import (
     extract_topics, save_topics, validate_call, generate_brief,
-    list_project_topics, extract_call_topics, aggregate_topics, TopicUpdate,
+    list_project_topics, extract_call_topics, aggregate_topics,
+    TopicUpdate,
 )
 from backend.utils.logger import get_logger
 from fastapi import APIRouter, HTTPException
+from openai import APIStatusError as OpenAIStatusError
 from pydantic import BaseModel as PydanticBaseModel
 
 router = APIRouter(prefix="/api", tags=["topics"])
@@ -39,6 +41,15 @@ async def extract_call(call_id: str):
         if msg == "no_transcript":
             raise HTTPException(status_code=422, detail="Call has no transcript")
         raise HTTPException(status_code=404, detail=msg)
+    except OpenAIStatusError as e:
+        if e.status_code in (413, 429) or "rate_limit" in str(e).lower():
+            logger.warning(f"⚠️ [Topics] LLM rate limit on Step-1: {e}")
+            raise HTTPException(
+                status_code=429,
+                detail="Transcript too large for current LLM tier — wait a moment and try again",
+            )
+        logger.exception(f"❌ [Topics] Step-1 extraction failed: {e}")
+        raise HTTPException(status_code=500, detail="Topic extraction failed")
     except Exception as e:
         logger.exception(f"❌ [Topics] Step-1 extraction failed: {e}")
         raise HTTPException(status_code=500, detail="Topic extraction failed")
@@ -65,6 +76,15 @@ async def aggregate(call_id: str, payload: AggregatePayload):
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except OpenAIStatusError as e:
+        if e.status_code in (413, 429) or "rate_limit" in str(e).lower():
+            logger.warning(f"⚠️ [Topics] LLM rate limit on Step-2: {e}")
+            raise HTTPException(
+                status_code=429,
+                detail="Transcript too large for current LLM tier — wait a moment and try again",
+            )
+        logger.exception(f"❌ [Topics] Step-2 aggregation failed: {e}")
+        raise HTTPException(status_code=500, detail="Aggregation failed")
     except Exception as e:
         logger.exception(f"❌ [Topics] Step-2 aggregation failed: {e}")
         raise HTTPException(status_code=500, detail="Aggregation failed")
