@@ -1,5 +1,8 @@
 from backend.database.supabase_client import get_client
-from backend.services.topics_service import TopicUpdate, extract_topics, save_topics, validate_call, generate_brief
+from backend.services.topics_service import (
+    extract_topics, save_topics, validate_call, generate_brief,
+    list_project_topics, TopicUpdate,
+)
 from backend.utils.logger import get_logger
 from fastapi import APIRouter, HTTPException
 
@@ -51,6 +54,15 @@ async def validate(call_id: str):
                 detail={"error": "unacknowledged_topics", "ids": ids},
             )
         raise HTTPException(status_code=422, detail=msg)
+
+
+@router.get("/projects/{project_id}/topics")
+async def list_topics(project_id: str):
+    logger.info(f"📥 [Topics] Dashboard requested: project={project_id}")
+    db = get_client()
+    result = await list_project_topics(project_id, db)
+    logger.info(f"✅ [Topics] Returned {len(result)} topics")
+    return result
 
 
 @router.get("/calls/{call_id}/brief")

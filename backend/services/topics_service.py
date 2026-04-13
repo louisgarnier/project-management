@@ -416,3 +416,10 @@ async def generate_brief(call_id: str) -> dict:
         "decisions_to_confirm": decisions_to_confirm,
         "watch_list": watch_list,
     }
+
+
+async def list_project_topics(project_id: str, db=None) -> list[dict]:
+    """Return all non-archived topics for a project, enriched with latest update fields."""
+    if db is None:
+        db = get_client()
+    return _get_previous_topics(project_id, db)

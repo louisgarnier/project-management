@@ -301,3 +301,35 @@ def test_brief_call2_returns_sorted_topics(mock_brief, mock_gc):
     assert body["priority_topics"][0]["calls_open"] == 3
     assert len(body["watch_list"]) == 1
     assert len(body["decisions_to_confirm"]) == 1
+
+
+@patch("backend.routers.topics.get_client")
+def test_get_project_topics_returns_non_archived(mock_gc):
+    m = MagicMock()
+
+    # Mock: topics query (non-archived topics)
+    topics_mock = MagicMock()
+    topics_mock.data = [
+        {"id": TOPIC_ID, "name": "Pricing", "calls_open": 2,
+         "first_raised_call_id": CALL_ID},
+    ]
+    # Mock: topic_updates query (latest update per topic)
+    updates_mock = MagicMock()
+    updates_mock.data = [
+        {"summary": "Monthly pref.", "follow_up_items": ["Send breakdown"],
+         "decisions": [], "status": "open", "owner": "Client", "sentiment": "concern"},
+    ]
+
+    # Chain the mocks: topics select → eq(project_id) → eq(archived) → execute
+    m.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = topics_mock
+    # topic_updates: select → eq(topic_id) → order → limit → execute
+    m.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = updates_mock
+    mock_gc.return_value = m
+
+    r = http.get(f"/api/projects/{PROJECT_ID}/topics")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 1
+    assert body[0]["name"] == "Pricing"
+    assert body[0]["status"] == "open"
+    assert body[0]["calls_open"] == 2
