@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from backend.services.topics_service import TopicIn, TopicUpdate, TopicOut, BriefOut
+from backend.services.topics_service import TopicIn, TopicUpdate, TopicOut, BriefItem, BriefOut
 
 
 def test_topic_in_valid():
@@ -62,7 +62,6 @@ def test_topic_in_rejects_bad_owner():
 
 
 def test_brief_item_valid():
-    from backend.services.topics_service import BriefItem
     bi = BriefItem(
         topic_id="aaaaaaaa-0000-0000-0000-000000000001",
         name="Pricing",
@@ -73,3 +72,20 @@ def test_brief_item_valid():
     )
     assert bi.sentiment == "concern"
     assert bi.calls_open == 2
+
+
+def test_topic_update_new_topic_no_id():
+    """topic_id=None signals a brand-new topic (not yet in DB)."""
+    tu = TopicUpdate(
+        topic_id=None,
+        name="New Topic",
+        summary="Just came up.",
+        follow_up_items=[],
+        decisions=[],
+        status="open",
+        owner="Us",
+        sentiment="neutral",
+        disposition=None,
+    )
+    assert tu.topic_id is None
+    assert tu.disposition is None
