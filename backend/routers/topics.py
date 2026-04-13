@@ -18,5 +18,5 @@ async def extract(call_id: str):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"❌ [Topics] Extraction failed: {e}")
+        logger.exception(f"❌ [Topics] Extraction failed: {e}")
         raise HTTPException(status_code=500, detail="Topic extraction failed")

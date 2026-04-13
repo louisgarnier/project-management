@@ -76,7 +76,7 @@ _TOPIC_SCHEMA = (
 )
 
 
-async def _call_claude(prompt: str) -> list[dict]:
+async def _call_claude(prompt: str) -> list[dict] | dict:
     client = anthropic.AsyncAnthropic()
     logger.info("🤖 [Claude] Extracting topics")
     msg = await client.messages.create(
@@ -85,6 +85,8 @@ async def _call_claude(prompt: str) -> list[dict]:
         system=_EXTRACT_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
     )
+    if not msg.content or msg.content[0].type != "text":
+        raise ValueError("Claude returned no text content")
     raw = msg.content[0].text.strip()
     logger.info(
         f"✅ [Claude] Topics extracted — "
@@ -94,7 +96,11 @@ async def _call_claude(prompt: str) -> list[dict]:
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
-    return json.loads(raw.strip())
+    try:
+        return json.loads(raw.strip())
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ [Claude] Invalid JSON in topics response: {e}\nRaw: {raw[:200]}")
+        raise ValueError(f"Claude returned invalid JSON: {e}") from e
 
 
 def _get_previous_topics(project_id: str, db) -> list[dict]:
