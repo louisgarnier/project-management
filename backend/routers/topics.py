@@ -30,8 +30,14 @@ async def save(call_id: str, topics: list[TopicUpdate]):
     logger.info(f"📥 [Topics] Save requested: call={call_id}, count={len(topics)}")
     try:
         result = await save_topics(call_id, topics)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"❌ [Topics] Save failed: {e}")
+        raise HTTPException(status_code=500, detail="Topic save failed")
 
-        # When saving topics on a done call, mark artifacts as stale
+    # When saving topics on a done call, mark artifacts as stale (non-blocking)
+    try:
         db = get_client()
         call_row = db.table("calls").select("kanban_stage").eq("id", call_id).execute().data
         if call_row and call_row[0]["kanban_stage"] == "done":
@@ -40,13 +46,10 @@ async def save(call_id: str, topics: list[TopicUpdate]):
             if artifact_ids:
                 db.table("artifacts").update({"status": "stale"}).in_("id", artifact_ids).execute()
                 logger.info(f"⚠️ [Topics] Marked {len(artifact_ids)} artifacts stale after topic save: {call_id}")
+    except Exception as stale_err:
+        logger.warning(f"⚠️ [Topics] Could not mark artifacts stale (non-fatal): {stale_err}")
 
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.exception(f"❌ [Topics] Save failed: {e}")
-        raise HTTPException(status_code=500, detail="Topic save failed")
+    return result
 
 
 @router.post("/calls/{call_id}/topics/validate")

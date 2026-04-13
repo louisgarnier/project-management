@@ -189,6 +189,7 @@ def update_transcript(call_id: str, payload: TranscriptUpdate):
     # When editing transcript on a done call, mark topics and artifacts as stale
     if current_stage == "done":
         update_data["topics_stale"] = True
+        db_logger.info(f"⚠️ [DB] Setting topics_stale=True for call: {call_id}")
         artifacts = (
             client.table("artifacts")
             .select("id")
