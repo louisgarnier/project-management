@@ -151,7 +151,7 @@ def _sample_keys(parsed: list | dict) -> str:
 
 
 _NAME_ALIASES = {"topic_name", "title", "topic", "subject", "heading"}
-_SUMMARY_ALIASES = {"description", "details", "detail", "overview", "content", "text", "body"}
+_SUMMARY_ALIASES = {"context", "description", "details", "detail", "overview", "content", "text", "body"}
 _FOLLOW_UP_ALIASES = {"follow_ups", "action_items", "actions", "followups", "follow_up", "next_steps"}
 _DECISIONS_ALIASES = {"decision", "key_decisions", "agreed", "agreements"}
 
