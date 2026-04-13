@@ -58,8 +58,8 @@ import asyncio
 import json
 import os
 
-import anthropic
 from backend.database.supabase_client import get_client
+from backend.services.llm_service import call_llm_raw
 from backend.utils.logger import get_logger
 
 logger = get_logger("topics_service")
@@ -76,22 +76,10 @@ _TOPIC_SCHEMA = (
 )
 
 
-async def _call_claude(prompt: str) -> list[dict] | dict:
-    client = anthropic.AsyncAnthropic()
-    logger.info("🤖 [Claude] Extracting topics")
-    msg = await client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=4096,
-        system=_EXTRACT_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    if not msg.content or msg.content[0].type != "text":
-        raise ValueError("Claude returned no text content")
-    raw = msg.content[0].text.strip()
-    logger.info(
-        f"✅ [Claude] Topics extracted — "
-        f"input={msg.usage.input_tokens} output={msg.usage.output_tokens}"
-    )
+async def _call_llm(prompt: str, llm: str) -> list[dict] | dict:
+    logger.info(f"🤖 [{llm}] Extracting topics")
+    raw = await call_llm_raw(_EXTRACT_SYSTEM, prompt, llm)
+    raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
@@ -99,8 +87,8 @@ async def _call_claude(prompt: str) -> list[dict] | dict:
     try:
         return json.loads(raw.strip())
     except json.JSONDecodeError as e:
-        logger.error(f"❌ [Claude] Invalid JSON in topics response: {e}\nRaw: {raw[:200]}")
-        raise ValueError(f"Claude returned invalid JSON: {e}") from e
+        logger.error(f"❌ [{llm}] Invalid JSON in topics response: {e}\nRaw: {raw[:200]}")
+        raise ValueError(f"LLM returned invalid JSON: {e}") from e
 
 
 def _get_previous_topics(project_id: str, db) -> list[dict]:
@@ -139,11 +127,11 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
     return result
 
 
-def _get_topics_prompt(project_id: str, db) -> str | None:
-    """Return the project's stored topics-extraction prompt, or None if not set."""
+def _get_topics_prompt(project_id: str, db) -> tuple[str | None, str | None]:
+    """Return (prompt, llm) from the project's stored topics artifact_type, or (None, None)."""
     rows = (
         db.table("artifact_types")
-        .select("prompt")
+        .select("prompt, llm")
         .eq("project_id", project_id)
         .eq("category", "topics")
         .order("created_at")
@@ -151,7 +139,9 @@ def _get_topics_prompt(project_id: str, db) -> str | None:
         .execute()
         .data
     )
-    return rows[0]["prompt"] if rows else None
+    if not rows:
+        return None, None
+    return rows[0]["prompt"], rows[0].get("llm")
 
 
 def extract_topics(call_id: str):
@@ -199,8 +189,13 @@ async def _extract_topics_impl(call_id: str) -> dict:
     )
     call_number = len(done_calls) + 1
 
-    # Look up project's topics prompt; fall back to hardcoded schema hint
-    stored_prompt = _get_topics_prompt(project_id, db)
+    # Determine which LLM to use: artifact row llm → project default_llm → "groq"
+    stored_prompt, stored_llm = _get_topics_prompt(project_id, db)
+    if stored_llm is None:
+        proj_rows = db.table("projects").select("default_llm").eq("id", project_id).execute().data
+        stored_llm = proj_rows[0]["default_llm"] if proj_rows else "groq"
+    llm = stored_llm or "groq"
+
     base_instructions = stored_prompt or (
         f"Extract all key business topics from this call.\n\n"
         f"Return a JSON array where each element matches: {_TOPIC_SCHEMA}"
@@ -212,7 +207,7 @@ async def _extract_topics_impl(call_id: str) -> dict:
             f"Transcript:\n{transcript}\n\n"
             f"Supporting documents:\n{artifact_text or 'None'}"
         )
-        topics = await _call_claude(prompt)
+        topics = await _call_llm(prompt, llm)
         return {"call_number": 1, "followed_up": [], "not_discussed": [], "new_topics": topics}
 
     previous = _get_previous_topics(project_id, db)
@@ -232,7 +227,7 @@ async def _extract_topics_impl(call_id: str) -> dict:
         f"Transcript:\n{transcript}\n\n"
         f"Supporting documents:\n{artifact_text or 'None'}"
     )
-    raw = await _call_claude(prompt)
+    raw = await _call_llm(prompt, llm)
 
     if isinstance(raw, list):
         followed_up = [t for t in raw if t["name"] in prev_names]

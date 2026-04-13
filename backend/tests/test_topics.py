@@ -336,24 +336,26 @@ def test_get_project_topics_returns_non_archived(mock_gc):
 
 
 def test_get_topics_prompt_returns_stored_prompt():
-    """_get_topics_prompt returns the project's stored prompt when found."""
+    """_get_topics_prompt returns (prompt, llm) when a row exists."""
     from backend.services.topics_service import _get_topics_prompt
     from unittest.mock import MagicMock
     mock_db = MagicMock()
     mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value \
         .order.return_value.limit.return_value.execute.return_value.data = [
-            {"prompt": "STORED PROMPT"}
+            {"prompt": "STORED PROMPT", "llm": "groq"}
         ]
-    result = _get_topics_prompt("proj-1", mock_db)
-    assert result == "STORED PROMPT"
+    prompt, llm = _get_topics_prompt("proj-1", mock_db)
+    assert prompt == "STORED PROMPT"
+    assert llm == "groq"
 
 
 def test_get_topics_prompt_falls_back_to_none():
-    """_get_topics_prompt returns None when no topics prompt row exists."""
+    """_get_topics_prompt returns (None, None) when no row exists."""
     from backend.services.topics_service import _get_topics_prompt
     from unittest.mock import MagicMock
     mock_db = MagicMock()
     mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value \
         .order.return_value.limit.return_value.execute.return_value.data = []
-    result = _get_topics_prompt("proj-1", mock_db)
-    assert result is None
+    prompt, llm = _get_topics_prompt("proj-1", mock_db)
+    assert prompt is None
+    assert llm is None
