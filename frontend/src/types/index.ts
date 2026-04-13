@@ -26,12 +26,15 @@ export interface Call {
 export type ArtifactMode = LLMProvider | "manual";
 export type ArtifactStatus = "pending" | "generating" | "done" | "error";
 
+export type ArtifactCategory = "artifacts" | "topics";
+
 export interface ArtifactType {
   id: string;
   project_id: string;
   name: string;
   prompt: string;
   is_default: boolean;
+  category: ArtifactCategory;
   llm: LLMProvider | null;
   created_at: string;
 }

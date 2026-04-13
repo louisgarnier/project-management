@@ -80,6 +80,9 @@ export default function ArtifactsPage() {
     setTypes((prev) => prev.map((t) => (t.id === typeId ? updated : t)));
   }
 
+  const artifactTypes = types.filter((t) => t.category === "artifacts" || !t.category);
+  const topicsPrompts = types.filter((t) => t.category === "topics");
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
@@ -123,20 +126,48 @@ export default function ArtifactsPage() {
             <p className="text-[13px] text-red-600">{error}</p>
             <button onClick={load} className="text-[13px] text-[#0052cc] underline">Retry</button>
           </div>
-        ) : types.length === 0 ? (
-          <p className="text-[13px] text-[#5e6c84]">No artifact types yet.</p>
         ) : (
-          <div className="flex flex-col gap-3">
-            {types.map((t) => (
-              <ArtifactTypeCard
-                key={t.id}
-                type={t}
-                projectDefaultLlm={project?.default_llm ?? "groq"}
-                onDelete={handleDelete}
-                onUpdate={handleUpdate}
-              />
-            ))}
-          </div>
+          <>
+            {/* ── Artifacts section ── */}
+            <div className="flex flex-col gap-3 mb-8">
+              {artifactTypes.length === 0 ? (
+                <p className="text-[13px] text-[#5e6c84]">No artifact types yet.</p>
+              ) : (
+                artifactTypes.map((t) => (
+                  <ArtifactTypeCard
+                    key={t.id}
+                    type={t}
+                    projectDefaultLlm={project?.default_llm ?? "groq"}
+                    onDelete={handleDelete}
+                    onUpdate={handleUpdate}
+                  />
+                ))
+              )}
+            </div>
+
+            {/* ── Topics Extraction Prompt section ── */}
+            {topicsPrompts.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <h2 className="text-[13px] font-bold text-[#172b4d]">Topics Extraction Prompt</h2>
+                  <span className="text-[10px] font-bold uppercase tracking-wide bg-[#e9f0ff] text-[#0052cc] px-2 py-[2px] rounded">
+                    Topics
+                  </span>
+                  <span className="text-[11px] text-[#5e6c84]">— used by &quot;Extract via Claude&quot; on the Topics stage</span>
+                </div>
+                {topicsPrompts.map((t) => (
+                  <ArtifactTypeCard
+                    key={t.id}
+                    type={t}
+                    projectDefaultLlm={project?.default_llm ?? "groq"}
+                    onDelete={() => {}}
+                    onUpdate={handleUpdate}
+                    hideDelete
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 

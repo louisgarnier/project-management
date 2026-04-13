@@ -19,9 +19,10 @@ type Props = {
   projectDefaultLlm: LLMProvider;
   onDelete: (id: string) => void;
   onUpdate: (id: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null }) => Promise<void>;
+  hideDelete?: boolean;
 };
 
-export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, onUpdate }: Props) {
+export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, onUpdate, hideDelete }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(type.name);
@@ -67,7 +68,7 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
                 : { background: "#f3f0ff", color: "#5243aa" }
             }
           >
-            {type.is_default ? "Default" : "Custom"}
+            {type.is_default ? "Default" : "Artifacts"}
           </span>
           {editing ? (
             <input
@@ -130,16 +131,18 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
               >
                 Edit
               </button>
-              <button
-                onClick={() => {
-                  if (confirm(`Delete "${type.name}"? This cannot be undone.`)) {
-                    onDelete(type.id);
-                  }
-                }}
-                className="text-[11px] text-[#97a0af] hover:text-red-500"
-              >
-                ✕
-              </button>
+              {!hideDelete && (
+                <button
+                  onClick={() => {
+                    if (confirm(`Delete "${type.name}"? This cannot be undone.`)) {
+                      onDelete(type.id);
+                    }
+                  }}
+                  className="text-[11px] text-[#97a0af] hover:text-red-500"
+                >
+                  ✕
+                </button>
+              )}
             </>
           )}
         </div>
