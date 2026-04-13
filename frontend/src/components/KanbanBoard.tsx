@@ -64,7 +64,7 @@ function getCellState(
   }
 
   // Artifacts and beyond locked until previous call is fully done
-  if ((stageKey === "artifacts" || stageKey === "done") && !prevCallDone) {
+  if ((stageKey === "project_topics" || stageKey === "artifacts" || stageKey === "done") && !prevCallDone) {
     return "locked";
   }
   return "pending";

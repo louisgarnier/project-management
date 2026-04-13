@@ -174,7 +174,7 @@ def reset_transcript(call_id: str):
         raise HTTPException(status_code=404, detail="Call not found")
 
     current_stage = result.data[0]["kanban_stage"]
-    if current_stage != "artifacts":
+    if current_stage not in ("artifacts", "project_topics"):
         raise HTTPException(
             status_code=409,
             detail=f"Transcript reset is only allowed from the artifacts stage (current: {current_stage})",

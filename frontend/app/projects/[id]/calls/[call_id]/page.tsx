@@ -15,6 +15,14 @@ import TopicsPanel from "@/components/TopicsPanel";
 
 const STAGES = ["transcript", "call_topics", "project_topics", "artifacts", "done"] as const;
 
+const STAGE_LABELS: Record<string, string> = {
+  transcript:     "Transcript",
+  call_topics:    "Call Topics",
+  project_topics: "Project Topics",
+  artifacts:      "Artifacts",
+  done:           "Done",
+};
+
 export default function CallDetailPage() {
   const params = useParams<{ id: string; call_id: string }>();
   const router = useRouter();
@@ -267,7 +275,7 @@ export default function CallDetailPage() {
                 }`}
               >
                 {isCurrent && "● "}
-                {stage.charAt(0).toUpperCase() + stage.slice(1)}
+                {STAGE_LABELS[stage] ?? stage}
               </span>
             </div>
           );

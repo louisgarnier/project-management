@@ -111,6 +111,34 @@ def test_patch_stage_valid_transition():
     assert r.json()["kanban_stage"] == "call_topics"
 
 
+def test_patch_stage_call_topics_to_project_topics():
+    mc = _mock_client()
+    mc.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+        MagicMock(data=[{**MOCK_CALL, "kanban_stage": "call_topics"}])
+    )
+    mc.table.return_value.update.return_value.eq.return_value.execute.return_value = (
+        MagicMock(data=[{**MOCK_CALL, "kanban_stage": "project_topics"}])
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.patch(f"/api/calls/{CALL_ID}/stage", json={"stage": "project_topics"})
+    assert r.status_code == 200
+    assert r.json()["kanban_stage"] == "project_topics"
+
+
+def test_patch_stage_project_topics_to_artifacts():
+    mc = _mock_client()
+    mc.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+        MagicMock(data=[{**MOCK_CALL, "kanban_stage": "project_topics"}])
+    )
+    mc.table.return_value.update.return_value.eq.return_value.execute.return_value = (
+        MagicMock(data=[{**MOCK_CALL, "kanban_stage": "artifacts"}])
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.patch(f"/api/calls/{CALL_ID}/stage", json={"stage": "artifacts"})
+    assert r.status_code == 200
+    assert r.json()["kanban_stage"] == "artifacts"
+
+
 def test_patch_stage_rejects_final_stage():
     mc = _mock_client()
     mc.table.return_value.select.return_value.eq.return_value.execute.return_value = (
