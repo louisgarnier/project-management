@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api", tags=["artifact-types"])
 
-DEFAULT_ARTIFACT_TYPES = [
+DEFAULT_ARTIFACT_TYPES: list[dict] = [
     {
         "name": "Executive Summary",
         "prompt": "Write a concise executive summary of this call in 3–5 bullet points. Focus on decisions made, key outcomes, and the overall direction agreed upon.",
@@ -41,13 +41,32 @@ DEFAULT_ARTIFACT_TYPES = [
     },
 ]
 
+DEFAULT_TOPICS_PROMPT = {
+    "name": "Topics Extraction",
+    "prompt": (
+        "You are an expert at extracting business topics from client call transcripts.\n\n"
+        "Extract all key business topics discussed. For each topic return a JSON object matching:\n"
+        '{"name":"string","summary":"string","follow_up_items":["string"],'
+        '"decisions":["string"],"status":"open|in_progress|resolved",'
+        '"owner":"Us|Client|Both","sentiment":"positive|neutral|concern"}\n\n'
+        "Focus on: decisions made, open questions, action items, relationship dynamics, "
+        "technical blockers.\n"
+        'Be specific — "Pricing" not "Discussion", '
+        '"API Integration Timeline" not "Technical".'
+    ),
+    "is_default": True,
+    "category": "topics",
+}
+
 
 def seed_defaults(project_id: str) -> None:
-    """Insert 6 default artifact types for a newly created project."""
+    """Insert 6 default artifact types + 1 topics prompt for a newly created project."""
     client = get_client()
-    rows = [{"project_id": project_id, **t} for t in DEFAULT_ARTIFACT_TYPES]
-    client.table("artifact_types").insert(rows).execute()
-    db_logger.info(f"✅ [DB] Seeded 6 default artifact types for project: {project_id}")
+    artifact_rows = [{"project_id": project_id, "category": "artifacts", **t} for t in DEFAULT_ARTIFACT_TYPES]
+    client.table("artifact_types").insert(artifact_rows).execute()
+    topics_row = {"project_id": project_id, **DEFAULT_TOPICS_PROMPT}
+    client.table("artifact_types").insert(topics_row).execute()
+    db_logger.info(f"✅ [DB] Seeded 6 artifact types + 1 topics prompt for project: {project_id}")
 
 
 class ArtifactTypeCreate(BaseModel):
@@ -92,6 +111,7 @@ def create_artifact_type(project_id: str, payload: ArtifactTypeCreate):
             "name": payload.name,
             "prompt": payload.prompt,
             "is_default": False,
+            "category": "artifacts",
             "llm": payload.llm,
         })
         .execute()
@@ -171,6 +191,7 @@ def import_artifact_types(project_id: str, payload: ArtifactTypeImport):
             "name": t["name"],
             "prompt": t["prompt"],
             "is_default": False,
+            "category": "artifacts",
             "llm": t.get("llm"),
         }
         for t in source.data

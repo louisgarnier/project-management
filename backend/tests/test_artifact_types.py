@@ -143,3 +143,41 @@ def test_update_artifact_type_reset_llm_to_null(mock_gc):
     update_payload = m.table.return_value.update.call_args[0][0]
     assert "llm" in update_payload
     assert update_payload["llm"] is None
+
+
+@patch("backend.routers.artifact_types.get_client")
+def test_seed_defaults_inserts_topics_prompt(mock_gc):
+    """seed_defaults must insert exactly one category='topics' row."""
+    from backend.routers.artifact_types import seed_defaults
+    m = MagicMock()
+    mock_gc.return_value = m
+    seed_defaults("proj-1")
+    # collect all rows from all insert calls
+    all_rows = []
+    for call in m.table.return_value.insert.call_args_list:
+        rows = call.args[0] if call.args else []
+        if isinstance(rows, list):
+            all_rows.extend(rows)
+        elif isinstance(rows, dict):
+            all_rows.append(rows)
+    topics_rows = [r for r in all_rows if r.get("category") == "topics"]
+    assert len(topics_rows) == 1, f"Expected 1 topics row, got {len(topics_rows)}: {all_rows}"
+    assert "prompt" in topics_rows[0]
+
+
+@patch("backend.routers.artifact_types.get_client")
+def test_create_artifact_type_sets_category_artifacts(mock_gc):
+    """User-created types must always have category='artifacts'."""
+    m = MagicMock()
+    m.table.return_value.insert.return_value.execute.return_value.data = [{
+        "id": "x", "project_id": "proj-1", "name": "T", "prompt": "P",
+        "is_default": False, "category": "artifacts", "created_at": "2026-01-01T00:00:00Z",
+    }]
+    mock_gc.return_value = m
+    r = client.post(
+        "/api/projects/proj-1/artifact-types",
+        json={"name": "T", "prompt": "P"},
+    )
+    assert r.status_code == 201
+    inserted = m.table.return_value.insert.call_args.args[0]
+    assert inserted["category"] == "artifacts"
