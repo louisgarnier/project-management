@@ -12,6 +12,8 @@ import ArtifactsStage from "@/components/ArtifactsStage";
 import ArtifactsPanel from "@/components/ArtifactsPanel";
 import TopicsStage from "@/components/TopicsStage";
 import TopicsPanel from "@/components/TopicsPanel";
+import CallTopicsStage from "@/components/CallTopicsStage";
+import type { AggregateResult } from "@/types";
 
 const STAGES = ["transcript", "call_topics", "project_topics", "artifacts", "done"] as const;
 
@@ -39,6 +41,7 @@ export default function CallDetailPage() {
   const [resetting, setResetting] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
   const [lockError, setLockError] = useState<string | null>(null);
+  const [aggregateResult, setAggregateResult] = useState<AggregateResult | null>(null);
 
   async function handleConfirmReset() {
     setResetting(true);
@@ -288,13 +291,16 @@ export default function CallDetailPage() {
           <TranscriptStage call={call} onAdvance={loadCall} />
         )}
         {call.kanban_stage === "call_topics" && (
-          <>
-            <TopicsStage call={call} onAdvance={loadCall} />
-            {call.transcript && (
-              <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />
-            )}
-            <ContextFiles call={call} readonly />
-          </>
+          <CallTopicsStage
+            call={call}
+            onAggregateComplete={(result) => {
+              setAggregateResult(result);
+              loadCall(); // reload call — stage is now project_topics
+            }}
+            onAutoAdvanced={() => {
+              loadCall(); // reload call — stage is now artifacts
+            }}
+          />
         )}
         {call.kanban_stage === "project_topics" && (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
