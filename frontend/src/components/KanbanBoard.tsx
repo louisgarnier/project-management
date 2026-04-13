@@ -19,7 +19,7 @@ const STAGE_INDEX: Record<KanbanStage, number> = Object.fromEntries(
 type CellState = "done" | "active" | "pending" | "locked";
 
 const CELL_STYLE: Record<CellState, React.CSSProperties> = {
-  done:    { background: "#f4f5f7", border: "1px solid #dfe1e6" },
+  done:    { background: "#f0fdf4", border: "1px solid #bbf7d0" },
   active:  { background: "#ffffff",  border: "1.5px solid #ff8b00" },
   locked:  { background: "#f4f5f7", border: "1px dashed #b3c6e8", opacity: 0.7 },
   pending: { background: "#f4f5f7", border: "1px dashed #dfe1e6" },
