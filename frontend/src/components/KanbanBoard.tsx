@@ -32,11 +32,11 @@ const STATUS_LABEL: Record<CellState, string> = {
   pending: "—",
 };
 
-const STATUS_COLOR: Record<CellState, string> = {
-  done:    "#36b37e",
-  active:  "#ff8b00",
-  locked:  "#97a0af",
-  pending: "#97a0af",
+const STATUS_BADGE: Record<CellState, React.CSSProperties> = {
+  done:    { background: "#e3fcef", color: "#006644" },
+  active:  { background: "#fff4e6", color: "#974f0c" },
+  locked:  { background: "#f4f5f7", color: "#97a0af" },
+  pending: { background: "#f4f5f7", color: "#b3bac5" },
 };
 
 /**
@@ -158,8 +158,8 @@ export default function KanbanBoard({ calls, onNewCall }: Props) {
                       {s.label}
                     </span>
                     <span
-                      className="text-[10px] font-semibold"
-                      style={{ color: STATUS_COLOR[state] }}
+                      className="text-[9px] font-bold uppercase tracking-[0.04em] px-[6px] py-[2px] rounded-[3px] self-start"
+                      style={STATUS_BADGE[state]}
                     >
                       {STATUS_LABEL[state]}
                     </span>
