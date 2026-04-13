@@ -150,37 +150,41 @@ async def stream_artifacts(call_id: str):
         raise HTTPException(status_code=404, detail="Call not found")
     transcript = call_result.data[0].get("transcript") or ""
 
-    # Fetch topics for this call to inject as context
-    topics_result = (
-        supabase.table("topic_updates")
-        .select("summary, follow_up_items, decisions, status, owner, sentiment, topic_id")
-        .eq("call_id", call_id)
-        .execute()
-    )
-    topic_ids = [r["topic_id"] for r in topics_result.data if "topic_id" in r]
-    topic_names: dict[str, str] = {}
-    if topic_ids:
-        names_result = (
-            supabase.table("topics")
-            .select("id, name")
-            .in_("id", topic_ids)
+    # Fetch topics for this call to inject as context (best-effort)
+    call_topics = None
+    try:
+        topics_result = (
+            supabase.table("topic_updates")
+            .select("summary, follow_up_items, decisions, status, owner, sentiment, topic_id")
+            .eq("call_id", call_id)
             .execute()
         )
-        topic_names = {r["id"]: r["name"] for r in names_result.data}
+        topic_ids = [r["topic_id"] for r in topics_result.data if "topic_id" in r]
+        topic_names: dict[str, str] = {}
+        if topic_ids:
+            names_result = (
+                supabase.table("topics")
+                .select("id, name")
+                .in_("id", topic_ids)
+                .execute()
+            )
+            topic_names = {r["id"]: r["name"] for r in names_result.data}
 
-    call_topics = [
-        {
-            "name": topic_names.get(r["topic_id"], "Unknown"),
-            "status": r.get("status", "open"),
-            "owner": r.get("owner", "Us"),
-            "sentiment": r.get("sentiment", "neutral"),
-            "summary": r.get("summary", ""),
-            "follow_up_items": r.get("follow_up_items") or [],
-            "decisions": r.get("decisions") or [],
-        }
-        for r in topics_result.data
-        if "topic_id" in r
-    ] or None
+        call_topics = [
+            {
+                "name": topic_names.get(r["topic_id"], "Unknown"),
+                "status": r.get("status", "open"),
+                "owner": r.get("owner", "Us"),
+                "sentiment": r.get("sentiment", "neutral"),
+                "summary": r.get("summary", ""),
+                "follow_up_items": r.get("follow_up_items") or [],
+                "decisions": r.get("decisions") or [],
+            }
+            for r in topics_result.data
+            if "topic_id" in r
+        ] or None
+    except Exception:
+        call_topics = None
 
     artifacts_result = (
         supabase.table("artifacts")

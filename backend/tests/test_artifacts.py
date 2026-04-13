@@ -334,3 +334,30 @@ async def test_generate_artifact_includes_topics_in_prompt():
     assert "Pricing" in user_content
     assert "Topics from this call" in user_content
     assert "Write a summary." in user_content
+
+
+@pytest.mark.asyncio
+async def test_generate_artifact_without_topics_has_no_topics_block():
+    """generate_artifact must NOT include a topics block when topics=None."""
+    from backend.services.llm_service import generate_artifact
+    from unittest.mock import MagicMock, patch
+
+    captured_messages = {}
+
+    async def fake_create(**kwargs):
+        captured_messages["messages"] = kwargs.get("messages", [])
+        m = MagicMock()
+        m.content = [MagicMock(text="result")]
+        m.usage = MagicMock(input_tokens=10, output_tokens=5)
+        return m
+
+    fake_client = MagicMock()
+    fake_client.messages.create = fake_create
+
+    with patch("backend.services.llm_service.anthropic.AsyncAnthropic", return_value=fake_client):
+        await generate_artifact("Write a summary.", "The call transcript.", "claude", topics=None)
+
+    user_content = captured_messages["messages"][0]["content"]
+    assert "Topics from this call" not in user_content
+    assert "The call transcript." in user_content
+    assert "Write a summary." in user_content

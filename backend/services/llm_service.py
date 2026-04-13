@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 
 import anthropic
@@ -94,12 +95,10 @@ async def generate_artifact(
     If topics are provided, they are injected between transcript and task prompt.
     Retries up to 3 times with exponential backoff on rate-limit errors.
     """
-    import json as _json
-
     topics_block = ""
     if topics:
         topics_block = (
-            f"\n\nTopics from this call:\n{_json.dumps(topics, indent=2)}"
+            f"\n\nTopics from this call:\n{json.dumps(topics, indent=2)}"
         )
 
     user_message = (
