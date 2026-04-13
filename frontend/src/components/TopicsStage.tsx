@@ -358,7 +358,7 @@ function ActionBar({ unacknowledged, canValidate, validating, error, onValidate 
           color: canValidate && !validating ? "white" : "#97a0af",
           border: "none", padding: "9px 20px", borderRadius: 6,
           cursor: canValidate && !validating ? "pointer" : "not-allowed" }}>
-        {validating ? "Saving…" : "Save Topics & Proceed to Artifacts →"}
+        {validating ? "Saving…" : "Save Topics →"}
       </button>
     </div>
   );
