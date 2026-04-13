@@ -1,37 +1,36 @@
-# Story 8.2 — Deployment
+# Story 8.2 — Topics Timeline Grid UI
 
-**Epic:** EPIC-8 — Testing & Deployment
-**Maps to PRD:** NFR-03, NFR-04, NFR-06
+**Epic:** EPIC-8 — Topics Timeline Grid
 **Status:** `pending`
 
 ---
 
 ## Goal
-Railway backend and Vercel frontend are live. The full pipeline works end-to-end in production (using the local transcription server). Setup is documented so the app can be run from scratch in < 15 minutes.
+Replace the flat `TopicsDashboard` on the Board's Topics tab with a horizontally scrollable timeline grid: rows = topics (fixed left column), columns = one per call.
 
 ## Acceptance Criteria
-- [ ] Railway: FastAPI deployed, `GET /health` returns 200 in production
-- [ ] Vercel: Next.js deployed, loads project list from Railway API
-- [ ] All env vars set in Railway and Vercel (no hardcoded secrets)
-- [ ] `NEXT_PUBLIC_BACKEND_URL` set in Vercel to Railway URL
-- [ ] CORS on Railway configured to allow Vercel domain
-- [ ] `run_transcription.sh` starts local transcription server, health check passes
-- [ ] `README.md` covers: what it is, how to set up Supabase, Railway, Vercel, and the local transcription server
-- [ ] `.env.example` complete — every variable documented
+- [ ] Board → Topics tab renders `TopicsTimeline` (replaces `TopicsDashboard`)
+- [ ] Fixed left column: topic name + current status/owner/sentiment badges
+- [ ] One 160px column per call, header shows "Call N" + truncated title
+- [ ] Grid scrolls horizontally; left column stays fixed (sticky)
+- [ ] Cell states:
+  - **Absent**: blank
+  - **Not discussed**: grey "—"
+  - **New ✦**: orange badge + 2-line summary
+  - **Updated**: blue badge + 2-line summary + follow-up count
+  - **✓ Resolved**: green badge
+- [ ] Resolved topic rows at 65% opacity
+- [ ] Empty state: appropriate message when no topics or no calls
+- [ ] `TopicsTimelineData`, `TimelineCell`, `TimelineTopic` types in `frontend/src/types/index.ts`
+- [ ] `topicsAPI.timeline(projectId)` in `frontend/src/api/client.ts`
 
 ## Tasks
-- [ ] Create Railway project, set env vars (`SUPABASE_URL`, `SUPABASE_KEY`, `ANTHROPIC_API_KEY`, `LOG_LEVEL`)
-- [ ] Deploy backend to Railway via git push
-- [ ] Create Vercel project, set env vars (`NEXT_PUBLIC_BACKEND_URL`, `BACKEND_URL`)
-- [ ] Deploy frontend to Vercel via git push
-- [ ] Update CORS in `backend/main.py` to allow Vercel domain
-- [ ] Smoke test full pipeline in production
-- [ ] Write `README.md` with setup instructions
-- [ ] Verify `run_transcription.sh` works from a clean terminal
+- [ ] Add types to `frontend/src/types/index.ts`
+- [ ] Add `topicsAPI.timeline` to `frontend/src/api/client.ts`
+- [ ] Create `frontend/src/components/TopicsTimeline.tsx`
+- [ ] Update `frontend/app/projects/[id]/board/page.tsx` to render `TopicsTimeline` on Topics tab
 
 ## Dev Tests
-Manual production smoke test:
-- Open Vercel URL → project list loads
-- Create project → persisted in Supabase
-- Full call pipeline end-to-end in production
-- Badge shows Online when local transcription server is running
+- Manual: Board → Topics tab → grid shows with call columns
+- Manual: topic first raised in call 2 → call 1 column is blank
+- Manual: resolved topic → row at 65% opacity, green "✓ Resolved" badge

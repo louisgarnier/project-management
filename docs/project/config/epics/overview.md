@@ -10,8 +10,8 @@
 | EPIC-4 | Transcript Stage | [x] Done | 8 |
 | EPIC-5 | Artifacts Stage | [ ] Next | 5 |
 | EPIC-6 | Topics Stage | [ ] | 2 |
-| EPIC-7 | Topic Dashboard | [ ] | 2 |
-| EPIC-8 | Testing & Deployment | [ ] | 2 |
+| EPIC-7 | Two-Step Topic Extraction + New Stages | [ ] | 6 |
+| EPIC-8 | Topics Timeline Grid | [ ] | 2 |
 
 ---
 

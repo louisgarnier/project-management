@@ -1,30 +1,37 @@
-# Story 8.1 — Full Test Suite
+# Story 8.1 — Topics Timeline Backend
 
-**Epic:** EPIC-8 — Testing & Deployment
-**Maps to PRD:** NFR-01, NFR-02, NFR-05
+**Epic:** EPIC-8 — Topics Timeline Grid
 **Status:** `pending`
 
 ---
 
 ## Goal
-All backend tests pass with zero failures. Every functional requirement has at least one test.
+A new endpoint returns the full topic × call matrix so the frontend can render the timeline grid without any computation. Each cell is pre-classified as new / followed_up / not_discussed / absent.
 
 ## Acceptance Criteria
-- [ ] `pytest backend/tests/ -v` runs clean — zero failures
-- [ ] Coverage report generated (`pytest --cov=backend`)
-- [ ] Every FR from the PRD mapped to at least one test:
-  - FR-02 (transcript storage), FR-05 (parallel generation), FR-07 (block advancement), FR-09 (topic chain), FR-09b (sequential enforcement), FR-10 (validate before done), FR-13 (prompt snapshot immutability)
-- [ ] Integration smoke test: full pipeline from project creation → call → transcript → artifacts → topics → done runs without error
+- [ ] `GET /projects/{id}/topics/timeline` returns:
+  ```json
+  {
+    "calls": [{"id", "title", "number", "kanban_stage"}],
+    "topics": [{
+      "topic_id", "name", "status", "owner", "sentiment",
+      "first_raised_call_id",
+      "call_updates": {
+        "<call_id>": {"type": "new|followed_up|not_discussed", "summary?", "follow_up_items?", "decisions?", "status?", "owner?", "sentiment?"}
+      }
+    }]
+  }
+  ```
+- [ ] Call_id absent from `call_updates` = topic did not yet exist at that call
+- [ ] `not_discussed` cells contain only `{"type": "not_discussed"}`
+- [ ] Backend tests: empty project, new + not_discussed, followed_up + absent
 
 ## Tasks
-- [ ] Review test coverage report — identify untested paths
-- [ ] Add missing tests for each uncovered FR
-- [ ] Write integration test: `backend/tests/test_integration.py` — full pipeline with mocked Claude
-- [ ] Fix any flaky tests
-- [ ] Verify `prompt_used` immutability: update artifact type prompt, confirm existing artifact row unchanged
+- [ ] Add `list_topics_timeline(project_id, db)` to `backend/services/topics_service.py`
+- [ ] Add `GET /projects/{id}/topics/timeline` to `backend/routers/topics.py`
+- [ ] Write 3 tests in `backend/tests/test_topics.py`
 
 ## Dev Tests
-- `backend/tests/test_integration.py`:
-  - Create project → create call → POST transcript → POST artifact selections → GET stream (mocked) → POST topics → POST validate → call is `'done'`
-  - Second call creation before first is done → 409
-  - All 5 artifacts generate independently (one error doesn't block others)
+- `TestTopicsTimeline.test_timeline_no_topics`
+- `TestTopicsTimeline.test_timeline_new_and_not_discussed`
+- `TestTopicsTimeline.test_timeline_followed_up_and_absent`

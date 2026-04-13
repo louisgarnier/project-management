@@ -4,13 +4,14 @@ import { useRouter, useParams } from "next/navigation";
 import type { Call, KanbanStage } from "@/types";
 
 const STAGES: { key: KanbanStage; label: string }[] = [
-  { key: "transcript", label: "Transcript" },
-  { key: "topics",     label: "Topics"     },
-  { key: "artifacts",  label: "Artifacts"  },
-  { key: "done",       label: "Done"       },
+  { key: "transcript",     label: "Transcript"      },
+  { key: "call_topics",    label: "Call Topics"     },
+  { key: "project_topics", label: "Project Topics"  },
+  { key: "artifacts",      label: "Artifacts"       },
+  { key: "done",           label: "Done"            },
 ];
 
-const STAGE_ORDER: KanbanStage[] = ["transcript", "topics", "artifacts", "done"];
+const STAGE_ORDER: KanbanStage[] = ["transcript", "call_topics", "project_topics", "artifacts", "done"];
 
 const STAGE_INDEX: Record<KanbanStage, number> = Object.fromEntries(
   STAGE_ORDER.map((s, i) => [s, i])
@@ -44,7 +45,7 @@ const STATUS_BADGE: Record<CellState, React.CSSProperties> = {
  *
  * done    — call has already passed this stage
  * active  — this is the call's current stage
- * locked  — stage is artifacts/topics AND the previous call is not fully done
+ * locked  — stage is artifacts/done AND the previous call is not fully done
  * pending — stage not yet reached, but reachable
  */
 function getCellState(
@@ -62,8 +63,8 @@ function getCellState(
     return "active";
   }
 
-  // Stage not yet reached — lock artifacts and topics if prev call is incomplete
-  if (stageKey === "artifacts" && !prevCallDone) {
+  // Artifacts and beyond locked until previous call is fully done
+  if ((stageKey === "artifacts" || stageKey === "done") && !prevCallDone) {
     return "locked";
   }
   return "pending";

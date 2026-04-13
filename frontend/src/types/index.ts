@@ -11,7 +11,7 @@ export interface Project {
   created_at: string;
 }
 
-export type KanbanStage = "transcript" | "topics" | "artifacts" | "done";
+export type KanbanStage = "transcript" | "call_topics" | "project_topics" | "artifacts" | "done";
 
 export interface Call {
   id: string;

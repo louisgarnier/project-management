@@ -13,7 +13,7 @@ import ArtifactsPanel from "@/components/ArtifactsPanel";
 import TopicsStage from "@/components/TopicsStage";
 import TopicsPanel from "@/components/TopicsPanel";
 
-const STAGES = ["transcript", "topics", "artifacts", "done"] as const;
+const STAGES = ["transcript", "call_topics", "project_topics", "artifacts", "done"] as const;
 
 export default function CallDetailPage() {
   const params = useParams<{ id: string; call_id: string }>();
@@ -168,8 +168,8 @@ export default function CallDetailPage() {
     );
   }
 
-  // Topics-only mode: navigated from a historical topics card
-  if (viewStage === "topics") {
+  // Call Topics-only mode: navigated from a historical call_topics card
+  if (viewStage === "call_topics") {
     return (
       <div className="h-full flex flex-col">
         <div className="px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
@@ -185,6 +185,26 @@ export default function CallDetailPage() {
           <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
           {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
           <ContextFiles call={call} readonly />
+        </div>
+      </div>
+    );
+  }
+
+  // Project Topics-only mode: navigated from a historical project_topics card
+  if (viewStage === "project_topics") {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
+          <button
+            onClick={() => router.push(`/projects/${projectId}/board`)}
+            className="text-[12px] text-[#5e6c84] hover:text-[#0052cc] hover:underline mb-2 block"
+          >
+            ← Board
+          </button>
+          <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+        </div>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <p style={{ fontSize: 13, color: "#5e6c84" }}>Project Topics stage — coming soon</p>
         </div>
       </div>
     );
@@ -259,7 +279,7 @@ export default function CallDetailPage() {
         {call.kanban_stage === "transcript" && (
           <TranscriptStage call={call} onAdvance={loadCall} />
         )}
-        {call.kanban_stage === "topics" && (
+        {call.kanban_stage === "call_topics" && (
           <>
             <TopicsStage call={call} onAdvance={loadCall} />
             {call.transcript && (
@@ -267,6 +287,11 @@ export default function CallDetailPage() {
             )}
             <ContextFiles call={call} readonly />
           </>
+        )}
+        {call.kanban_stage === "project_topics" && (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <p style={{ fontSize: 13, color: "#5e6c84" }}>Project Topics stage — coming soon</p>
+          </div>
         )}
         {call.kanban_stage === "artifacts" && (
           <>

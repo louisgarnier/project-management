@@ -1,34 +1,28 @@
-# Story 7.1 — Topic Dashboard API
+# Story 7.1 — DB Migration: New Kanban Stages
 
-**Epic:** EPIC-7 — Topic Dashboard
-**Maps to plan:** Slice 7
-**Maps to PRD:** US-10, FR-11, FR-11b
+**Epic:** EPIC-7 — Two-Step Topic Extraction
 **Status:** `pending`
 
 ---
 
 ## Goal
-Railway FastAPI exposes full CRUD for the project-level Topic Dashboard. User can add, remove, edit topics and change their status at any time — not only during the Topics kanban stage.
+Replace the single `topics` kanban stage with two stages: `call_topics` (Step 1 — extract from this call only) and `project_topics` (Step 2 — match against accumulated project topics). Update all DB constraints, backend stage ordering, and frontend type definitions.
 
 ## Acceptance Criteria
-- [ ] `GET /api/projects/{project_id}/topics` returns all topics with full update history per topic:
-  - `first_raised` (call title + date)
-  - `status` (`active` · `decision_made` · `on_hold` · `closed`)
-  - `latest_update` (most recent `topic_updates` row)
-  - `follow_up_items` (from latest update)
-  - `history` (all `topic_updates` rows in order)
-- [ ] `POST /api/projects/{project_id}/topics` creates a new topic manually
-- [ ] `PATCH /api/topics/{topic_id}` updates name and/or status
-- [ ] `DELETE /api/topics/{topic_id}` deletes topic and all its updates
+- [ ] Migration `011_two_step_topics_stages.sql` updates CHECK constraint to `('transcript','call_topics','project_topics','artifacts','done')`
+- [ ] All existing rows at `topics` stage migrated to `call_topics`
+- [ ] Backend `STAGE_ORDER` updated in `calls.py`
+- [ ] `KanbanStage` TypeScript type updated
+- [ ] `STAGES` array and `getCellState` in `KanbanBoard.tsx` updated (5 columns)
+- [ ] All backend tests pass after migration
 
 ## Tasks
-- [ ] Extend `backend/routers/topics.py` with PATCH and DELETE
-- [ ] Update `GET /api/projects/{project_id}/topics` to return enriched shape (with history, first_raised, latest_update)
-- [ ] Write tests: `backend/tests/test_topic_dashboard.py`
+- [ ] Write `backend/database/migrations/011_two_step_topics_stages.sql`
+- [ ] Update `STAGE_ORDER` in `backend/routers/calls.py`
+- [ ] Update `KanbanStage` type in `frontend/src/types/index.ts`
+- [ ] Update `STAGES` + `STAGE_ORDER` + `getCellState` in `frontend/src/components/KanbanBoard.tsx`
+- [ ] Update `frontend/app/projects/[id]/calls/[call_id]/page.tsx` stage routing
 
 ## Dev Tests
-- `backend/tests/test_topic_dashboard.py`:
-  - `GET` returns topics with history (at least `first_raised` field populated)
-  - `POST` creates topic with `status='active'`
-  - `PATCH` changes status to `'decision_made'`
-  - `DELETE` removes topic and all `topic_updates` rows
+- `backend/tests/test_calls.py` — all existing tests pass (no `topics` stage referenced)
+- `npx tsc --noEmit` — 0 errors
