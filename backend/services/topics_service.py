@@ -337,3 +337,82 @@ async def validate_call(call_id: str) -> dict:
     )
     logger.info(f"✅ [Topics] Call {call_id} validated → done")
     return result[0]
+
+
+async def generate_brief(call_id: str) -> dict:
+    """
+    Returns:
+      {
+        "priority_topics": [...],       # open/in_progress, sorted concern-first then calls_open desc
+        "decisions_to_confirm": [...],  # decisions from the most recent done call in this project
+        "watch_list": [...],            # topics with sentiment=concern
+      }
+    """
+    db = get_client()
+
+    call_row = db.table("calls").select("project_id").eq("id", call_id).execute().data
+    if not call_row:
+        raise ValueError(f"Call {call_id} not found")
+    project_id = call_row[0]["project_id"]
+
+    previous = _get_previous_topics(project_id, db)
+
+    if not previous:
+        return {"priority_topics": [], "decisions_to_confirm": [], "watch_list": []}
+
+    open_topics = [t for t in previous if t["status"] in ("open", "in_progress")]
+
+    def sort_key(t: dict) -> tuple:
+        sent_order = {"concern": 0, "neutral": 1, "positive": 2}
+        return (sent_order.get(t["sentiment"], 1), -t["calls_open"])
+
+    priority = sorted(open_topics, key=sort_key)
+
+    priority_items = [
+        {
+            "topic_id": t["topic_id"],
+            "name": t["name"],
+            "calls_open": t["calls_open"],
+            "sentiment": t["sentiment"],
+            "last_summary": t["summary"],
+            "last_follow_up_items": t["follow_up_items"],
+        }
+        for t in priority
+    ]
+
+    # Decisions from the most recent done call in this project
+    done_calls = (
+        db.table("calls")
+        .select("id, created_at")
+        .eq("project_id", project_id)
+        .eq("kanban_stage", "done")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    decisions_to_confirm: list[dict] = []
+    if done_calls:
+        last_call_id = done_calls[0]["id"]
+        updates_with_decisions = (
+            db.table("topic_updates")
+            .select("decisions, topic_id")
+            .eq("call_id", last_call_id)
+            .execute()
+            .data
+        )
+        for u in updates_with_decisions:
+            topic_rows = (
+                db.table("topics").select("name").eq("id", u["topic_id"]).execute().data
+            )
+            topic_name = topic_rows[0]["name"] if topic_rows else "Unknown"
+            for d in (u.get("decisions") or []):
+                decisions_to_confirm.append({"text": d, "topic_name": topic_name})
+
+    watch_list = [i for i in priority_items if i["sentiment"] == "concern"]
+
+    return {
+        "priority_topics": priority_items,
+        "decisions_to_confirm": decisions_to_confirm,
+        "watch_list": watch_list,
+    }

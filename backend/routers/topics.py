@@ -1,5 +1,5 @@
 from backend.database.supabase_client import get_client
-from backend.services.topics_service import TopicUpdate, extract_topics, save_topics, validate_call
+from backend.services.topics_service import TopicUpdate, extract_topics, save_topics, validate_call, generate_brief
 from backend.utils.logger import get_logger
 from fastapi import APIRouter, HTTPException
 
@@ -51,3 +51,13 @@ async def validate(call_id: str):
                 detail={"error": "unacknowledged_topics", "ids": ids},
             )
         raise HTTPException(status_code=422, detail=msg)
+
+
+@router.get("/calls/{call_id}/brief")
+async def brief(call_id: str):
+    logger.info(f"📥 [Topics] Brief requested: call={call_id}")
+    try:
+        result = await generate_brief(call_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

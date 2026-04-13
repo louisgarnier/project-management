@@ -255,3 +255,49 @@ def test_validate_returns_422_unacknowledged(mock_validate, mock_gc):
     body = r.json()
     assert body["detail"]["error"] == "unacknowledged_topics"
     assert TOPIC_ID in body["detail"]["ids"]
+
+
+@patch("backend.routers.topics.get_client")
+@patch("backend.routers.topics.generate_brief")
+def test_brief_call1_returns_empty(mock_brief, mock_gc):
+    """Call 1 has no prior topics — brief is empty."""
+    mock_gc.return_value = MagicMock()
+    mock_brief.return_value = {
+        "priority_topics": [],
+        "decisions_to_confirm": [],
+        "watch_list": [],
+    }
+
+    r = http.get(f"/api/calls/{CALL_ID}/brief")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["priority_topics"] == []
+    assert body["watch_list"] == []
+
+
+@patch("backend.routers.topics.get_client")
+@patch("backend.routers.topics.generate_brief")
+def test_brief_call2_returns_sorted_topics(mock_brief, mock_gc):
+    """Call 2 brief: priority topics sorted by calls_open desc, concern first."""
+    mock_gc.return_value = MagicMock()
+    mock_brief.return_value = {
+        "priority_topics": [
+            {"topic_id": TOPIC_ID, "name": "Pricing", "calls_open": 3,
+             "sentiment": "concern", "last_summary": "Monthly pref.", "last_follow_up_items": []},
+            {"topic_id": TOPIC_ID2, "name": "SLA", "calls_open": 1,
+             "sentiment": "neutral", "last_summary": "In progress.", "last_follow_up_items": []},
+        ],
+        "decisions_to_confirm": [{"text": "DPA signed", "topic_name": "Legal"}],
+        "watch_list": [
+            {"topic_id": TOPIC_ID, "name": "Pricing", "calls_open": 3,
+             "sentiment": "concern", "last_summary": "Monthly pref.", "last_follow_up_items": []},
+        ],
+    }
+
+    r = http.get(f"/api/calls/{CALL_ID}/brief")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["priority_topics"]) == 2
+    assert body["priority_topics"][0]["calls_open"] == 3
+    assert len(body["watch_list"]) == 1
+    assert len(body["decisions_to_confirm"]) == 1
