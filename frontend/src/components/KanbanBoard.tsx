@@ -20,7 +20,7 @@ type CellState = "done" | "active" | "pending" | "locked";
 
 const CELL_STYLE: Record<CellState, React.CSSProperties> = {
   done:    { background: "#f4f5f7", border: "1px solid #dfe1e6" },
-  active:  { background: "#ffffff",  border: "1.5px solid #0052cc" },
+  active:  { background: "#ffffff",  border: "1.5px solid #ff8b00" },
   locked:  { background: "#f4f5f7", border: "1px dashed #b3c6e8", opacity: 0.7 },
   pending: { background: "#f4f5f7", border: "1px dashed #dfe1e6" },
 };
@@ -34,7 +34,7 @@ const STATUS_LABEL: Record<CellState, string> = {
 
 const STATUS_COLOR: Record<CellState, string> = {
   done:    "#36b37e",
-  active:  "#0052cc",
+  active:  "#ff8b00",
   locked:  "#97a0af",
   pending: "#97a0af",
 };
