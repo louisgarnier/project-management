@@ -51,3 +51,25 @@ def test_topic_update_has_disposition():
 def test_brief_out_shape():
     b = BriefOut(priority_topics=[], decisions_to_confirm=[], watch_list=[])
     assert b.priority_topics == []
+
+
+def test_topic_in_rejects_bad_owner():
+    with pytest.raises(ValidationError):
+        TopicIn(
+            name="X", summary="y", follow_up_items=[], decisions=[],
+            status="open", owner="BadValue", sentiment="neutral",
+        )
+
+
+def test_brief_item_valid():
+    from backend.services.topics_service import BriefItem
+    bi = BriefItem(
+        topic_id="aaaaaaaa-0000-0000-0000-000000000001",
+        name="Pricing",
+        calls_open=2,
+        sentiment="concern",
+        last_summary="Client pushed back.",
+        last_follow_up_items=["Send breakdown"],
+    )
+    assert bi.sentiment == "concern"
+    assert bi.calls_open == 2

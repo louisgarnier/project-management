@@ -34,16 +34,16 @@ class TopicOut(BaseModel):
     summary: Optional[str] = None
     follow_up_items: list[str] = []
     decisions: list[str] = []
-    status: Optional[str] = None
-    owner: Optional[str] = None
-    sentiment: Optional[str] = None
+    status: Optional[Literal["open", "in_progress", "resolved"]] = None
+    owner: Optional[Literal["Us", "Client", "Both"]] = None
+    sentiment: Optional[Literal["positive", "neutral", "concern"]] = None
 
 
 class BriefItem(BaseModel):
     topic_id: str
     name: str
     calls_open: int
-    sentiment: str
+    sentiment: Literal["positive", "neutral", "concern"]
     last_summary: str
     last_follow_up_items: list[str]
 
