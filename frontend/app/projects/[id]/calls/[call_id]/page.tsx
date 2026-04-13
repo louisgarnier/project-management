@@ -174,8 +174,8 @@ export default function CallDetailPage() {
           <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          <TopicsPanel callId={callId} projectId={projectId} defaultOpen />
-          <ArtifactsPanel callId={callId} projectId={projectId} />
+          <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
+          <ArtifactsPanel callId={callId} projectId={projectId} call={call} />
           {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
           <ContextFiles call={call} readonly />
         </div>
@@ -261,11 +261,35 @@ export default function CallDetailPage() {
         {call.kanban_stage === "done" && (
           <>
             <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8,
-              padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#15803d", fontWeight: 600 }}>
-              ✓ Call complete — all topics validated and artifacts saved.
+              padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#15803d",
+              display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontWeight: 600 }}>✓ Call complete — all topics validated and artifacts saved.</span>
+              {call.is_locked ? (
+                <button
+                  onClick={async () => { const updated = await callsAPI.unlock(callId); setCall(updated); }}
+                  style={{ fontSize: 12, fontWeight: 600, background: "white", color: "#5e6c84",
+                    border: "1px solid #dfe1e6", borderRadius: 6, padding: "5px 14px", cursor: "pointer" }}
+                >
+                  🔓 Unlock
+                </button>
+              ) : (
+                <button
+                  onClick={async () => { const updated = await callsAPI.lock(callId); setCall(updated); }}
+                  style={{ fontSize: 12, fontWeight: 600, background: "#172b4d", color: "white",
+                    border: "none", borderRadius: 6, padding: "5px 14px", cursor: "pointer" }}
+                >
+                  🔒 Lock Call
+                </button>
+              )}
             </div>
-            <TopicsPanel callId={callId} projectId={projectId} defaultOpen />
-            <ArtifactsPanel callId={callId} projectId={projectId} />
+            {call.is_locked && (
+              <div style={{ fontSize: 11, color: "#97a0af", background: "#f4f5f7",
+                borderRadius: 6, padding: "6px 12px", marginBottom: 12 }}>
+                🔒 This call is locked. Unlock to edit transcript, topics, or regenerate artifacts.
+              </div>
+            )}
+            <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
+            <ArtifactsPanel callId={callId} projectId={projectId} call={call} />
             {call.transcript && (
               <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />
             )}
