@@ -202,3 +202,27 @@ export const artifactsAPI = {
   deleteAll: (callId: string) =>
     proxyFetch<void>(`/api/calls/${callId}/artifacts`, { method: "DELETE" }),
 };
+
+export const topicsAPI = {
+  extract: (callId: string) =>
+    proxyFetch<import("@/types").ExtractionResult>(`/api/calls/${callId}/topics/extract`, {
+      method: "POST",
+    }),
+
+  save: (callId: string, topics: import("@/types").TopicSavePayload[]) =>
+    proxyFetch<{ saved: number }>(`/api/calls/${callId}/topics`, {
+      method: "POST",
+      body: JSON.stringify(topics),
+    }),
+
+  validate: (callId: string) =>
+    proxyFetch<{ kanban_stage: string }>(`/api/calls/${callId}/topics/validate`, {
+      method: "POST",
+    }),
+
+  brief: (callId: string) =>
+    proxyFetch<import("@/types").CallBrief>(`/api/calls/${callId}/brief`),
+
+  listForProject: (projectId: string) =>
+    proxyFetch<import("@/types").TopicData[]>(`/api/projects/${projectId}/topics`),
+};

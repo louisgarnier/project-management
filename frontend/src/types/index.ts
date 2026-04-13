@@ -48,31 +48,55 @@ export interface Artifact {
   created_at: string;
 }
 
-export type TopicStatus = "active" | "decision_made" | "on_hold" | "closed";
+// ── Topics ──────────────────────────────────────────────────────────────────
 
-export interface Topic {
-  id: string;
-  project_id: string;
+export type TopicStatus    = "open" | "in_progress" | "resolved";
+export type TopicOwner     = "Us" | "Client" | "Both";
+export type TopicSentiment = "positive" | "neutral" | "concern";
+export type TopicDisposition = "keep_as_is" | "archive" | null;
+
+/** One topic as returned by extract or dashboard endpoints */
+export interface TopicData {
+  topic_id?: string | null;  // null / absent = brand new (not yet in DB)
   name: string;
-  status: TopicStatus;
-  first_raised_call_id: string | null;
-  created_at: string;
-}
-
-export interface TopicUpdate {
-  id: string;
-  topic_id: string;
-  call_id: string;
   summary: string;
   follow_up_items: string[];
-  created_at: string;
+  decisions: string[];
+  status: TopicStatus;
+  owner: TopicOwner;
+  sentiment: TopicSentiment;
+  calls_open?: number;
 }
 
-// Topic with enriched data for the dashboard
-export interface TopicWithHistory extends Topic {
-  latest_update: TopicUpdate | null;
-  history: TopicUpdate[];
-  first_raised_call_title?: string;
+/** Response from POST /extract */
+export interface ExtractionResult {
+  call_number: number;
+  followed_up: TopicData[];
+  not_discussed: TopicData[];
+  new_topics: TopicData[];
+}
+
+/** One item in the brief panel */
+export interface BriefItem {
+  topic_id: string;
+  name: string;
+  calls_open: number;
+  sentiment: TopicSentiment;
+  last_summary: string;
+  last_follow_up_items: string[];
+}
+
+/** Response from GET /brief */
+export interface CallBrief {
+  priority_topics: BriefItem[];
+  decisions_to_confirm: { text: string; topic_name: string }[];
+  watch_list: BriefItem[];
+}
+
+/** What we send to POST /topics (save) */
+export interface TopicSavePayload extends TopicData {
+  topic_id: string | null;
+  disposition: TopicDisposition;
 }
 
 export interface CallFile {
