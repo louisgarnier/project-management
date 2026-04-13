@@ -13,6 +13,7 @@ import ArtifactsPanel from "@/components/ArtifactsPanel";
 import TopicsStage from "@/components/TopicsStage";
 import TopicsPanel from "@/components/TopicsPanel";
 import CallTopicsStage from "@/components/CallTopicsStage";
+import ProjectTopicsStage from "@/components/ProjectTopicsStage";
 import type { AggregateResult } from "@/types";
 
 const STAGES = ["transcript", "call_topics", "project_topics", "artifacts", "done"] as const;
@@ -214,8 +215,10 @@ export default function CallDetailPage() {
           </button>
           <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
         </div>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <p style={{ fontSize: 13, color: "#5e6c84" }}>Project Topics stage — coming soon</p>
+        <div className="flex-1 overflow-y-auto p-5">
+          <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
+          {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
+          <ContextFiles call={call} readonly />
         </div>
       </div>
     );
@@ -303,9 +306,14 @@ export default function CallDetailPage() {
           />
         )}
         {call.kanban_stage === "project_topics" && (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <p style={{ fontSize: 13, color: "#5e6c84" }}>Project Topics stage — coming soon</p>
-          </div>
+          <ProjectTopicsStage
+            call={call}
+            initialResult={aggregateResult}
+            onValidated={() => {
+              setAggregateResult(null);
+              loadCall();
+            }}
+          />
         )}
         {call.kanban_stage === "artifacts" && (
           <>
