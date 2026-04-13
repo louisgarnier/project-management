@@ -3,7 +3,7 @@ from pydantic import ValidationError
 import unittest
 import asyncio
 from unittest.mock import patch, MagicMock
-from backend.services.topics_service import TopicIn, TopicUpdate, TopicOut, BriefItem, BriefOut, extract_call_topics
+from backend.services.topics_service import TopicIn, TopicUpdate, TopicOut, BriefItem, BriefOut, extract_call_topics, aggregate_topics
 
 
 def test_topic_in_valid():
@@ -440,3 +440,84 @@ class TestExtractCallTopics(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             self._run(extract_call_topics("call-1"))
         self.assertEqual(str(ctx.exception), "no_transcript")
+
+
+class TestAggregateTopics(unittest.TestCase):
+
+    def _run(self, coro):
+        return asyncio.run(coro)
+
+    @patch("backend.services.topics_service.get_client")
+    @patch("backend.services.topics_service.save_topics")
+    def test_aggregate_call1_auto_advances(self, mock_save, mock_gc):
+        """Call 1: no previous topics → saves all as new, returns auto_advanced=True."""
+        db = MagicMock()
+        mock_gc.return_value = db
+
+        # call row — project_id lookup
+        db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+            {"project_id": "proj-1"}
+        ]
+
+        # _get_previous_topics: topics table returns empty
+        # done calls count: empty
+        # We use patch for _get_previous_topics and _get_topics_prompt to avoid complex chains
+        async def fake_save(call_id, topics):
+            return {"saved": len(topics)}
+        mock_save.side_effect = fake_save
+
+        with patch("backend.services.topics_service._get_previous_topics", return_value=[]):
+            with patch("backend.services.topics_service._get_topics_prompt", return_value=(None, "groq")):
+                # Make done-calls query return empty
+                call_topics = [{"name": "Budget", "summary": "Q2 budget", "follow_up_items": [],
+                                "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral"}]
+                result = self._run(aggregate_topics("call-1", call_topics))
+
+        self.assertTrue(result.get("auto_advanced"))
+        self.assertEqual(result["call_number"], 1)
+
+    @patch("backend.services.topics_service.get_client")
+    @patch("backend.services.topics_service._call_llm")
+    def test_aggregate_call2_returns_buckets(self, mock_llm, mock_gc):
+        """Call 2: previous topics exist → runs LLM, returns 3 buckets."""
+        db = MagicMock()
+        mock_gc.return_value = db
+
+        # call row
+        db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+            {"project_id": "proj-1"}
+        ]
+
+        prev_topic = {"topic_id": "t-1", "name": "Budget", "calls_open": 1,
+                      "summary": "old summary", "follow_up_items": [], "decisions": [],
+                      "status": "open", "owner": "Us", "sentiment": "neutral"}
+
+        async def fake_llm(prompt, llm):
+            return {
+                "followed_up": [{"name": "Budget", "summary": "Updated", "follow_up_items": [],
+                                 "decisions": [], "status": "in_progress", "owner": "Us", "sentiment": "neutral"}],
+                "not_discussed": [],
+                "new_topics": [{"name": "Timeline", "summary": "New topic", "follow_up_items": [],
+                                "decisions": [], "status": "open", "owner": "Client", "sentiment": "concern"}],
+            }
+        mock_llm.side_effect = fake_llm
+
+        # done calls count: one done call
+        done_q = (db.table.return_value.select.return_value
+                  .eq.return_value.eq.return_value.execute)
+        done_q.return_value.data = [{"id": "call-0"}]
+
+        with patch("backend.services.topics_service._get_previous_topics", return_value=[prev_topic]):
+            with patch("backend.services.topics_service._get_topics_prompt", return_value=(None, "groq")):
+                result = self._run(aggregate_topics("call-1", [
+                    {"name": "Budget", "summary": "Budget discussed", "follow_up_items": [],
+                     "decisions": [], "status": "in_progress", "owner": "Us", "sentiment": "neutral"},
+                    {"name": "Timeline", "summary": "New topic", "follow_up_items": [],
+                     "decisions": [], "status": "open", "owner": "Client", "sentiment": "concern"},
+                ]))
+
+        self.assertNotIn("auto_advanced", result)
+        self.assertIn("followed_up", result)
+        self.assertIn("new_topics", result)
+        # _reattach_id: "Budget" should have topic_id = "t-1"
+        self.assertEqual(result["followed_up"][0].get("topic_id"), "t-1")

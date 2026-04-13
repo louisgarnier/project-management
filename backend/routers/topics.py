@@ -1,10 +1,11 @@
 from backend.database.supabase_client import get_client
 from backend.services.topics_service import (
     extract_topics, save_topics, validate_call, generate_brief,
-    list_project_topics, extract_call_topics, TopicUpdate,
+    list_project_topics, extract_call_topics, aggregate_topics, TopicUpdate,
 )
 from backend.utils.logger import get_logger
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel as PydanticBaseModel
 
 router = APIRouter(prefix="/api", tags=["topics"])
 logger = get_logger("topics_router")
@@ -41,6 +42,32 @@ async def extract_call(call_id: str):
     except Exception as e:
         logger.exception(f"❌ [Topics] Step-1 extraction failed: {e}")
         raise HTTPException(status_code=500, detail="Topic extraction failed")
+
+
+class AggregatePayload(PydanticBaseModel):
+    topics: list[dict]
+
+
+@router.post("/calls/{call_id}/topics/aggregate")
+async def aggregate(call_id: str, payload: AggregatePayload):
+    """Step 2: match call topics against project topics → 3 buckets or auto-advance."""
+    logger.info(
+        f"📥 [Topics] Step-2 aggregate requested: call={call_id}, "
+        f"input_topics={len(payload.topics)}"
+    )
+    try:
+        result = await aggregate_topics(call_id, payload.topics)
+        if result.get("auto_advanced"):
+            logger.info(f"✅ [Topics] Auto-advanced Call 1: {call_id}")
+        else:
+            total = sum(len(result.get(k, [])) for k in ("followed_up", "not_discussed", "new_topics"))
+            logger.info(f"✅ [Topics] Step-2 returned {total} classified topics")
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"❌ [Topics] Step-2 aggregation failed: {e}")
+        raise HTTPException(status_code=500, detail="Aggregation failed")
 
 
 @router.post("/calls/{call_id}/topics")

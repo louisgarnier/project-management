@@ -400,6 +400,118 @@ async def extract_call_topics(call_id: str) -> list[dict]:
     return raw if isinstance(raw, list) else []
 
 
+_AGGREGATE_SYSTEM = (
+    "You are an expert at matching client call topics to an existing project topic list. "
+    "Return ONLY valid JSON. No markdown, no explanation."
+)
+
+
+async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
+    """
+    Step 2 of two-step extraction: match call_topics against accumulated project topics.
+
+    Call 1 (no previous topics): saves all as new, advances stage to 'artifacts',
+      returns {"auto_advanced": True, "call_number": 1}.
+
+    Call 2+: runs LLM to classify into 3 buckets, advances stage to 'project_topics',
+      returns {call_number, followed_up, not_discussed, new_topics}.
+    """
+    db = get_client()
+
+    call_row = db.table("calls").select("project_id").eq("id", call_id).execute().data
+    if not call_row:
+        raise ValueError(f"Call {call_id} not found")
+    project_id = call_row[0]["project_id"]
+
+    previous = _get_previous_topics(project_id, db)
+
+    done_calls = (
+        db.table("calls").select("id")
+        .eq("project_id", project_id).eq("kanban_stage", "done")
+        .execute().data
+    )
+    call_number = len(done_calls) + 1
+
+    if not previous:
+        # Call 1: auto-advance — save all as new topics and jump to artifacts
+        new_topics_to_save = [
+            TopicUpdate(**{**t, "topic_id": None, "disposition": None})
+            for t in call_topics
+        ]
+        await save_topics(call_id, new_topics_to_save)
+        db.table("calls").update({"kanban_stage": "artifacts"}).eq("id", call_id).execute()
+        logger.info(f"✅ [Topics] Call 1 auto-advanced: saved {len(new_topics_to_save)} topics → artifacts")
+        return {"auto_advanced": True, "call_number": 1}
+
+    # Call 2+: LLM matching
+    stored_prompt, stored_llm = _get_topics_prompt(project_id, db)
+    if stored_llm is None:
+        proj_rows = db.table("projects").select("default_llm").eq("id", project_id).execute().data
+        stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
+    llm = stored_llm or "groq"
+
+    # Build previous topics context with history for semantic matching
+    prev_context = [
+        {
+            "topic_id": t["topic_id"],
+            "name": t["name"],
+            "status": t["status"],
+            "summary": t["summary"],
+            "follow_up_items": t["follow_up_items"],
+        }
+        for t in previous
+    ]
+
+    prompt = (
+        f"Match the new call topics to the existing project topics.\n\n"
+        f"New call topics:\n{json.dumps(call_topics, indent=2)}\n\n"
+        f"Existing project topics (with history):\n{json.dumps(prev_context, indent=2)}\n\n"
+        f"Rules:\n"
+        f"- If a new topic matches an existing one (same subject, possibly different wording): "
+        f"put it in 'followed_up'. Use the existing topic name exactly. Update summary/status/follow_ups with new info.\n"
+        f"- Existing topics not covered by any new topic: put in 'not_discussed' unchanged.\n"
+        f"- New topics with no match: put in 'new_topics'.\n\n"
+        f"Return JSON: {{\"followed_up\": [...], \"not_discussed\": [...], \"new_topics\": [...]}}\n"
+        f"Each topic: {_TOPIC_SCHEMA}"
+    )
+
+    raw = await _call_llm(prompt, llm)
+
+    # Re-attach topic_ids stripped by LLM
+    prev_by_name = {t["name"].lower().strip(): t["topic_id"] for t in previous}
+
+    def _reattach(topic: dict) -> dict:
+        if not topic.get("topic_id"):
+            key = topic.get("name", "").lower().strip()
+            if key in prev_by_name:
+                topic = {**topic, "topic_id": prev_by_name[key]}
+        return topic
+
+    if isinstance(raw, list):
+        prev_names = {t["name"] for t in previous}
+        followed_up = [_reattach(t) for t in raw if t["name"] in prev_names]
+        not_discussed = [t for t in previous if t["name"] not in {x["name"] for x in raw}]
+        new_topics_list = [t for t in raw if t["name"] not in prev_names]
+    else:
+        followed_up = [_reattach(t) for t in raw.get("followed_up", [])]
+        not_discussed = [_reattach(t) for t in raw.get("not_discussed", [])]
+        new_topics_list = raw.get("new_topics", [])
+
+    # Advance to project_topics stage for user review
+    db.table("calls").update({"kanban_stage": "project_topics"}).eq("id", call_id).execute()
+    logger.info(
+        f"✅ [Topics] Step-2 complete: {len(followed_up)} followed, "
+        f"{len(not_discussed)} not discussed, {len(new_topics_list)} new → project_topics"
+    )
+
+    return {
+        "call_number": call_number,
+        "followed_up": followed_up,
+        "not_discussed": not_discussed,
+        "new_topics": new_topics_list,
+    }
+
+
 async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
     """
     For each topic:
