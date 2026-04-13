@@ -132,3 +132,28 @@ def test_extract_call1_returns_flat_list(mock_extract, mock_gc):
     assert body["call_number"] == 1
     assert len(body["new_topics"]) == 1
     assert body["new_topics"][0]["name"] == "Pricing"
+
+
+@patch("backend.routers.topics.get_client")
+@patch("backend.routers.topics.extract_topics")
+def test_extract_call2_returns_three_buckets(mock_extract, mock_gc):
+    """POST /extract on Call 2+ returns followed_up, not_discussed, new_topics."""
+    mock_gc.return_value = MagicMock()
+    async def _fake():
+        return {
+            "call_number": 2,
+            "followed_up": [SAMPLE_TOPIC],
+            "not_discussed": [{**SAMPLE_TOPIC, "name": "Legal Review"}],
+            "new_topics": [{**SAMPLE_TOPIC, "name": "Support SLA"}],
+        }
+    mock_extract.return_value = _fake()
+
+    r = http.post(f"/api/calls/{CALL_ID}/topics/extract")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["call_number"] == 2
+    assert len(body["followed_up"]) == 1
+    assert len(body["not_discussed"]) == 1
+    assert body["not_discussed"][0]["name"] == "Legal Review"
+    assert len(body["new_topics"]) == 1
+    assert body["new_topics"][0]["name"] == "Support SLA"
