@@ -371,7 +371,7 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
             disabled={!allDone || advancing}
             className="px-5 py-2 bg-[#0052cc] text-white text-[13px] font-medium rounded hover:bg-[#0747a6] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {advancing ? "Advancing…" : "Proceed to Topics →"}
+            {advancing ? "Advancing…" : "Complete Call →"}
           </button>
         </div>
       )}

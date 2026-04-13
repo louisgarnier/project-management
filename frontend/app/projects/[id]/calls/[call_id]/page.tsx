@@ -13,7 +13,7 @@ import ArtifactsPanel from "@/components/ArtifactsPanel";
 import TopicsStage from "@/components/TopicsStage";
 import TopicsPanel from "@/components/TopicsPanel";
 
-const STAGES = ["transcript", "artifacts", "topics", "done"] as const;
+const STAGES = ["transcript", "topics", "artifacts", "done"] as const;
 
 export default function CallDetailPage() {
   const params = useParams<{ id: string; call_id: string }>();
@@ -207,6 +207,15 @@ export default function CallDetailPage() {
         {call.kanban_stage === "transcript" && (
           <TranscriptStage call={call} onAdvance={loadCall} />
         )}
+        {call.kanban_stage === "topics" && (
+          <>
+            <TopicsStage call={call} onAdvance={loadCall} />
+            {call.transcript && (
+              <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />
+            )}
+            <ContextFiles call={call} readonly />
+          </>
+        )}
         {call.kanban_stage === "artifacts" && (
           <>
             <ArtifactsStage call={call} onAdvance={loadCall} />
@@ -227,21 +236,11 @@ export default function CallDetailPage() {
             </div>
           </>
         )}
-        {call.kanban_stage === "topics" && (
-          <>
-            <TopicsStage call={call} onAdvance={loadCall} />
-            <ArtifactsStage call={call} onAdvance={loadCall} hideAdvance />
-            {call.transcript && (
-              <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />
-            )}
-            <ContextFiles call={call} readonly />
-          </>
-        )}
         {call.kanban_stage === "done" && (
           <>
             <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8,
               padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#15803d", fontWeight: 600 }}>
-              ✓ Call complete — all topics validated and saved.
+              ✓ Call complete — all topics validated and artifacts saved.
             </div>
             <TopicsPanel callId={callId} projectId={projectId} defaultOpen />
             <ArtifactsPanel callId={callId} projectId={projectId} />

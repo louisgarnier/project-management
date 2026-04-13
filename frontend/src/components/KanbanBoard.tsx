@@ -5,12 +5,12 @@ import type { Call, KanbanStage } from "@/types";
 
 const STAGES: { key: KanbanStage; label: string }[] = [
   { key: "transcript", label: "Transcript" },
-  { key: "artifacts",  label: "Artifacts"  },
   { key: "topics",     label: "Topics"     },
+  { key: "artifacts",  label: "Artifacts"  },
   { key: "done",       label: "Done"       },
 ];
 
-const STAGE_ORDER: KanbanStage[] = ["transcript", "artifacts", "topics", "done"];
+const STAGE_ORDER: KanbanStage[] = ["transcript", "topics", "artifacts", "done"];
 
 const STAGE_INDEX: Record<KanbanStage, number> = Object.fromEntries(
   STAGE_ORDER.map((s, i) => [s, i])
@@ -59,7 +59,7 @@ function getCellState(
   if (callIdx === stageIdx) return "active";
 
   // Stage not yet reached — lock artifacts and topics if prev call is incomplete
-  if (stageKey === "topics" && !prevCallDone) {
+  if (stageKey === "artifacts" && !prevCallDone) {
     return "locked";
   }
   return "pending";
