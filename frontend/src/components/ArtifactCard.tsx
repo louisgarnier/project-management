@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Artifact, ArtifactType } from "@/types";
 
 type Props = {
@@ -16,6 +16,11 @@ const PREVIEW_LENGTH = 220;
 export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRetry, onDelete }: Props) {
   const [content, setContent] = useState(artifact.content ?? "");
   const [marking, setMarking] = useState(false);
+
+  // Sync content when artifact.content is updated by the SSE stream
+  useEffect(() => {
+    setContent(artifact.content ?? "");
+  }, [artifact.content]);
   const [markError, setMarkError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
