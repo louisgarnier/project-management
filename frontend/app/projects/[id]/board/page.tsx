@@ -59,6 +59,12 @@ export default function BoardPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
         <h1 className="text-[18px] font-bold text-[#172b4d]">Board</h1>
+        <button
+          onClick={() => setShowModal(true)}
+          className="px-4 py-2 bg-[#0052cc] text-white text-[13px] font-medium rounded hover:bg-[#0747a6]"
+        >
+          + New Call
+        </button>
       </div>
 
       {/* Tabs */}
