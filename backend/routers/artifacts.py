@@ -90,6 +90,7 @@ def list_artifacts(call_id: str):
 class ArtifactUpdate(BaseModel):
     content: str | None = None
     status: Literal["pending", "generating", "done", "error"] | None = None
+    mode: Literal["groq", "claude", "openai", "manual"] | None = None
 
 
 @router.patch("/artifacts/{artifact_id}")

@@ -167,10 +167,44 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
     logger.info("Artifact marked done", { component: "ArtifactsStage", data: { artifactId } });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  function handleRetry(_artifactId: string) {
-    // Re-opens SSE stream for any remaining pending/error artifacts
-    void streamArtifacts();
+  async function handleRetry(artifactId: string) {
+    // Reset this artifact to pending with the current project default LLM, then re-stream
+    try {
+      const updated = await artifactsAPI.update(artifactId, {
+        status: "pending",
+        mode: projectDefaultLlm,
+      });
+      setArtifacts((prev) => prev.map((a) => (a.id === artifactId ? updated : a)));
+      logger.info("Artifact reset for retry", { component: "ArtifactsStage", data: { artifactId, llm: projectDefaultLlm } });
+      setPhase("generating");
+      await streamArtifacts();
+    } catch (err) {
+      logger.error("Retry failed", { component: "ArtifactsStage", data: err });
+    }
+  }
+
+  async function handleRegenerateAll() {
+    // Reset all non-done, non-manual artifacts to pending with project default LLM, then re-stream
+    try {
+      const toReset = artifacts.filter((a) => a.status !== "done" && a.status !== "generating");
+      await Promise.all(
+        toReset.map((a) =>
+          artifactsAPI.update(a.id, { status: "pending", mode: projectDefaultLlm })
+        )
+      );
+      setArtifacts((prev) =>
+        prev.map((a) =>
+          toReset.some((r) => r.id === a.id)
+            ? { ...a, status: "pending", mode: projectDefaultLlm }
+            : a
+        )
+      );
+      logger.info("All artifacts reset for regeneration", { component: "ArtifactsStage", data: { llm: projectDefaultLlm } });
+      setPhase("generating");
+      await streamArtifacts();
+    } catch (err) {
+      logger.error("Regenerate all failed", { component: "ArtifactsStage", data: err });
+    }
   }
 
   const typeMap = Object.fromEntries(artifactTypes.map((t) => [t.id, t]));
@@ -256,11 +290,21 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
         <h2 className="text-[15px] font-semibold text-[#172b4d]">
           {phase === "generating" ? "Generating artifacts…" : "Artifacts"}
         </h2>
-        {phase === "generating" && (
-          <span className="text-[12px] text-[#5e6c84]">
-            {artifacts.filter((a) => a.status === "done").length} / {artifacts.length} done
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {phase === "generating" && (
+            <span className="text-[12px] text-[#5e6c84]">
+              {artifacts.filter((a) => a.status === "done").length} / {artifacts.length} done
+            </span>
+          )}
+          {phase === "reviewing" && artifacts.some((a) => a.status === "error" || a.status === "pending") && (
+            <button
+              onClick={handleRegenerateAll}
+              className="text-[11px] text-[#0052cc] border border-[#0052cc] px-3 py-1 rounded hover:bg-[#e9f0ff] transition-colors"
+            >
+              Regenerate all with {projectDefaultLlm === "groq" ? "Groq" : projectDefaultLlm === "openai" ? "ChatGPT" : "Claude"}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-3">

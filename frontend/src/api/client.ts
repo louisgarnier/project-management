@@ -191,7 +191,7 @@ export const artifactsAPI = {
     }),
   list: (callId: string) =>
     proxyFetch<Artifact[]>(`/api/calls/${callId}/artifacts`),
-  update: (artifactId: string, data: { content?: string; status?: string }) =>
+  update: (artifactId: string, data: { content?: string; status?: string; mode?: ArtifactMode }) =>
     proxyFetch<Artifact>(`/api/artifacts/${artifactId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
