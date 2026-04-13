@@ -20,6 +20,7 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
 
   const [artifactTypes, setArtifactTypes] = useState<ArtifactType[]>([]);
   const [selections, setSelections] = useState<Record<string, SelectionMode>>({});
+  const [newTypeSelections, setNewTypeSelections] = useState<Record<string, SelectionMode>>({});
   const [projectDefaultLlm, setProjectDefaultLlm] = useState<LLMProvider>("groq");
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [phase, setPhase] = useState<Phase>("select");
@@ -216,15 +217,24 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
   const newTypes = artifactTypes.filter((t) => !coveredTypeIds.has(t.id));
 
   async function handleGenerateNew() {
+    const toProcess = newTypes.filter((t) => (newTypeSelections[t.id] ?? "generate") !== "skip");
+    if (toProcess.length === 0) return;
     setGenerating(true);
     setGenerateError(null);
     try {
-      const payload = newTypes.map((t) => ({
-        artifact_type_id: t.id,
-        mode: (t.llm ?? projectDefaultLlm) as ArtifactMode,
-      }));
+      const payload = toProcess.map((t) => {
+        const sel = newTypeSelections[t.id] ?? "generate";
+        const mode: ArtifactMode = sel === "manual" ? "manual" : (t.llm ?? projectDefaultLlm);
+        return { artifact_type_id: t.id, mode };
+      });
       const created = await artifactsAPI.createSelections(callId, payload);
       setArtifacts((prev) => [...prev, ...created]);
+      // Clear processed types from newTypeSelections
+      setNewTypeSelections((prev) => {
+        const updated = { ...prev };
+        toProcess.forEach((t) => delete updated[t.id]);
+        return updated;
+      });
       setPhase("generating");
       logger.info("Generated new artifact types", { component: "ArtifactsStage", data: { count: created.length } });
       await streamArtifacts();
@@ -327,25 +337,28 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
       </div>
 
       {phase === "reviewing" && newTypes.length > 0 && (
-        <div className="border border-dashed border-[#dfe1e6] rounded-lg px-4 py-3 bg-[#f4f5f7]">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[12px] font-medium text-[#172b4d]">
-                {newTypes.length} new artifact type{newTypes.length > 1 ? "s" : ""} added
-              </p>
-              <p className="text-[11px] text-[#5e6c84] mt-0.5">
-                {newTypes.map((t) => t.name).join(", ")}
-              </p>
-            </div>
+        <div className="border border-dashed border-[#b3c6e8] rounded-lg p-4 bg-[#f4f5f7]">
+          <p className="text-[12px] font-semibold text-[#172b4d] mb-3">
+            {newTypes.length} new artifact type{newTypes.length > 1 ? "s" : ""} available
+          </p>
+          <ArtifactSelector
+            artifactTypes={newTypes}
+            selections={newTypeSelections}
+            projectDefaultLlm={projectDefaultLlm}
+            onChange={(typeId, mode) =>
+              setNewTypeSelections((prev) => ({ ...prev, [typeId]: mode }))
+            }
+          />
+          {generateError && <p className="text-[11px] text-red-600 mt-2">{generateError}</p>}
+          <div className="flex justify-end mt-3">
             <button
               onClick={handleGenerateNew}
-              disabled={generating}
-              className="px-3 py-1.5 bg-[#0052cc] text-white text-[11px] font-medium rounded hover:bg-[#0747a6] disabled:opacity-50 whitespace-nowrap"
+              disabled={generating || newTypes.every((t) => (newTypeSelections[t.id] ?? "generate") === "skip")}
+              className="px-4 py-2 bg-[#0052cc] text-white text-[13px] font-medium rounded hover:bg-[#0747a6] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {generating ? "Generating…" : "Generate →"}
+              {generating ? "Generating…" : "Generate selected →"}
             </button>
           </div>
-          {generateError && <p className="text-[11px] text-red-600 mt-2">{generateError}</p>}
         </div>
       )}
 
