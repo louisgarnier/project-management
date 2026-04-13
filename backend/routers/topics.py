@@ -1,5 +1,5 @@
 from backend.database.supabase_client import get_client
-from backend.services.topics_service import extract_topics
+from backend.services.topics_service import TopicUpdate, extract_topics, save_topics
 from backend.utils.logger import get_logger
 from fastapi import APIRouter, HTTPException
 
@@ -20,3 +20,14 @@ async def extract(call_id: str):
     except Exception as e:
         logger.exception(f"❌ [Topics] Extraction failed: {e}")
         raise HTTPException(status_code=500, detail="Topic extraction failed")
+
+
+@router.post("/calls/{call_id}/topics")
+async def save(call_id: str, topics: list[TopicUpdate]):
+    logger.info(f"📥 [Topics] Save requested: call={call_id}, count={len(topics)}")
+    try:
+        result = await save_topics(call_id, topics)
+        logger.info(f"✅ [Topics] Saved {result['saved']} topics")
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

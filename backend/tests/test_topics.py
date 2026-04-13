@@ -157,3 +157,65 @@ def test_extract_call2_returns_three_buckets(mock_extract, mock_gc):
     assert body["not_discussed"][0]["name"] == "Legal Review"
     assert len(body["new_topics"]) == 1
     assert body["new_topics"][0]["name"] == "Support SLA"
+
+
+TOPIC_ID  = "cccccccc-0000-0000-0000-000000000001"
+TOPIC_ID2 = "cccccccc-0000-0000-0000-000000000002"
+
+
+@patch("backend.routers.topics.get_client")
+@patch("backend.routers.topics.save_topics")
+def test_save_topics_returns_200(mock_save, mock_gc):
+    mock_gc.return_value = MagicMock()
+    mock_save.return_value = {"saved": 2}
+
+    payload = [
+        {
+            "topic_id": None,
+            "name": "Pricing",
+            "summary": "Monthly preferred.",
+            "follow_up_items": ["Send breakdown"],
+            "decisions": [],
+            "status": "open",
+            "owner": "Client",
+            "sentiment": "concern",
+            "disposition": None,
+        },
+        {
+            "topic_id": TOPIC_ID,
+            "name": "Legal Review",
+            "summary": "DPA signed.",
+            "follow_up_items": [],
+            "decisions": ["DPA signed off"],
+            "status": "resolved",
+            "owner": "Us",
+            "sentiment": "positive",
+            "disposition": None,
+        },
+    ]
+    r = http.post(f"/api/calls/{CALL_ID}/topics", json=payload)
+    assert r.status_code == 200
+    assert r.json()["saved"] == 2
+
+
+@patch("backend.routers.topics.get_client")
+@patch("backend.routers.topics.save_topics")
+def test_save_topics_keep_as_is_disposition(mock_save, mock_gc):
+    """keep_as_is disposition on a not-discussed topic still gets saved."""
+    mock_gc.return_value = MagicMock()
+    mock_save.return_value = {"saved": 1}
+
+    payload = [{
+        "topic_id": TOPIC_ID2,
+        "name": "Pricing",
+        "summary": "Not discussed.",
+        "follow_up_items": [],
+        "decisions": [],
+        "status": "open",
+        "owner": "Client",
+        "sentiment": "concern",
+        "disposition": "keep_as_is",
+    }]
+    r = http.post(f"/api/calls/{CALL_ID}/topics", json=payload)
+    assert r.status_code == 200
+    mock_save.assert_called_once()

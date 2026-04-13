@@ -227,3 +227,66 @@ async def _extract_topics_impl(call_id: str) -> dict:
         "not_discussed": not_discussed,
         "new_topics": new_topics,
     }
+
+
+async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
+    """
+    For each topic:
+    - topic_id is None → insert new row in `topics`, then insert topic_update
+    - topic_id exists + disposition == "archive" → set archived=True, skip topic_update
+    - topic_id exists otherwise → insert topic_update, update calls_open
+    """
+    db = get_client()
+
+    call_row = db.table("calls").select("project_id").eq("id", call_id).execute().data
+    if not call_row:
+        raise ValueError(f"Call {call_id} not found")
+    project_id = call_row[0]["project_id"]
+
+    saved = 0
+    for t in topics:
+        if t.topic_id is None:
+            inserted = (
+                db.table("topics")
+                .insert({
+                    "project_id": project_id,
+                    "name": t.name,
+                    "first_raised_call_id": call_id,
+                    "calls_open": 0 if t.status == "resolved" else 1,
+                    "archived": False,
+                })
+                .execute()
+                .data
+            )
+            topic_id = inserted[0]["id"]
+            logger.info(f"🗄️ [DB] Inserted new topic: {topic_id}")
+        else:
+            topic_id = t.topic_id
+            if t.disposition == "archive":
+                db.table("topics").update({"archived": True}).eq("id", topic_id).execute()
+                logger.info(f"🗄️ [DB] Archived topic: {topic_id}")
+                saved += 1
+                continue
+            if t.status == "resolved":
+                db.table("topics").update({"calls_open": 0}).eq("id", topic_id).execute()
+            else:
+                current = (
+                    db.table("topics").select("calls_open").eq("id", topic_id).execute().data
+                )
+                current_open = current[0]["calls_open"] if current else 0
+                db.table("topics").update({"calls_open": current_open + 1}).eq("id", topic_id).execute()
+
+        db.table("topic_updates").insert({
+            "topic_id": topic_id,
+            "call_id": call_id,
+            "summary": t.summary,
+            "follow_up_items": t.follow_up_items,
+            "decisions": t.decisions,
+            "status": t.status,
+            "owner": t.owner,
+            "sentiment": t.sentiment,
+        }).execute()
+        logger.info(f"🗄️ [DB] Inserted topic_update for topic: {topic_id}")
+        saved += 1
+
+    return {"saved": saved}
