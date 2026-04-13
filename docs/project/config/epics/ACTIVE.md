@@ -28,3 +28,4 @@
 - [x] EPIC-5 / Story 5.2 — Artifact Types API — 2026-04-12
 - [x] EPIC-5 / Story 5.3 — Claude Service & SSE — 2026-04-12
 - [x] EPIC-5 / Story 5.4 — Artifacts Stage UI — 2026-04-12
+- [x] EPIC-5 / Story 5.5 — Kanban Row-Per-Call Redesign — 2026-04-13

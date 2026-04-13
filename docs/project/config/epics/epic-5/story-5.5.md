@@ -2,7 +2,7 @@
 
 **Epic:** EPIC-5 — Artifacts Stage
 **Design spec:** `docs/project/config/2026-04-13-kanban-row-per-call-design.md`
-**Status:** `pending`
+**Status:** `done — 2026-04-13`
 
 ---
 
