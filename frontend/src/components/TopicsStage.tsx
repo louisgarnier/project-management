@@ -146,10 +146,13 @@ export default function TopicsStage({ call, onAdvance }: Props) {
                 borderRadius: 10, padding: 16, cursor: "pointer", textAlign: "left" }}>
               <div style={{ fontSize: 20, marginBottom: 8 }}>✨</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#172b4d", marginBottom: 4 }}>
-                Extract via Claude
+                Extract{" "}
+                <span style={{ fontWeight: 400, color: "#5e6c84" }}>
+                  (Topics Extraction Prompt — defined in Artifact Types)
+                </span>
               </div>
               <div style={{ fontSize: 11, color: "#5e6c84", lineHeight: 1.5 }}>
-                Claude reads the transcript and surfaces topics automatically. Review and edit before saving.
+                Reads the transcript and surfaces topics automatically using your stored prompt. Review and edit before saving.
               </div>
             </button>
             <button onClick={handleManual}
