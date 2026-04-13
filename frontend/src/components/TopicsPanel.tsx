@@ -80,7 +80,7 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false }: 
               ) : (
                 <div style={{ padding: "8px 14px" }}>
                   {topics.map((t) => (
-                    <TopicRow key={t.topic_id ?? t.name} topic={t} />
+                    <TopicRow key={t.topic_id ?? t.name} topic={t} callId={callId} onSaved={load} />
                   ))}
                 </div>
               )}
@@ -125,13 +125,145 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false }: 
   );
 }
 
-function TopicRow({ topic }: { topic: TopicData }) {
+function TopicRow({ topic, callId, onSaved }: { topic: TopicData; callId: string; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<TopicData>(topic);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [newFollowUp, setNewFollowUp] = useState("");
+
+  function set<K extends keyof TopicData>(key: K, val: TopicData[K]) {
+    setDraft((prev) => ({ ...prev, [key]: val }));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await topicsAPI.save(callId, [{
+        ...draft,
+        topic_id: topic.topic_id ?? null,
+        disposition: null,
+      }]);
+      setEditing(false);
+      onSaved();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancel() {
+    setDraft(topic);
+    setSaveError(null);
+    setEditing(false);
+  }
+
   const SENTIMENT_COLOR: Record<string, string> = {
     concern: "#ae2a19", positive: "#216e4e", neutral: "#5e6c84",
   };
   const STATUS_COLOR: Record<string, string> = {
     open: "#0052cc", in_progress: "#974f0c", resolved: "#36b37e",
   };
+
+  if (editing) {
+    return (
+      <div style={{ paddingBottom: 10, marginBottom: 8, borderBottom: "1px solid #f4f5f7" }}>
+        {/* Name */}
+        <input
+          value={draft.name}
+          onChange={(e) => set("name", e.target.value)}
+          placeholder="Topic name"
+          style={{ width: "100%", fontSize: 12, fontWeight: 600, color: "#172b4d",
+            border: "1px solid #dfe1e6", borderRadius: 4, padding: "3px 6px",
+            marginBottom: 6, boxSizing: "border-box" }}
+        />
+        {/* Summary */}
+        <textarea
+          value={draft.summary ?? ""}
+          onChange={(e) => set("summary", e.target.value)}
+          placeholder="Summary…"
+          rows={2}
+          style={{ width: "100%", fontSize: 11, color: "#5e6c84",
+            border: "1px solid #dfe1e6", borderRadius: 4, padding: "4px 6px",
+            resize: "vertical", marginBottom: 6, boxSizing: "border-box" }}
+        />
+        {/* Status / Owner / Sentiment */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <select value={draft.status} onChange={(e) => set("status", e.target.value as TopicData["status"])}
+            style={{ fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "2px 4px" }}>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="resolved">Resolved</option>
+          </select>
+          <select value={draft.owner} onChange={(e) => set("owner", e.target.value as TopicData["owner"])}
+            style={{ fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "2px 4px" }}>
+            <option value="Us">Us</option>
+            <option value="Client">Client</option>
+            <option value="Both">Both</option>
+          </select>
+          <select value={draft.sentiment} onChange={(e) => set("sentiment", e.target.value as TopicData["sentiment"])}
+            style={{ fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "2px 4px" }}>
+            <option value="positive">Positive</option>
+            <option value="neutral">Neutral</option>
+            <option value="concern">Concern</option>
+          </select>
+        </div>
+        {/* Follow-ups */}
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#97a0af", marginBottom: 4 }}>
+            Follow-ups
+          </div>
+          {(draft.follow_up_items ?? []).map((item, i) => (
+            <div key={i} style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 2 }}>
+              <input value={item}
+                onChange={(e) => {
+                  const items = [...(draft.follow_up_items ?? [])];
+                  items[i] = e.target.value;
+                  set("follow_up_items", items);
+                }}
+                style={{ flex: 1, fontSize: 10, border: "1px solid #dfe1e6", borderRadius: 4, padding: "1px 6px" }}
+              />
+              <button onClick={() => set("follow_up_items", (draft.follow_up_items ?? []).filter((_, idx) => idx !== i))}
+                style={{ fontSize: 10, color: "#97a0af", background: "none", border: "none", cursor: "pointer" }}>✕</button>
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
+            <input value={newFollowUp} onChange={(e) => setNewFollowUp(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newFollowUp.trim()) {
+                  set("follow_up_items", [...(draft.follow_up_items ?? []), newFollowUp.trim()]);
+                  setNewFollowUp("");
+                }
+              }}
+              placeholder="Add follow-up…"
+              style={{ flex: 1, fontSize: 10, border: "1px solid #dfe1e6", borderRadius: 4, padding: "2px 6px" }}
+            />
+            <button
+              onClick={() => { if (newFollowUp.trim()) { set("follow_up_items", [...(draft.follow_up_items ?? []), newFollowUp.trim()]); setNewFollowUp(""); } }}
+              style={{ fontSize: 10, color: "#0052cc", background: "none", border: "1px solid #b3c6e8", borderRadius: 4, padding: "2px 8px", cursor: "pointer" }}>
+              Add
+            </button>
+          </div>
+        </div>
+        {/* Actions */}
+        {saveError && <p style={{ fontSize: 10, color: "#ae2a19", margin: "4px 0" }}>{saveError}</p>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+          <button onClick={handleCancel} disabled={saving}
+            style={{ fontSize: 11, color: "#5e6c84", background: "none", border: "none", cursor: "pointer" }}>
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            style={{ fontSize: 11, fontWeight: 600, background: saving ? "#dfe1e6" : "#0052cc",
+              color: "white", border: "none", padding: "4px 12px", borderRadius: 4, cursor: saving ? "not-allowed" : "pointer" }}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 8,
       paddingBottom: 8, marginBottom: 8, borderBottom: "1px solid #f4f5f7" }}>
@@ -152,11 +284,25 @@ function TopicRow({ topic }: { topic: TopicData }) {
         {topic.summary && (
           <p style={{ fontSize: 11, color: "#5e6c84", margin: 0, lineHeight: 1.5 }}>{topic.summary}</p>
         )}
+        {(topic.follow_up_items ?? []).length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            {(topic.follow_up_items ?? []).map((item, i) => (
+              <div key={i} style={{ fontSize: 10, color: "#5e6c84" }}>→ {item}</div>
+            ))}
+          </div>
+        )}
       </div>
-      <span style={{ fontSize: 10, color: SENTIMENT_COLOR[topic.sentiment] ?? "#5e6c84",
-        fontWeight: 700, textTransform: "uppercase", flexShrink: 0 }}>
-        {topic.sentiment}
-      </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+        <span style={{ fontSize: 10, color: SENTIMENT_COLOR[topic.sentiment] ?? "#5e6c84",
+          fontWeight: 700, textTransform: "uppercase" }}>
+          {topic.sentiment}
+        </span>
+        <button onClick={() => setEditing(true)}
+          style={{ fontSize: 11, color: "#97a0af", background: "none", border: "none",
+            cursor: "pointer", padding: 0 }} title="Edit">
+          ✎
+        </button>
+      </div>
     </div>
   );
 }
