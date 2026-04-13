@@ -56,7 +56,11 @@ function getCellState(
   const stageIdx = STAGE_INDEX[stageKey];
 
   if (callIdx > stageIdx) return "done";
-  if (callIdx === stageIdx) return "active";
+  if (callIdx === stageIdx) {
+    // A locked done call is fully finalized — show green done state
+    if (stageKey === "done" && call.is_locked) return "done";
+    return "active";
+  }
 
   // Stage not yet reached — lock artifacts and topics if prev call is incomplete
   if (stageKey === "artifacts" && !prevCallDone) {
