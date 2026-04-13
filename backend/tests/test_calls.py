@@ -101,12 +101,12 @@ def test_patch_stage_valid_transition():
     )
     # update returns updated call
     mc.table.return_value.update.return_value.eq.return_value.execute.return_value = (
-        MagicMock(data=[{**MOCK_CALL, "kanban_stage": "artifacts"}])
+        MagicMock(data=[{**MOCK_CALL, "kanban_stage": "topics"}])
     )
     with patch("backend.routers.calls.get_client", return_value=mc):
         r = client.patch(f"/api/calls/{CALL_ID}/stage")
     assert r.status_code == 200
-    assert r.json()["kanban_stage"] == "artifacts"
+    assert r.json()["kanban_stage"] == "topics"
 
 
 def test_patch_stage_rejects_final_stage():
@@ -127,3 +127,22 @@ def test_patch_stage_returns_404_when_call_missing():
     with patch("backend.routers.calls.get_client", return_value=mc):
         r = client.patch("/api/calls/nonexistent/stage")
     assert r.status_code == 404
+
+
+def test_submit_transcript_advances_to_topics():
+    mc = _mock_client()
+    # select: call exists at transcript stage
+    mc.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+        MagicMock(data=[{"kanban_stage": "transcript"}])
+    )
+    # update: returns call at topics stage
+    mc.table.return_value.update.return_value.eq.return_value.execute.return_value = (
+        MagicMock(data=[{**MOCK_CALL, "kanban_stage": "topics", "transcript": "Hello world"}])
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.post(
+            f"/api/calls/{CALL_ID}/transcript",
+            json={"transcript": "Hello world"},
+        )
+    assert r.status_code == 200
+    assert r.json()["kanban_stage"] == "topics"

@@ -393,12 +393,12 @@ async def validate_call(call_id: str) -> dict:
     # 3. Advance stage
     result = (
         db.table("calls")
-        .update({"kanban_stage": "done"})
+        .update({"kanban_stage": "artifacts"})
         .eq("id", call_id)
         .execute()
         .data
     )
-    logger.info(f"✅ [Topics] Call {call_id} validated → done")
+    logger.info(f"✅ [Topics] Call {call_id} validated → artifacts")
     return result[0]
 
 

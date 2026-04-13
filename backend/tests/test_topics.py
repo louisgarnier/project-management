@@ -368,3 +368,29 @@ def test_get_topics_prompt_falls_back_to_none():
     prompt, llm = _get_topics_prompt("proj-1", mock_db)
     assert prompt is None
     assert llm is None
+
+
+@patch("backend.services.topics_service.get_client")
+def test_validate_call_advances_to_artifacts(mock_gc):
+    """validate_call must advance the call to 'artifacts', not 'done'."""
+    import asyncio
+    from backend.services.topics_service import validate_call
+
+    mock_db = MagicMock()
+
+    def table_side(name):
+        m = MagicMock()
+        if name == "topic_updates":
+            m.select.return_value.eq.return_value.execute.return_value.data = [{"topic_id": "topic-1"}]
+        elif name == "calls":
+            m.select.return_value.eq.return_value.execute.return_value.data = [{"project_id": "proj-1"}]
+            m.update.return_value.eq.return_value.execute.return_value.data = [{"kanban_stage": "artifacts"}]
+        elif name == "topics":
+            m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+        return m
+
+    mock_db.table.side_effect = table_side
+    mock_gc.return_value = mock_db
+
+    result = asyncio.run(validate_call("call-1"))
+    assert result["kanban_stage"] == "artifacts"

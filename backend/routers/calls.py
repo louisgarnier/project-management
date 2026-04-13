@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api", tags=["calls"])
 
-STAGE_ORDER = ["transcript", "artifacts", "topics", "done"]
+STAGE_ORDER = ["transcript", "topics", "artifacts", "done"]
 
 
 class CallCreate(BaseModel):
@@ -119,7 +119,7 @@ def submit_transcript(call_id: str, payload: TranscriptSubmit):
             detail=f"Call is already past the transcript stage (current: {current_stage})",
         )
 
-    update_data: dict = {"transcript": payload.transcript, "kanban_stage": "artifacts"}
+    update_data: dict = {"transcript": payload.transcript, "kanban_stage": "topics"}
     if payload.source_filename:
         update_data["transcript_source"] = payload.source_filename
 
@@ -130,7 +130,7 @@ def submit_transcript(call_id: str, payload: TranscriptSubmit):
         .eq("id", call_id)
         .execute()
     )
-    db_logger.info(f"✅ [DB] Transcript stored, advanced to artifacts: {call_id}")
+    db_logger.info(f"✅ [DB] Transcript stored, advanced to topics: {call_id}")
     return update_result.data[0]
 
 
