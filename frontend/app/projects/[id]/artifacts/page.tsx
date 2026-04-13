@@ -88,7 +88,7 @@ export default function ArtifactsPage() {
                   disabled={savingLlm}
                   className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc] disabled:opacity-50"
                 >
-                  <option value="groq">Grok (xAI)</option>
+                  <option value="groq">Groq (free)</option>
                   <option value="claude">Claude</option>
                   <option value="openai">ChatGPT (OpenAI)</option>
                 </select>
