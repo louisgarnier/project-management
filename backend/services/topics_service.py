@@ -458,6 +458,9 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
             "status": t["status"],
             "summary": t["summary"],
             "follow_up_items": t["follow_up_items"],
+            "decisions": t["decisions"],
+            "owner": t["owner"],
+            "sentiment": t["sentiment"],
         }
         for t in previous
     ]
