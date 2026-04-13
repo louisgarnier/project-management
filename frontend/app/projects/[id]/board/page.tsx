@@ -7,6 +7,7 @@ import { logger } from "@/utils/logger";
 import type { Call } from "@/types";
 import KanbanBoard from "@/components/KanbanBoard";
 import NewCallModal from "@/components/NewCallModal";
+import TopicsDashboard from "@/components/TopicsDashboard";
 
 export default function BoardPage() {
   const params = useParams<{ id: string }>();
@@ -81,9 +82,7 @@ export default function BoardPage() {
 
       {/* Content */}
       {activeTab === "topics" ? (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-[13px] text-[#5e6c84]">Topics view coming soon.</p>
-        </div>
+        <TopicsDashboard projectId={projectId} />
       ) : loading ? (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-[13px] text-[#5e6c84]">Loading…</p>
