@@ -57,7 +57,8 @@ export default function PreCallBrief({ callId }: Props) {
 
   const isEmpty = brief &&
     brief.priority_topics.length === 0 &&
-    brief.decisions_to_confirm.length === 0;
+    brief.decisions_to_confirm.length === 0 &&
+    brief.watch_list.length === 0;
 
   return (
     <div style={{ background: "white", border: "1px solid #dfe1e6",
