@@ -89,6 +89,12 @@ export const callsAPI = {
       method: "PATCH",
       body: JSON.stringify({}),
     }),
+  lock: (callId: string) =>
+    proxyFetch<Call>(`/api/calls/${callId}/lock`, { method: "POST" }),
+  unlock: (callId: string) =>
+    proxyFetch<Call>(`/api/calls/${callId}/unlock`, { method: "POST" }),
+  clearTopicsStale: (callId: string) =>
+    proxyFetch<Call>(`/api/calls/${callId}/clear_stale`, { method: "POST" }),
   delete: (callId: string) => proxyFetch<void>(`/api/calls/${callId}`, { method: "DELETE" }),
 };
 

@@ -20,6 +20,8 @@ export interface Call {
   transcript: string | null;
   transcript_source: string | null;
   kanban_stage: KanbanStage;
+  is_locked: boolean;
+  topics_stale: boolean;
   created_at: string;
 }
 
