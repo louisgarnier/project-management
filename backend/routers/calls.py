@@ -184,12 +184,60 @@ def update_transcript(call_id: str, payload: TranscriptUpdate):
             detail="Call is at transcript stage — use POST /transcript to save and advance",
         )
 
+    update_data: dict = {"transcript": payload.transcript}
+
+    # When editing transcript on a done call, mark topics and artifacts as stale
+    if current_stage == "done":
+        update_data["topics_stale"] = True
+        artifacts = (
+            client.table("artifacts")
+            .select("id")
+            .eq("call_id", call_id)
+            .execute()
+            .data
+        )
+        artifact_ids = [a["id"] for a in artifacts]
+        if artifact_ids:
+            client.table("artifacts").update({"status": "stale"}).in_("id", artifact_ids).execute()
+            db_logger.info(f"⚠️ [DB] Marked {len(artifact_ids)} artifacts stale: {call_id}")
+
     db_logger.info(f"🗄️ [DB] Updating transcript for call: {call_id}")
     update_result = (
         client.table("calls")
-        .update({"transcript": payload.transcript})
+        .update(update_data)
         .eq("id", call_id)
         .execute()
     )
     db_logger.info(f"✅ [DB] Transcript updated: {call_id}")
     return update_result.data[0]
+
+
+@router.post("/calls/{call_id}/lock")
+def lock_call(call_id: str):
+    client = get_client()
+    result = client.table("calls").update({"is_locked": True}).eq("id", call_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Call not found")
+    db_logger.info(f"🔒 [DB] Call locked: {call_id}")
+    return result.data[0]
+
+
+@router.post("/calls/{call_id}/unlock")
+def unlock_call(call_id: str):
+    client = get_client()
+    result = client.table("calls").update({"is_locked": False}).eq("id", call_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Call not found")
+    db_logger.info(f"🔓 [DB] Call unlocked: {call_id}")
+    return result.data[0]
+
+
+@router.post("/calls/{call_id}/clear_stale")
+def clear_topics_stale(call_id: str):
+    """Clear the topics_stale flag after topics have been re-reviewed."""
+    client = get_client()
+    result = client.table("calls").update({"topics_stale": False}).eq("id", call_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Call not found")
+    db_logger.info(f"✅ [DB] topics_stale cleared: {call_id}")
+    return result.data[0]

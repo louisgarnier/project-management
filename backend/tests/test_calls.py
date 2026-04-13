@@ -15,6 +15,8 @@ MOCK_CALL = {
     "kanban_stage": "transcript",
     "transcript": None,
     "created_at": "2026-04-09T00:00:00Z",
+    "is_locked": False,
+    "topics_stale": False,
 }
 
 MOCK_CALL_DONE = {**MOCK_CALL, "kanban_stage": "done"}
@@ -146,3 +148,65 @@ def test_submit_transcript_advances_to_topics():
         )
     assert r.status_code == 200
     assert r.json()["kanban_stage"] == "topics"
+
+
+def test_update_transcript_on_done_call_sets_stale():
+    """PATCH /transcript on a done call must set topics_stale=True and mark artifacts stale."""
+    mc = _mock_client()
+
+    call_select = MagicMock()
+    call_select.data = [{"kanban_stage": "done"}]
+
+    artifact_select = MagicMock()
+    artifact_select.data = [{"id": "art-1"}, {"id": "art-2"}]
+
+    update_call = MagicMock()
+    update_call.data = [{**MOCK_CALL, "kanban_stage": "done", "topics_stale": True}]
+
+    call_count = 0
+
+    def table_side(name):
+        m = MagicMock()
+        if name == "calls":
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                m.select.return_value.eq.return_value.execute.return_value = call_select
+            else:
+                m.update.return_value.eq.return_value.execute.return_value = update_call
+        elif name == "artifacts":
+            m.select.return_value.eq.return_value.execute.return_value = artifact_select
+            m.update.return_value.in_.return_value.execute.return_value = MagicMock(data=[])
+        return m
+
+    mc.table.side_effect = table_side
+
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.patch(
+            f"/api/calls/{CALL_ID}/transcript",
+            json={"transcript": "Updated transcript"},
+        )
+    assert r.status_code == 200
+    assert r.json()["topics_stale"] is True
+
+
+def test_lock_call():
+    mc = _mock_client()
+    mc.table.return_value.update.return_value.eq.return_value.execute.return_value = (
+        MagicMock(data=[{**MOCK_CALL, "is_locked": True}])
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.post(f"/api/calls/{CALL_ID}/lock")
+    assert r.status_code == 200
+    assert r.json()["is_locked"] is True
+
+
+def test_unlock_call():
+    mc = _mock_client()
+    mc.table.return_value.update.return_value.eq.return_value.execute.return_value = (
+        MagicMock(data=[{**MOCK_CALL, "is_locked": False}])
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.post(f"/api/calls/{CALL_ID}/unlock")
+    assert r.status_code == 200
+    assert r.json()["is_locked"] is False
