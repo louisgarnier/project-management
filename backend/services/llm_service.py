@@ -23,9 +23,9 @@ async def generate_artifact(prompt_used: str, transcript: str, llm: str) -> str:
         return await _generate_openai_compat(
             prompt_used, transcript,
             api_key=os.environ.get("GROQ_API_KEY", ""),
-            base_url="https://api.groq.com/openai/v1",
-            model="llama-3.3-70b-versatile",
-            provider="Groq",
+            base_url="https://api.x.ai/v1",
+            model="grok-3",
+            provider="Grok",
         )
     elif llm == "openai":
         return await _generate_openai_compat(

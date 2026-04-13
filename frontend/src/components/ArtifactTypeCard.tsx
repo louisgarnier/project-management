@@ -80,15 +80,15 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
               <option value="">Default ({
                 { groq: "Groq", claude: "Claude", openai: "ChatGPT" }[projectDefaultLlm]
               })</option>
-              <option value="groq">Groq (free)</option>
+              <option value="groq">Grok (xAI)</option>
               <option value="claude">Claude</option>
               <option value="openai">ChatGPT (OpenAI)</option>
             </select>
           ) : (
             <span className="text-[11px] text-[#5e6c84] bg-[#f4f5f7] px-2 py-[3px] rounded">
               {type.llm
-                ? { groq: "Groq (free)", claude: "Claude", openai: "ChatGPT" }[type.llm]
-                : `Default · ${{ groq: "Groq (free)", claude: "Claude", openai: "ChatGPT" }[projectDefaultLlm]}`
+                ? { groq: "Grok (xAI)", claude: "Claude", openai: "ChatGPT" }[type.llm]
+                : `Default · ${{ groq: "Grok (xAI)", claude: "Claude", openai: "ChatGPT" }[projectDefaultLlm]}`
               }
             </span>
           )}

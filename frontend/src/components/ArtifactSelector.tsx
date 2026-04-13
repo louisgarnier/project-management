@@ -6,7 +6,7 @@ import type { ArtifactType, LLMProvider } from "@/types";
 export type SelectionMode = "generate" | "manual" | "skip";
 
 const LLM_LABEL: Record<string, string> = {
-  groq: "Groq (free)",
+  groq: "Grok (xAI)",
   claude: "Claude",
   openai: "ChatGPT",
 };
@@ -28,7 +28,7 @@ export default function ArtifactSelector({
     <div className="flex flex-col gap-2">
       {artifactTypes.map((t) => {
         const sel = selections[t.id] ?? "generate";
-        const llmLabel = LLM_LABEL[t.llm ?? projectDefaultLlm] ?? "Groq (free)";
+        const llmLabel = LLM_LABEL[t.llm ?? projectDefaultLlm] ?? "Grok (xAI)";
 
         return (
           <div
