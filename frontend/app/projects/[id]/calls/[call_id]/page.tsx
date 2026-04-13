@@ -230,6 +230,7 @@ export default function CallDetailPage() {
         {call.kanban_stage === "topics" && (
           <>
             <TopicsStage call={call} onAdvance={loadCall} />
+            <ArtifactsStage call={call} onAdvance={loadCall} hideAdvance />
             {call.transcript && (
               <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />
             )}

@@ -12,9 +12,10 @@ type Phase = "select" | "generating" | "reviewing";
 type Props = {
   call: Call;
   onAdvance: () => void;
+  hideAdvance?: boolean;
 };
 
-export default function ArtifactsStage({ call, onAdvance }: Props) {
+export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }: Props) {
   const projectId = call.project_id;
   const callId = call.id;
 
@@ -363,7 +364,7 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
         </div>
       )}
 
-      {phase === "reviewing" && (
+      {phase === "reviewing" && !hideAdvance && (
         <div className="flex justify-end pt-2">
           <button
             onClick={handleProceed}
