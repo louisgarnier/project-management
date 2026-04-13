@@ -3,9 +3,36 @@ from __future__ import annotations
 from typing import Literal, Optional
 from pydantic import BaseModel, field_validator
 
-_STATUS_MAP  = {"open": "open", "in_progress": "in_progress", "in progress": "in_progress", "resolved": "resolved"}
-_OWNER_MAP   = {"us": "Us", "client": "Client", "both": "Both"}
-_SENTIMENT_MAP = {"positive": "positive", "neutral": "neutral", "concern": "concern", "negative": "concern"}
+def _normalize_status(v: str) -> str:
+    key = v.lower().replace("-", "_").replace(" ", "_")
+    return {
+        "open": "open",
+        "in_progress": "in_progress", "in progress": "in_progress", "inprogress": "in_progress",
+        "pending": "open", "active": "open", "ongoing": "open", "new": "open",
+        "resolved": "resolved", "closed": "resolved", "done": "resolved", "complete": "resolved",
+    }.get(key, "open")  # default: open
+
+
+def _normalize_owner(v: str) -> str:
+    key = v.lower().strip()
+    return {
+        "us": "Us", "we": "Us", "our": "Us", "ours": "Us", "our team": "Us",
+        "internal": "Us", "our side": "Us", "team": "Us",
+        "client": "Client", "them": "Client", "their": "Client", "they": "Client",
+        "the client": "Client", "customer": "Client", "external": "Client",
+        "both": "Both", "shared": "Both", "joint": "Both", "mutual": "Both",
+        "both parties": "Both", "all": "Both",
+    }.get(key, "Us")  # default: Us
+
+
+def _normalize_sentiment(v: str) -> str:
+    key = v.lower().strip()
+    return {
+        "positive": "positive", "good": "positive", "great": "positive", "optimistic": "positive",
+        "neutral": "neutral", "mixed": "neutral", "unclear": "neutral", "n/a": "neutral",
+        "concern": "concern", "negative": "concern", "bad": "concern", "risk": "concern",
+        "at risk": "concern", "issue": "concern", "problem": "concern", "critical": "concern",
+    }.get(key, "neutral")  # default: neutral
 
 
 class TopicIn(BaseModel):
@@ -21,23 +48,17 @@ class TopicIn(BaseModel):
     @field_validator("status", mode="before")
     @classmethod
     def normalize_status(cls, v: object) -> object:
-        if isinstance(v, str):
-            return _STATUS_MAP.get(v.lower().replace("-", "_"), v)
-        return v
+        return _normalize_status(v) if isinstance(v, str) else v
 
     @field_validator("owner", mode="before")
     @classmethod
     def normalize_owner(cls, v: object) -> object:
-        if isinstance(v, str):
-            return _OWNER_MAP.get(v.lower(), v)
-        return v
+        return _normalize_owner(v) if isinstance(v, str) else v
 
     @field_validator("sentiment", mode="before")
     @classmethod
     def normalize_sentiment(cls, v: object) -> object:
-        if isinstance(v, str):
-            return _SENTIMENT_MAP.get(v.lower(), v)
-        return v
+        return _normalize_sentiment(v) if isinstance(v, str) else v
 
 
 class TopicUpdate(TopicIn):

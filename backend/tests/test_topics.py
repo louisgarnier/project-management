@@ -17,20 +17,28 @@ def test_topic_in_valid():
     assert t.status == "open"
 
 
-def test_topic_in_rejects_bad_status():
-    with pytest.raises(ValidationError):
-        TopicIn(
-            name="X", summary="y", follow_up_items=[], decisions=[],
-            status="invalid", owner="Us", sentiment="neutral",
-        )
+def test_topic_in_normalizes_status():
+    """Unknown status values fall back to 'open' rather than raising."""
+    t = TopicIn(
+        name="X", summary="y", follow_up_items=[], decisions=[],
+        status="invalid", owner="Us", sentiment="neutral",
+    )
+    assert t.status == "open"
 
 
-def test_topic_in_rejects_bad_sentiment():
-    with pytest.raises(ValidationError):
-        TopicIn(
-            name="X", summary="y", follow_up_items=[], decisions=[],
-            status="open", owner="Us", sentiment="bad",
-        )
+def test_topic_in_normalizes_sentiment():
+    """Known sentiment synonyms are mapped; truly unknown values fall back to 'neutral'."""
+    t_bad = TopicIn(
+        name="X", summary="y", follow_up_items=[], decisions=[],
+        status="open", owner="Us", sentiment="bad",
+    )
+    assert t_bad.sentiment == "concern"  # "bad" → concern
+
+    t_unknown = TopicIn(
+        name="X", summary="y", follow_up_items=[], decisions=[],
+        status="open", owner="Us", sentiment="unknown_xyz",
+    )
+    assert t_unknown.sentiment == "neutral"  # truly unknown → neutral
 
 
 def test_topic_update_has_disposition():
@@ -53,12 +61,13 @@ def test_brief_out_shape():
     assert b.priority_topics == []
 
 
-def test_topic_in_rejects_bad_owner():
-    with pytest.raises(ValidationError):
-        TopicIn(
-            name="X", summary="y", follow_up_items=[], decisions=[],
-            status="open", owner="BadValue", sentiment="neutral",
-        )
+def test_topic_in_normalizes_owner():
+    """Unknown owner values fall back to 'Us' rather than raising."""
+    t = TopicIn(
+        name="X", summary="y", follow_up_items=[], decisions=[],
+        status="open", owner="BadValue", sentiment="neutral",
+    )
+    assert t.owner == "Us"
 
 
 def test_brief_item_valid():
