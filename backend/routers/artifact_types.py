@@ -136,15 +136,16 @@ def delete_artifact_type(project_id: str, type_id: str):
     db_logger.info(f"🗄️ [DB] Fetching artifact type for deletion: {type_id}")
     result = (
         client.table("artifact_types")
-        .select("is_default")
+        .select("id")
         .eq("id", type_id)
         .eq("project_id", project_id)
         .execute()
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="Artifact type not found")
-    if result.data[0]["is_default"]:
-        raise HTTPException(status_code=403, detail="Cannot delete a default artifact type")
+    # Delete all generated artifacts referencing this type (across all calls)
+    deleted = client.table("artifacts").delete().eq("artifact_type_id", type_id).execute()
+    db_logger.info(f"🗄️ [DB] Deleted {len(deleted.data)} artifacts referencing type: {type_id}")
     client.table("artifact_types").delete().eq("id", type_id).execute()
     db_logger.info(f"✅ [DB] Deleted artifact type: {type_id}")
     return Response(status_code=204)
