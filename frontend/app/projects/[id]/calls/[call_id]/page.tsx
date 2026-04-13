@@ -9,7 +9,9 @@ import TranscriptStage from "@/components/TranscriptStage";
 import TranscriptPanel from "@/components/TranscriptPanel";
 import ContextFiles from "@/components/ContextFiles";
 import ArtifactsStage from "@/components/ArtifactsStage";
+import ArtifactsPanel from "@/components/ArtifactsPanel";
 import TopicsStage from "@/components/TopicsStage";
+import TopicsPanel from "@/components/TopicsPanel";
 
 const STAGES = ["transcript", "artifacts", "topics", "done"] as const;
 
@@ -114,6 +116,51 @@ export default function CallDetailPage() {
     );
   }
 
+  // Artifacts-only mode: navigated from a historical artifacts card
+  if (viewStage === "artifacts") {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
+          <button
+            onClick={() => router.push(`/projects/${projectId}/board`)}
+            className="text-[12px] text-[#5e6c84] hover:text-[#0052cc] hover:underline mb-2 block"
+          >
+            ← Board
+          </button>
+          <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          <ArtifactsPanel callId={callId} projectId={projectId} defaultOpen />
+          {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
+          <ContextFiles call={call} readonly />
+        </div>
+      </div>
+    );
+  }
+
+  // Topics-only mode: navigated from a historical topics or done card
+  if (viewStage === "topics" || viewStage === "done") {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
+          <button
+            onClick={() => router.push(`/projects/${projectId}/board`)}
+            className="text-[12px] text-[#5e6c84] hover:text-[#0052cc] hover:underline mb-2 block"
+          >
+            ← Board
+          </button>
+          <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          <TopicsPanel callId={callId} projectId={projectId} defaultOpen />
+          <ArtifactsPanel callId={callId} projectId={projectId} />
+          {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
+          <ContextFiles call={call} readonly />
+        </div>
+      </div>
+    );
+  }
+
   const currentIdx = STAGES.indexOf(call.kanban_stage);
   const isPastTranscript = call.kanban_stage !== "transcript";
 
@@ -192,9 +239,11 @@ export default function CallDetailPage() {
         {call.kanban_stage === "done" && (
           <>
             <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8,
-              padding: "16px 20px", marginBottom: 16, fontSize: 13, color: "#15803d", fontWeight: 600 }}>
+              padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#15803d", fontWeight: 600 }}>
               ✓ Call complete — all topics validated and saved.
             </div>
+            <TopicsPanel callId={callId} projectId={projectId} defaultOpen />
+            <ArtifactsPanel callId={callId} projectId={projectId} />
             {call.transcript && (
               <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />
             )}
