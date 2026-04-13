@@ -18,6 +18,27 @@ const STAGE_INDEX: Record<KanbanStage, number> = Object.fromEntries(
 
 type CellState = "done" | "active" | "pending" | "locked";
 
+const CELL_STYLE: Record<CellState, React.CSSProperties> = {
+  done:    { background: "#f4f5f7", border: "1px solid #dfe1e6" },
+  active:  { background: "#ffffff",  border: "1.5px solid #0052cc" },
+  locked:  { background: "#f4f5f7", border: "1px dashed #b3c6e8", opacity: 0.7 },
+  pending: { background: "#f4f5f7", border: "1px dashed #dfe1e6" },
+};
+
+const STATUS_LABEL: Record<CellState, string> = {
+  done:    "✓ Done",
+  active:  "→ Active",
+  locked:  "Locked",
+  pending: "—",
+};
+
+const STATUS_COLOR: Record<CellState, string> = {
+  done:    "#36b37e",
+  active:  "#0052cc",
+  locked:  "#97a0af",
+  pending: "#97a0af",
+};
+
 /**
  * Returns the display state for a single stage cell on a given call.
  *
@@ -46,9 +67,10 @@ function getCellState(
 
 type Props = {
   calls: Call[];
+  onNewCall: () => void;
 };
 
-export default function KanbanBoard({ calls }: Props) {
+export default function KanbanBoard({ calls, onNewCall }: Props) {
   const router    = useRouter();
   const params    = useParams<{ id: string }>();
   const projectId = params.id;
@@ -71,15 +93,19 @@ export default function KanbanBoard({ calls }: Props) {
     <div className="p-4 flex flex-col gap-3 flex-1 overflow-y-auto">
 
       {/* ── Column headers ── */}
-      <div className="flex items-center" style={{ paddingLeft: 148 }}>
-        {STAGES.map((s) => (
-          <div
-            key={s.key}
-            className="flex-1 text-center text-[10px] font-bold uppercase tracking-[0.06em] text-[#5e6c84] px-2"
-          >
-            {s.label}
-          </div>
-        ))}
+      <div className="flex items-center gap-2">
+        {/* Spacer mirrors the call-label column width + padding */}
+        <div className="flex-shrink-0 w-[140px] pr-4" />
+        <div className="flex-1 flex">
+          {STAGES.map((s) => (
+            <div
+              key={s.key}
+              className="flex-1 text-center text-[10px] font-bold uppercase tracking-[0.06em] text-[#5e6c84] px-2"
+            >
+              {s.label}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ── One row per call ── */}
@@ -88,13 +114,10 @@ export default function KanbanBoard({ calls }: Props) {
         const prevCallDone = prevCall == null || prevCall.kanban_stage === "done";
 
         return (
-          <div key={call.id} className="flex items-stretch">
+          <div key={call.id} className="flex items-stretch gap-2">
 
             {/* Call label */}
-            <div
-              className="flex-shrink-0 flex flex-col justify-center pr-4"
-              style={{ width: 140 }}
-            >
+            <div className="flex-shrink-0 w-[140px] flex flex-col justify-center pr-4">
               <span className="text-[12px] font-bold text-[#172b4d]">
                 Call {idx + 1}
               </span>
@@ -115,32 +138,6 @@ export default function KanbanBoard({ calls }: Props) {
                 const state     = getCellState(call, s.key, prevCallDone);
                 const clickable = state === "active" || state === "done";
 
-                const cellStyle: React.CSSProperties = (() => {
-                  switch (state) {
-                    case "done":   return { background: "#f4f5f7", border: "1px solid #dfe1e6" };
-                    case "active": return { background: "#ffffff",  border: "1.5px solid #0052cc" };
-                    case "locked": return { background: "#f4f5f7", border: "1px dashed #b3c6e8", opacity: 0.7 };
-                    default:       return { background: "#f4f5f7", border: "1px dashed #dfe1e6" };
-                  }
-                })();
-
-                const statusLabel = (() => {
-                  switch (state) {
-                    case "done":   return "✓ Done";
-                    case "active": return "→ Active";
-                    case "locked": return "🔒 Locked";
-                    default:       return "—";
-                  }
-                })();
-
-                const statusColor = (() => {
-                  switch (state) {
-                    case "done":   return "#36b37e";
-                    case "active": return "#0052cc";
-                    default:       return "#97a0af";
-                  }
-                })();
-
                 return (
                   <div
                     key={s.key}
@@ -148,27 +145,23 @@ export default function KanbanBoard({ calls }: Props) {
                       if (state === "active") {
                         router.push(`/projects/${projectId}/calls/${call.id}`);
                       } else if (state === "done") {
-                        router.push(
-                          `/projects/${projectId}/calls/${call.id}?view=${s.key}`
-                        );
+                        router.push(`/projects/${projectId}/calls/${call.id}?view=${s.key}`);
                       }
                     }}
                     className="flex-1 rounded-md flex flex-col justify-between p-2.5 min-h-[72px]"
-                    style={{ ...cellStyle, cursor: clickable ? "pointer" : "default" }}
+                    style={{ ...CELL_STYLE[state], cursor: clickable ? "pointer" : "default" }}
                   >
                     <span
                       className="text-[11px] font-semibold"
-                      style={{
-                        color: state === "active" || state === "done" ? "#172b4d" : "#97a0af",
-                      }}
+                      style={{ color: clickable ? "#172b4d" : "#97a0af" }}
                     >
                       {s.label}
                     </span>
                     <span
                       className="text-[10px] font-semibold"
-                      style={{ color: statusColor }}
+                      style={{ color: STATUS_COLOR[state] }}
                     >
-                      {statusLabel}
+                      {STATUS_LABEL[state]}
                     </span>
                   </div>
                 );
@@ -178,6 +171,17 @@ export default function KanbanBoard({ calls }: Props) {
           </div>
         );
       })}
+
+      {/* ── Add new call ── */}
+      <div className="flex items-center gap-2">
+        <div className="flex-shrink-0 w-[140px] pr-4" />
+        <button
+          onClick={onNewCall}
+          className="flex-1 py-2 border border-dashed border-[#b3c6e8] rounded-lg text-[12px] text-[#0052cc] font-medium hover:bg-[#e9f0ff] transition-colors"
+        >
+          + New Call
+        </button>
+      </div>
 
     </div>
   );

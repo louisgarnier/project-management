@@ -109,7 +109,7 @@ export default function BoardPage() {
           </button>
         </div>
       ) : (
-        <KanbanBoard calls={calls} />
+        <KanbanBoard calls={calls} onNewCall={() => setShowModal(true)} />
       )}
 
       {showModal && <NewCallModal onClose={() => setShowModal(false)} onCreate={handleCreate} />}
