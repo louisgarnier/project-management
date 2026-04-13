@@ -15,9 +15,6 @@ class CallCreate(BaseModel):
     title: str
 
 
-class StageAdvance(BaseModel):
-    new_stage: str
-
 
 class TranscriptSubmit(BaseModel):
     transcript: str = Field(min_length=1)
@@ -76,7 +73,7 @@ def get_call(call_id: str):
 
 
 @router.patch("/calls/{call_id}/stage")
-def advance_stage(call_id: str, payload: StageAdvance):
+def advance_stage(call_id: str):
     client = get_client()
     db_logger.info(f"🗄️ [DB] Fetching call for stage advance: {call_id}")
     result = client.table("calls").select("kanban_stage").eq("id", call_id).execute()
@@ -84,24 +81,17 @@ def advance_stage(call_id: str, payload: StageAdvance):
         raise HTTPException(status_code=404, detail="Call not found")
 
     current_stage = result.data[0]["kanban_stage"]
-    new_stage = payload.new_stage
 
     if current_stage not in STAGE_ORDER:
         raise HTTPException(
             status_code=422, detail=f"Call has unknown stage: {current_stage}"
         )
 
-    if new_stage not in STAGE_ORDER:
-        raise HTTPException(status_code=422, detail=f"Invalid stage: {new_stage}")
-
     current_idx = STAGE_ORDER.index(current_stage)
-    new_idx = STAGE_ORDER.index(new_stage)
+    if current_idx >= len(STAGE_ORDER) - 1:
+        raise HTTPException(status_code=422, detail="Call is already at the final stage")
 
-    if new_idx != current_idx + 1:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid stage transition: {current_stage} → {new_stage}. Must follow transcript → artifacts → topics → done",
-        )
+    new_stage = STAGE_ORDER[current_idx + 1]
 
     db_logger.info(f"🗄️ [DB] Advancing call {call_id}: {current_stage} → {new_stage}")
     update_result = (
