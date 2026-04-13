@@ -18,8 +18,6 @@ export default function BoardPage() {
   const [showModal, setShowModal] = useState(false);
   const [activeTab, setActiveTab] = useState<"kanban" | "topics">("kanban");
 
-  const hasActiveCall = calls.some((c) => c.kanban_stage !== "done");
-
   const loadCalls = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -50,22 +48,6 @@ export default function BoardPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
         <h1 className="text-[18px] font-bold text-[#172b4d]">Board</h1>
-        <div className="relative group">
-          <button
-            disabled={hasActiveCall}
-            onClick={() => setShowModal(true)}
-            className="bg-[#0052cc] text-white px-4 py-[6px] rounded text-[13px] font-medium hover:bg-[#0065ff] disabled:bg-[#97a0af] disabled:cursor-not-allowed"
-          >
-            + New Call
-          </button>
-          {hasActiveCall && (
-            <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block">
-              <div className="bg-[#172b4d] text-white text-[11px] px-2 py-1 rounded whitespace-nowrap">
-                Complete the active call first
-              </div>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Tabs */}
