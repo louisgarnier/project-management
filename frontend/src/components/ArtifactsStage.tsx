@@ -168,14 +168,12 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
   }
 
   async function handleRetry(artifactId: string) {
-    // Reset this artifact to pending with the current project default LLM, then re-stream
+    // Use the LLM selected in the inline dropdown (applyLlm)
     try {
-      const updated = await artifactsAPI.update(artifactId, {
-        status: "pending",
-        mode: projectDefaultLlm,
-      });
+      const llm = applyLlm;
+      const updated = await artifactsAPI.update(artifactId, { status: "pending", mode: llm });
       setArtifacts((prev) => prev.map((a) => (a.id === artifactId ? updated : a)));
-      logger.info("Artifact reset for retry", { component: "ArtifactsStage", data: { artifactId, llm: projectDefaultLlm } });
+      logger.info("Artifact reset for retry", { component: "ArtifactsStage", data: { artifactId, llm } });
       setPhase("generating");
       await streamArtifacts();
     } catch (err) {
@@ -184,22 +182,19 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
   }
 
   async function handleRegenerateAll() {
-    // Reset all non-done, non-manual artifacts to pending with project default LLM, then re-stream
+    // Use the LLM the user selected in the inline dropdown (applyLlm)
     try {
+      const llm = applyLlm;
       const toReset = artifacts.filter((a) => a.status !== "done" && a.status !== "generating");
       await Promise.all(
-        toReset.map((a) =>
-          artifactsAPI.update(a.id, { status: "pending", mode: projectDefaultLlm })
-        )
+        toReset.map((a) => artifactsAPI.update(a.id, { status: "pending", mode: llm }))
       );
       setArtifacts((prev) =>
         prev.map((a) =>
-          toReset.some((r) => r.id === a.id)
-            ? { ...a, status: "pending", mode: projectDefaultLlm }
-            : a
+          toReset.some((r) => r.id === a.id) ? { ...a, status: "pending", mode: llm } : a
         )
       );
-      logger.info("All artifacts reset for regeneration", { component: "ArtifactsStage", data: { llm: projectDefaultLlm } });
+      logger.info("Regenerate all", { component: "ArtifactsStage", data: { llm, count: toReset.length } });
       setPhase("generating");
       await streamArtifacts();
     } catch (err) {
@@ -297,12 +292,23 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
             </span>
           )}
           {phase === "reviewing" && artifacts.some((a) => a.status === "error" || a.status === "pending") && (
-            <button
-              onClick={handleRegenerateAll}
-              className="text-[11px] text-[#0052cc] border border-[#0052cc] px-3 py-1 rounded hover:bg-[#e9f0ff] transition-colors"
-            >
-              Regenerate all with {projectDefaultLlm === "groq" ? "Groq" : projectDefaultLlm === "openai" ? "ChatGPT" : "Claude"}
-            </button>
+            <div className="flex items-center gap-2">
+              <select
+                value={applyLlm}
+                onChange={(e) => setApplyLlm(e.target.value as LLMProvider)}
+                className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
+              >
+                <option value="groq">Groq (free)</option>
+                <option value="claude">Claude</option>
+                <option value="openai">ChatGPT (OpenAI)</option>
+              </select>
+              <button
+                onClick={handleRegenerateAll}
+                className="text-[11px] text-[#0052cc] border border-[#0052cc] px-3 py-1 rounded hover:bg-[#e9f0ff] transition-colors"
+              >
+                Regenerate failed
+              </button>
+            </div>
           )}
         </div>
       </div>
