@@ -40,20 +40,6 @@ def list_calls(project_id: str):
 @router.post("/projects/{project_id}/calls", status_code=201)
 def create_call(project_id: str, payload: CallCreate):
     client = get_client()
-    db_logger.info(f"🗄️ [DB] Checking active calls for project: {project_id}")
-    active = (
-        client.table("calls")
-        .select("id")
-        .eq("project_id", project_id)
-        .neq("kanban_stage", "done")
-        .execute()
-    )
-    if active.data:
-        db_logger.warning(f"⚠️ [DB] Active call exists for project: {project_id}")
-        raise HTTPException(
-            status_code=409,
-            detail="Complete the current call before creating a new one",
-        )
     db_logger.info(f"🗄️ [DB] Creating call: {payload.title}")
     result = (
         client.table("calls")

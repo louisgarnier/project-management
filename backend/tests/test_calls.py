@@ -52,13 +52,8 @@ def test_list_calls_returns_calls():
 # --- POST /api/projects/{project_id}/calls ---
 
 
-def test_post_call_creates_when_no_active():
+def test_post_call_creates_call():
     mc = _mock_client()
-    # select().eq().neq().execute() → no active calls
-    mc.table.return_value.select.return_value.eq.return_value.neq.return_value.execute.return_value = MagicMock(
-        data=[]
-    )
-    # insert().execute() → created call
     mc.table.return_value.insert.return_value.execute.return_value = MagicMock(
         data=[MOCK_CALL]
     )
@@ -69,18 +64,6 @@ def test_post_call_creates_when_no_active():
     assert r.status_code == 201
     assert r.json()["kanban_stage"] == "transcript"
     assert r.json()["title"] == "Q1 Review"
-
-
-def test_post_call_returns_409_when_active_exists():
-    mc = _mock_client()
-    # Active call found
-    mc.table.return_value.select.return_value.eq.return_value.neq.return_value.execute.return_value = MagicMock(
-        data=[MOCK_CALL]
-    )
-    with patch("backend.routers.calls.get_client", return_value=mc):
-        r = client.post(f"/api/projects/{PROJECT_ID}/calls", json={"title": "New Call"})
-    assert r.status_code == 409
-    assert "Complete the current call" in r.json()["detail"]
 
 
 # --- GET /api/calls/{call_id} ---
