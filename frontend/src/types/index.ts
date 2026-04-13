@@ -1,7 +1,7 @@
 // Call Tracker — TypeScript types
 // Mirrors the Supabase schema defined in backend/database/migrations/001_initial_schema.sql
 
-export type LLMProvider = "groq" | "claude" | "openai";
+export type LLMProvider = "groq" | "deepseek" | "claude" | "openai";
 
 export interface Project {
   id: string;

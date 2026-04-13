@@ -3,6 +3,17 @@
 import { useState } from "react";
 import type { ArtifactType, LLMProvider } from "@/types";
 
+const LLM_OPTIONS: { value: LLMProvider; label: string }[] = [
+  { value: "groq",     label: "Groq – Llama 3.3 (free)" },
+  { value: "deepseek", label: "DeepSeek Chat (~free)" },
+  { value: "claude",   label: "Claude Haiku" },
+  { value: "openai",   label: "GPT-4o mini" },
+];
+
+const LLM_LABELS: Record<LLMProvider, string> = Object.fromEntries(
+  LLM_OPTIONS.map((o) => [o.value, o.label])
+) as Record<LLMProvider, string>;
+
 type Props = {
   type: ArtifactType;
   projectDefaultLlm: LLMProvider;
@@ -77,19 +88,16 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
               onChange={(e) => setLlm((e.target.value as LLMProvider) || null)}
               className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
             >
-              <option value="">Default ({
-                { groq: "Groq", claude: "Claude", openai: "ChatGPT" }[projectDefaultLlm]
-              })</option>
-              <option value="groq">Groq (free)</option>
-              <option value="claude">Claude</option>
-              <option value="openai">ChatGPT (OpenAI)</option>
+              <option value="">Default ({LLM_LABELS[projectDefaultLlm]})</option>
+              {LLM_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
             </select>
           ) : (
             <span className="text-[11px] text-[#5e6c84] bg-[#f4f5f7] px-2 py-[3px] rounded">
               {type.llm
-                ? { groq: "Groq (free)", claude: "Claude", openai: "ChatGPT" }[type.llm]
-                : `Default · ${{ groq: "Groq (free)", claude: "Claude", openai: "ChatGPT" }[projectDefaultLlm]}`
-              }
+                ? LLM_LABELS[type.llm]
+                : `Default · ${LLM_LABELS[projectDefaultLlm]}`}
             </span>
           )}
         </div>
@@ -122,18 +130,16 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
               >
                 Edit
               </button>
-              {!type.is_default && (
-                <button
-                  onClick={() => {
-                    if (confirm(`Delete "${type.name}"? This cannot be undone.`)) {
-                      onDelete(type.id);
-                    }
-                  }}
-                  className="text-[11px] text-[#97a0af] hover:text-red-500"
-                >
-                  ✕
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  if (confirm(`Delete "${type.name}"? This cannot be undone.`)) {
+                    onDelete(type.id);
+                  }
+                }}
+                className="text-[11px] text-[#97a0af] hover:text-red-500"
+              >
+                ✕
+              </button>
             </>
           )}
         </div>

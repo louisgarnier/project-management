@@ -53,13 +53,13 @@ def seed_defaults(project_id: str) -> None:
 class ArtifactTypeCreate(BaseModel):
     name: str = Field(min_length=1)
     prompt: str = Field(min_length=1)
-    llm: Literal["groq", "claude", "openai"] | None = None
+    llm: Literal["groq", "deepseek", "claude", "openai"] | None = None
 
 
 class ArtifactTypeUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     prompt: str | None = Field(default=None, min_length=1)
-    llm: Literal["groq", "claude", "openai"] | None = Field(default=None)
+    llm: Literal["groq", "deepseek", "claude", "openai"] | None = Field(default=None)
 
 
 class ArtifactTypeImport(BaseModel):

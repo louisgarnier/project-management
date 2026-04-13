@@ -15,7 +15,7 @@ logger = get_logger("artifacts")
 
 class ArtifactSelection(BaseModel):
     artifact_type_id: str
-    mode: Literal["groq", "claude", "openai", "manual"]
+    mode: Literal["groq", "deepseek", "claude", "openai", "manual"]
 
 
 class ArtifactSelectionsPayload(BaseModel):
@@ -90,7 +90,7 @@ def list_artifacts(call_id: str):
 class ArtifactUpdate(BaseModel):
     content: str | None = None
     status: Literal["pending", "generating", "done", "error"] | None = None
-    mode: Literal["groq", "claude", "openai", "manual"] | None = None
+    mode: Literal["groq", "deepseek", "claude", "openai", "manual"] | None = None
 
 
 @router.patch("/artifacts/{artifact_id}")

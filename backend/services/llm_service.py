@@ -14,7 +14,7 @@ _MAX_RETRIES = 3  # 3 retries = 4 total attempts
 async def generate_artifact(prompt_used: str, transcript: str, llm: str) -> str:
     """
     Generate an artifact using the specified LLM provider.
-    llm must be one of: "groq", "claude", "openai".
+    llm must be one of: "groq", "deepseek", "claude", "openai".
     Retries up to 3 times with exponential backoff on rate-limit errors.
     """
     if llm == "claude":
@@ -27,16 +27,24 @@ async def generate_artifact(prompt_used: str, transcript: str, llm: str) -> str:
             model="llama-3.3-70b-versatile",
             provider="Groq",
         )
+    elif llm == "deepseek":
+        return await _generate_openai_compat(
+            prompt_used, transcript,
+            api_key=os.environ.get("DEEPSEEK_API_KEY", ""),
+            base_url="https://api.deepseek.com",
+            model="deepseek-chat",
+            provider="DeepSeek",
+        )
     elif llm == "openai":
         return await _generate_openai_compat(
             prompt_used, transcript,
             api_key=os.environ.get("OPENAI_API_KEY", ""),
             base_url=None,
-            model="gpt-4o",
+            model="gpt-4o-mini",
             provider="OpenAI",
         )
     else:
-        raise ValueError(f"Unknown LLM provider: {llm!r}. Must be 'groq', 'claude', or 'openai'.")
+        raise ValueError(f"Unknown LLM provider: {llm!r}. Must be 'groq', 'deepseek', 'claude', or 'openai'.")
 
 
 async def _generate_claude(prompt_used: str, transcript: str) -> str:
@@ -47,7 +55,7 @@ async def _generate_claude(prompt_used: str, transcript: str) -> str:
         try:
             logger.info(f"🤖 [Claude] Generating artifact (attempt {attempt + 1})")
             message = await client.messages.create(
-                model="claude-sonnet-4-6",
+                model="claude-haiku-4-5-20251001",
                 max_tokens=2048,
                 messages=[{"role": "user", "content": user_message}],
             )

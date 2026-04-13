@@ -6,9 +6,10 @@ import type { ArtifactType, LLMProvider } from "@/types";
 export type SelectionMode = "generate" | "manual" | "skip";
 
 const LLM_LABEL: Record<string, string> = {
-  groq: "Groq (free)",
-  claude: "Claude",
-  openai: "ChatGPT",
+  groq:     "Groq – Llama 3.3 (free)",
+  deepseek: "DeepSeek Chat (~free)",
+  claude:   "Claude Haiku",
+  openai:   "GPT-4o mini",
 };
 
 type Props = {

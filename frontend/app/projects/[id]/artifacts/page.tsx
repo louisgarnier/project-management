@@ -8,6 +8,13 @@ import type { ArtifactType, LLMProvider, Project } from "@/types";
 import ArtifactTypeCard from "@/components/ArtifactTypeCard";
 import AddArtifactTypeModal from "@/components/AddArtifactTypeModal";
 
+const LLM_OPTIONS: { value: LLMProvider; label: string }[] = [
+  { value: "groq",     label: "Groq – Llama 3.3 (free)" },
+  { value: "deepseek", label: "DeepSeek Chat (~free)" },
+  { value: "claude",   label: "Claude Haiku" },
+  { value: "openai",   label: "GPT-4o mini" },
+];
+
 export default function ArtifactsPage() {
   const params = useParams<{ id: string }>();
   const projectId = params.id;
@@ -88,9 +95,9 @@ export default function ArtifactsPage() {
                   disabled={savingLlm}
                   className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc] disabled:opacity-50"
                 >
-                  <option value="groq">Groq (free)</option>
-                  <option value="claude">Claude</option>
-                  <option value="openai">ChatGPT (OpenAI)</option>
+                  {LLM_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
                 </select>
                 {savingLlm && <span className="text-[11px] text-[#5e6c84]">Saving…</span>}
               </div>
