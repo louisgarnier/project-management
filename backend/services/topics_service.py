@@ -706,3 +706,27 @@ async def list_project_topics(project_id: str, db=None) -> list[dict]:
     if db is None:
         db = get_client()
     return _get_previous_topics(project_id, db)
+
+
+def get_project_topics_context(project_id: str, db=None) -> str:
+    """
+    Build a compact summary of open/in_progress project topics for artifact context.
+    Returns empty string if no open topics.
+    """
+    if db is None:
+        db = get_client()
+    previous = _get_previous_topics(project_id, db)
+    open_topics = [t for t in previous if t.get("status") in ("open", "in_progress")]
+    if not open_topics:
+        return ""
+
+    lines = ["=== Current Project Topics ==="]
+    for t in open_topics:
+        lines.append(
+            f"\n• {t['name']} [{t['status']} / {t['owner']} / {t['sentiment']}]"
+        )
+        if t.get("summary"):
+            lines.append(f"  Latest: {t['summary']}")
+        for item in (t.get("follow_up_items") or [])[:3]:
+            lines.append(f"  → {item}")
+    return "\n".join(lines)

@@ -4,6 +4,7 @@ from typing import Literal
 
 from backend.database.supabase_client import get_client
 from backend.services.llm_service import generate_artifact
+from backend.services.topics_service import get_project_topics_context
 from backend.utils.logger import db_logger, get_logger
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response, StreamingResponse
@@ -142,13 +143,14 @@ async def stream_artifacts(call_id: str):
 
     call_result = (
         supabase.table("calls")
-        .select("id,transcript")
+        .select("id,transcript,project_id")
         .eq("id", call_id)
         .execute()
     )
     if not call_result.data:
         raise HTTPException(status_code=404, detail="Call not found")
     transcript = call_result.data[0].get("transcript") or ""
+    project_id = call_result.data[0].get("project_id", "")
 
     # Fetch topics for this call to inject as context (best-effort)
     call_topics = None
@@ -186,6 +188,13 @@ async def stream_artifacts(call_id: str):
     except Exception:
         call_topics = None
 
+    # Project-level open topics context (best-effort)
+    project_topics_context = ""
+    try:
+        project_topics_context = get_project_topics_context(project_id, supabase)
+    except Exception:
+        project_topics_context = ""
+
     artifacts_result = (
         supabase.table("artifacts")
         .select("id,prompt_used,mode")
@@ -208,7 +217,11 @@ async def stream_artifacts(call_id: str):
             await queue.put({"type": "status", "artifact_id": artifact_id, "status": "generating"})
             supabase.table("artifacts").update({"status": "generating"}).eq("id", artifact_id).execute()
             try:
-                content = await generate_artifact(prompt_used, transcript, artifact["mode"], topics=call_topics)
+                # Combine transcript with project topic context for richer artifact generation
+                full_context = transcript
+                if project_topics_context:
+                    full_context = f"{transcript}\n\n{project_topics_context}"
+                content = await generate_artifact(prompt_used, full_context, artifact["mode"], topics=call_topics)
                 supabase.table("artifacts").update(
                     {"status": "done", "content": content}
                 ).eq("id", artifact_id).execute()

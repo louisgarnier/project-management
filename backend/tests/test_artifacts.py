@@ -361,3 +361,59 @@ async def test_generate_artifact_without_topics_has_no_topics_block():
     assert "Topics from this call" not in user_content
     assert "The call transcript." in user_content
     assert "Write a summary." in user_content
+
+
+@patch("backend.routers.artifacts.get_client")
+@patch("backend.routers.artifacts.generate_artifact")
+@patch("backend.routers.artifacts.get_project_topics_context")
+def test_artifact_stream_injects_project_context(mock_ctx, mock_gen, mock_gc):
+    """SSE stream calls get_project_topics_context during generation."""
+    db = MagicMock()
+    mock_gc.return_value = db
+
+    # call row: needs project_id and transcript
+    call_chain = MagicMock()
+    call_chain.execute.return_value = MagicMock(data=[
+        {"id": "call-1", "transcript": "transcript text", "project_id": "proj-1"}
+    ])
+    call_chain.eq.return_value = call_chain
+    call_chain.select.return_value = call_chain
+
+    # topic_updates for call (used for call_topics context)
+    updates_chain = MagicMock()
+    updates_chain.execute.return_value = MagicMock(data=[])
+    updates_chain.eq.return_value = updates_chain
+    updates_chain.select.return_value = updates_chain
+
+    # pending artifacts
+    pending_chain = MagicMock()
+    pending_chain.execute.return_value = MagicMock(data=[
+        {"id": "art-1", "prompt_used": "Summarise", "mode": "claude"}
+    ])
+    pending_chain.eq.return_value = pending_chain
+    pending_chain.select.return_value = pending_chain
+
+    def table_side(name):
+        if name == "calls":
+            return call_chain
+        if name == "topic_updates":
+            return updates_chain
+        if name == "artifacts":
+            return pending_chain
+        return MagicMock()
+
+    db.table.side_effect = table_side
+
+    mock_ctx.return_value = "=== Current Project Topics ===\n• Budget [open / Us / neutral]"
+
+    async def fake_gen(prompt, transcript, mode, topics=None):
+        return "generated content"
+    mock_gen.side_effect = fake_gen
+
+    # Fire the SSE stream request
+    with client.stream("GET", f"/api/calls/call-1/artifacts/stream") as response:
+        # Consume all events
+        list(response.iter_lines())
+
+    # Verify get_project_topics_context was called with the project_id
+    mock_ctx.assert_called_once_with("proj-1", db)
