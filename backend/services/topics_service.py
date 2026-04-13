@@ -139,6 +139,21 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
     return result
 
 
+def _get_topics_prompt(project_id: str, db) -> str | None:
+    """Return the project's stored topics-extraction prompt, or None if not set."""
+    rows = (
+        db.table("artifact_types")
+        .select("prompt")
+        .eq("project_id", project_id)
+        .eq("category", "topics")
+        .order("created_at")
+        .limit(1)
+        .execute()
+        .data
+    )
+    return rows[0]["prompt"] if rows else None
+
+
 def extract_topics(call_id: str):
     """
     Returns a coroutine that resolves to:
@@ -184,10 +199,16 @@ async def _extract_topics_impl(call_id: str) -> dict:
     )
     call_number = len(done_calls) + 1
 
+    # Look up project's topics prompt; fall back to hardcoded schema hint
+    stored_prompt = _get_topics_prompt(project_id, db)
+    base_instructions = stored_prompt or (
+        f"Extract all key business topics from this call.\n\n"
+        f"Return a JSON array where each element matches: {_TOPIC_SCHEMA}"
+    )
+
     if call_number == 1:
         prompt = (
-            f"Extract all key business topics from this call.\n\n"
-            f"Return a JSON array where each element matches: {_TOPIC_SCHEMA}\n\n"
+            f"{base_instructions}\n\n"
             f"Transcript:\n{transcript}\n\n"
             f"Supporting documents:\n{artifact_text or 'None'}"
         )
@@ -198,6 +219,7 @@ async def _extract_topics_impl(call_id: str) -> dict:
     prev_names = {t["name"] for t in previous}
 
     prompt = (
+        f"{base_instructions}\n\n"
         f"Below are the open topics from previous calls.\n\n"
         f"Previous topics (JSON):\n{json.dumps(previous, indent=2)}\n\n"
         f"Now review the new call transcript below. For each previous topic:\n"

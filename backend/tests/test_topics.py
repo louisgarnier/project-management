@@ -333,3 +333,27 @@ def test_get_project_topics_returns_non_archived(mock_gc):
     assert body[0]["name"] == "Pricing"
     assert body[0]["status"] == "open"
     assert body[0]["calls_open"] == 2
+
+
+def test_get_topics_prompt_returns_stored_prompt():
+    """_get_topics_prompt returns the project's stored prompt when found."""
+    from backend.services.topics_service import _get_topics_prompt
+    from unittest.mock import MagicMock
+    mock_db = MagicMock()
+    mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value \
+        .order.return_value.limit.return_value.execute.return_value.data = [
+            {"prompt": "STORED PROMPT"}
+        ]
+    result = _get_topics_prompt("proj-1", mock_db)
+    assert result == "STORED PROMPT"
+
+
+def test_get_topics_prompt_falls_back_to_none():
+    """_get_topics_prompt returns None when no topics prompt row exists."""
+    from backend.services.topics_service import _get_topics_prompt
+    from unittest.mock import MagicMock
+    mock_db = MagicMock()
+    mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value \
+        .order.return_value.limit.return_value.execute.return_value.data = []
+    result = _get_topics_prompt("proj-1", mock_db)
+    assert result is None
