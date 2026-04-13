@@ -247,4 +247,15 @@ export const topicsAPI = {
 
   listForProject: (projectId: string) =>
     proxyFetch<import("@/types").TopicData[]>(`/api/projects/${projectId}/topics`),
+
+  extractCall: (callId: string) =>
+    proxyFetch<import("@/types").TopicData[]>(`/api/calls/${callId}/topics/extract_call`, {
+      method: "POST",
+    }),
+
+  aggregate: (callId: string, topics: import("@/types").TopicData[]) =>
+    proxyFetch<import("@/types").AggregateResult>(`/api/calls/${callId}/topics/aggregate`, {
+      method: "POST",
+      body: JSON.stringify({ topics }),
+    }),
 };

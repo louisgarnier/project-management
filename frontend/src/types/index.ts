@@ -81,6 +81,15 @@ export interface ExtractionResult {
   new_topics: TopicData[];
 }
 
+/** Response from POST /calls/{id}/topics/aggregate */
+export interface AggregateResult {
+  auto_advanced?: boolean;   // true = Call 1, stage already advanced to artifacts
+  call_number: number;
+  followed_up?: TopicData[];
+  not_discussed?: TopicData[];
+  new_topics?: TopicData[];
+}
+
 /** One item in the brief panel */
 export interface BriefItem {
   topic_id: string;
