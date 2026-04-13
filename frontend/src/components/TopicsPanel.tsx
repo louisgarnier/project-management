@@ -23,6 +23,11 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false, ca
   const [savedCount, setSavedCount] = useState(0);
   const [reExtracting, setReExtracting] = useState(false);
   const [reExtractError, setReExtractError] = useState<string | null>(null);
+  const [localTopicsStale, setLocalTopicsStale] = useState(call?.topics_stale ?? false);
+
+  useEffect(() => {
+    setLocalTopicsStale(call?.topics_stale ?? false);
+  }, [call?.topics_stale]);
 
   const load = useCallback(async () => {
     if (!open) return;
@@ -75,6 +80,7 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false, ca
         disposition: null,
       })));
       await callsAPI.clearTopicsStale(callId);
+      setLocalTopicsStale(false);
       await load();
     } catch (err) {
       setReExtractError(err instanceof Error ? err.message : "Re-extraction failed");
@@ -86,6 +92,7 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false, ca
   async function handleDismissStale() {
     try {
       await callsAPI.clearTopicsStale(callId);
+      setLocalTopicsStale(false);
     } catch { /* ignore */ }
   }
 
@@ -104,7 +111,7 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false, ca
 
       {open && (
         <div style={{ borderTop: "1px solid #f4f5f7" }}>
-          {call?.topics_stale && !call.is_locked && (
+          {localTopicsStale && !call?.is_locked && (
             <div style={{ margin: "0 14px 10px", background: "#fff4e6", border: "1px solid #ffe0a0",
               borderRadius: 6, padding: "8px 12px", fontSize: 11, color: "#974f0c" }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ Transcript was updated — topics may be out of date</div>

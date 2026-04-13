@@ -160,7 +160,7 @@ export default function CallDetailPage() {
           <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          <ArtifactsPanel callId={callId} projectId={projectId} defaultOpen />
+          <ArtifactsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
           {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
           <ContextFiles call={call} readonly />
         </div>
@@ -182,7 +182,7 @@ export default function CallDetailPage() {
           <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          <TopicsPanel callId={callId} projectId={projectId} defaultOpen />
+          <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
           {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
           <ContextFiles call={call} readonly />
         </div>
