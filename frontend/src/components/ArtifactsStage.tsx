@@ -37,12 +37,13 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
         artifactsAPI.list(callId),
         projectsAPI.get(projectId),
       ]);
-      setArtifactTypes(types);
+      const artifactTypes = types.filter((t) => t.category !== "topics");
+      setArtifactTypes(artifactTypes);
       setProjectDefaultLlm(project.default_llm);
 
       // Default all types to "generate"
       const defaultSels: Record<string, SelectionMode> = {};
-      types.forEach((t) => { defaultSels[t.id] = "generate"; });
+      artifactTypes.forEach((t) => { defaultSels[t.id] = "generate"; });
       setSelections(defaultSels);
 
       if (existing.length > 0) {
