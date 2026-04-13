@@ -312,28 +312,16 @@ async def validate_call(call_id: str) -> dict:
     acknowledged_ids = {r["topic_id"] for r in this_call_updates}
 
     # 2. Find previously-open topics not acknowledged in this call
+    # Use _get_previous_topics() to get each topic's LATEST status (not any historical status)
     call_row = db.table("calls").select("project_id").eq("id", call_id).execute().data
     project_id = call_row[0]["project_id"]
 
-    # All topic_update rows where status is not resolved (across all calls)
-    all_open_updates = (
-        db.table("topic_updates")
-        .select("topic_id")
-        .neq("status", "resolved")
-        .execute()
-        .data
-    )
-    # Non-archived topics in this project
-    project_topics = {
-        r["id"] for r in
-        db.table("topics")
-        .select("id")
-        .eq("project_id", project_id)
-        .eq("archived", False)
-        .execute()
-        .data
+    previous_topics = _get_previous_topics(project_id, db)
+    # Only topics whose LATEST update is still open or in_progress
+    open_topic_ids = {
+        t["topic_id"] for t in previous_topics
+        if t["status"] in ("open", "in_progress")
     }
-    open_topic_ids = {r["topic_id"] for r in all_open_updates} & project_topics
     unacknowledged = open_topic_ids - acknowledged_ids
 
     if unacknowledged:
