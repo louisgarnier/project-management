@@ -21,7 +21,6 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
   const [artifactTypes, setArtifactTypes] = useState<ArtifactType[]>([]);
   const [selections, setSelections] = useState<Record<string, SelectionMode>>({});
   const [projectDefaultLlm, setProjectDefaultLlm] = useState<LLMProvider>("groq");
-  const [applyLlm, setApplyLlm] = useState<LLMProvider>("groq");
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [phase, setPhase] = useState<Phase>("select");
   const [generating, setGenerating] = useState(false);
@@ -39,7 +38,6 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
       ]);
       setArtifactTypes(types);
       setProjectDefaultLlm(project.default_llm);
-      setApplyLlm(project.default_llm);
 
       // Default all types to "generate"
       const defaultSels: Record<string, SelectionMode> = {};
@@ -60,12 +58,11 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
     return () => { streamAbortRef.current?.abort(); };
   }, [init]);
 
-  // Re-fetch project default whenever reviewing phase is shown — keeps LLM selector in sync
+  // Re-fetch project default whenever reviewing phase is shown — keeps fallback LLM in sync
   useEffect(() => {
     if (phase === "reviewing") {
       projectsAPI.get(projectId).then((p) => {
         setProjectDefaultLlm(p.default_llm);
-        setApplyLlm(p.default_llm);
       }).catch(() => {});
     }
   }, [phase, projectId]);
@@ -165,9 +162,10 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
   }
 
   async function handleRetry(artifactId: string) {
-    // Use the LLM selected in the inline dropdown (applyLlm)
+    // Use the LLM from the artifact type's settings (falls back to project default)
     try {
-      const llm = applyLlm;
+      const artifact = artifacts.find((a) => a.id === artifactId);
+      const llm = (artifact ? (typeMap[artifact.artifact_type_id]?.llm ?? projectDefaultLlm) : projectDefaultLlm) as ArtifactMode;
       const updated = await artifactsAPI.update(artifactId, { status: "pending", mode: llm });
       setArtifacts((prev) => prev.map((a) => (a.id === artifactId ? updated : a)));
       logger.info("Artifact reset for retry", { component: "ArtifactsStage", data: { artifactId, llm } });
@@ -179,19 +177,25 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
   }
 
   async function handleRegenerateAll() {
-    // Use the LLM the user selected in the inline dropdown (applyLlm)
+    // Use each artifact type's configured LLM (falls back to project default)
     try {
-      const llm = applyLlm;
       const toReset = artifacts.filter((a) => a.status !== "done" && a.status !== "generating");
+      const resetWithLlm = toReset.map((a) => ({
+        artifact: a,
+        llm: (typeMap[a.artifact_type_id]?.llm ?? projectDefaultLlm) as ArtifactMode,
+      }));
       await Promise.all(
-        toReset.map((a) => artifactsAPI.update(a.id, { status: "pending", mode: llm }))
-      );
-      setArtifacts((prev) =>
-        prev.map((a) =>
-          toReset.some((r) => r.id === a.id) ? { ...a, status: "pending", mode: llm } : a
+        resetWithLlm.map(({ artifact, llm }) =>
+          artifactsAPI.update(artifact.id, { status: "pending", mode: llm })
         )
       );
-      logger.info("Regenerate all", { component: "ArtifactsStage", data: { llm, count: toReset.length } });
+      setArtifacts((prev) =>
+        prev.map((a) => {
+          const entry = resetWithLlm.find((r) => r.artifact.id === a.id);
+          return entry ? { ...a, status: "pending", mode: entry.llm } : a;
+        })
+      );
+      logger.info("Regenerate all", { component: "ArtifactsStage", data: { count: toReset.length } });
       setPhase("generating");
       await streamArtifacts();
     } catch (err) {
@@ -269,23 +273,12 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
             </span>
           )}
           {phase === "reviewing" && artifacts.some((a) => a.status === "error" || a.status === "pending") && (
-            <div className="flex items-center gap-2">
-              <select
-                value={applyLlm}
-                onChange={(e) => setApplyLlm(e.target.value as LLMProvider)}
-                className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
-              >
-                <option value="groq">Groq (free)</option>
-                <option value="claude">Claude</option>
-                <option value="openai">ChatGPT (OpenAI)</option>
-              </select>
-              <button
-                onClick={handleRegenerateAll}
-                className="text-[11px] text-[#0052cc] border border-[#0052cc] px-3 py-1 rounded hover:bg-[#e9f0ff] transition-colors"
-              >
-                Regenerate failed
-              </button>
-            </div>
+            <button
+              onClick={handleRegenerateAll}
+              className="text-[11px] text-[#0052cc] border border-[#0052cc] px-3 py-1 rounded hover:bg-[#e9f0ff] transition-colors"
+            >
+              Regenerate failed
+            </button>
           )}
         </div>
       </div>
