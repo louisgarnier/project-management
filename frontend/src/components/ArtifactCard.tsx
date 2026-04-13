@@ -8,16 +8,18 @@ type Props = {
   artifactType: ArtifactType | undefined;
   onMarkDone: (id: string, content: string) => Promise<void>;
   onRetry: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
 };
 
 const PREVIEW_LENGTH = 220;
 
-export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRetry }: Props) {
+export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRetry, onDelete }: Props) {
   const [content, setContent] = useState(artifact.content ?? "");
   const [marking, setMarking] = useState(false);
   const [markError, setMarkError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const isDone = artifact.status === "done";
   const isGenerating = artifact.status === "generating";
@@ -43,6 +45,16 @@ export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRet
     setTimeout(() => setCopied(false), 1500);
   }
 
+  async function handleDelete() {
+    if (!confirm(`Delete "${artifactType?.name ?? "this artifact"}"? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await onDelete(artifact.id);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const borderColor = isDone
     ? "#36b37e"
     : isError
@@ -64,7 +76,19 @@ export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRet
         <h3 className="text-[14px] font-semibold text-[#172b4d]">
           {artifactType?.name ?? "Artifact"}
         </h3>
-        <StatusBadge status={artifact.status} mode={artifact.mode} />
+        <div className="flex items-center gap-2">
+          <StatusBadge status={artifact.status} mode={artifact.mode} />
+          {!isGenerating && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-[11px] text-[#97a0af] hover:text-red-500 transition-colors disabled:opacity-50"
+              title="Delete artifact"
+            >
+              {deleting ? "…" : "✕"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content area */}
@@ -110,6 +134,14 @@ export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRet
             >
               {copied ? "✓ Copied" : "Copy"}
             </button>
+            {artifact.mode !== "manual" && (
+              <button
+                onClick={() => onRetry(artifact.id)}
+                className="text-[11px] text-[#5e6c84] hover:text-[#0052cc] transition-colors"
+              >
+                Regenerate
+              </button>
+            )}
           </div>
         </div>
       ) : (

@@ -161,6 +161,12 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
     logger.info("Artifact marked done", { component: "ArtifactsStage", data: { artifactId } });
   }
 
+  async function handleDeleteArtifact(artifactId: string) {
+    await artifactsAPI.delete(artifactId);
+    setArtifacts((prev) => prev.filter((a) => a.id !== artifactId));
+    logger.info("Deleted artifact", { component: "ArtifactsStage", data: { artifactId } });
+  }
+
   async function handleRetry(artifactId: string) {
     // Use the LLM from the artifact type's settings (falls back to project default)
     try {
@@ -315,6 +321,7 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
             artifactType={typeMap[a.artifact_type_id]}
             onMarkDone={handleMarkDone}
             onRetry={handleRetry}
+            onDelete={handleDeleteArtifact}
           />
         ))}
       </div>

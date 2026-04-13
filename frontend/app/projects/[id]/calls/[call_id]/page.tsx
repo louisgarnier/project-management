@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { callsAPI } from "@/api/client";
+import { artifactsAPI, callsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { Call } from "@/types";
 import TranscriptStage from "@/components/TranscriptStage";
@@ -23,15 +23,25 @@ export default function CallDetailPage() {
   const [call, setCall] = useState<Call | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetDeleteArtifacts, setResetDeleteArtifacts] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
-  async function handleResetTranscript() {
-    if (!confirm("Delete the transcript and roll back to Get Transcript stage? This cannot be undone.")) return;
+  async function handleConfirmReset() {
+    setResetting(true);
     try {
+      if (resetDeleteArtifacts) {
+        await artifactsAPI.deleteAll(callId);
+      }
       const updated = await callsAPI.resetTranscript(callId);
-      logger.info("Transcript reset", { component: "CallDetailPage", data: { callId } });
+      logger.info("Transcript reset", { component: "CallDetailPage", data: { callId, deletedArtifacts: resetDeleteArtifacts } });
       setCall(updated);
+      setShowResetModal(false);
+      setResetDeleteArtifacts(false);
     } catch (err) {
       logger.error("Failed to reset transcript", { component: "CallDetailPage", data: err });
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -91,7 +101,7 @@ export default function CallDetailPage() {
           {call.kanban_stage === "artifacts" && (
             <div className="mt-4 text-right">
               <button
-                onClick={handleResetTranscript}
+                onClick={() => setShowResetModal(true)}
                 className="text-[11px] text-[#97a0af] hover:text-red-500 hover:underline"
               >
                 ↩ Reset transcript
@@ -161,7 +171,7 @@ export default function CallDetailPage() {
             <ContextFiles call={call} readonly />
             <div className="mt-4 text-right">
               <button
-                onClick={handleResetTranscript}
+                onClick={() => setShowResetModal(true)}
                 className="text-[11px] text-[#97a0af] hover:text-red-500 hover:underline"
               >
                 ↩ Reset transcript
@@ -186,6 +196,43 @@ export default function CallDetailPage() {
           </>
         )}
       </div>
+
+      {/* Reset transcript modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-6">
+            <h2 className="text-[16px] font-semibold text-[#172b4d] mb-2">Reset transcript</h2>
+            <p className="text-[13px] text-[#5e6c84] mb-4">
+              This will delete the transcript and roll back to the Get Transcript stage.
+            </p>
+            <label className="flex items-center gap-3 mb-5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={resetDeleteArtifacts}
+                onChange={(e) => setResetDeleteArtifacts(e.target.checked)}
+                className="accent-[#0052cc] w-4 h-4"
+              />
+              <span className="text-[13px] text-[#172b4d]">Also delete generated artifacts</span>
+            </label>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowResetModal(false); setResetDeleteArtifacts(false); }}
+                disabled={resetting}
+                className="text-[13px] text-[#5e6c84] hover:text-[#172b4d] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmReset}
+                disabled={resetting}
+                className="px-4 py-2 bg-red-600 text-white text-[13px] font-medium rounded hover:bg-red-700 disabled:opacity-50"
+              >
+                {resetting ? "Resetting…" : "Reset"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

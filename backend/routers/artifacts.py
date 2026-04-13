@@ -6,7 +6,7 @@ from backend.database.supabase_client import get_client
 from backend.services.llm_service import generate_artifact
 from backend.utils.logger import db_logger, get_logger
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api", tags=["artifacts"])
@@ -105,6 +105,27 @@ def update_artifact(artifact_id: str, payload: ArtifactUpdate):
         raise HTTPException(status_code=404, detail="Artifact not found")
     db_logger.info(f"✅ [DB] Updated artifact: {artifact_id}")
     return result.data[0]
+
+
+@router.delete("/artifacts/{artifact_id}", status_code=204)
+def delete_artifact(artifact_id: str):
+    client = get_client()
+    db_logger.info(f"🗄️ [DB] Deleting artifact: {artifact_id}")
+    result = client.table("artifacts").delete().eq("id", artifact_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    db_logger.info(f"✅ [DB] Deleted artifact: {artifact_id}")
+    return Response(status_code=204)
+
+
+@router.delete("/calls/{call_id}/artifacts", status_code=204)
+def delete_call_artifacts(call_id: str):
+    """Delete all artifacts for a call (used when resetting transcript)."""
+    client = get_client()
+    db_logger.info(f"🗄️ [DB] Deleting all artifacts for call: {call_id}")
+    client.table("artifacts").delete().eq("call_id", call_id).execute()
+    db_logger.info(f"✅ [DB] Deleted all artifacts for call: {call_id}")
+    return Response(status_code=204)
 
 
 @router.get("/calls/{call_id}/artifacts/stream")

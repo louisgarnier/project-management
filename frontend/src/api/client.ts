@@ -196,4 +196,8 @@ export const artifactsAPI = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+  delete: (artifactId: string) =>
+    proxyFetch<void>(`/api/artifacts/${artifactId}`, { method: "DELETE" }),
+  deleteAll: (callId: string) =>
+    proxyFetch<void>(`/api/calls/${callId}/artifacts`, { method: "DELETE" }),
 };
