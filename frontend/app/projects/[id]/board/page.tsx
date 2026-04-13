@@ -43,6 +43,11 @@ export default function BoardPage() {
     await loadCalls();
   }
 
+  async function handleDelete(callId: string) {
+    await callsAPI.delete(callId);
+    setCalls((prev) => prev.filter((c) => c.id !== callId));
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -91,7 +96,7 @@ export default function BoardPage() {
           </button>
         </div>
       ) : (
-        <KanbanBoard calls={calls} onNewCall={() => setShowModal(true)} />
+        <KanbanBoard calls={calls} onNewCall={() => setShowModal(true)} onDeleteCall={handleDelete} />
       )}
 
       {showModal && <NewCallModal onClose={() => setShowModal(false)} onCreate={handleCreate} />}

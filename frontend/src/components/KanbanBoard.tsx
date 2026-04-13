@@ -68,9 +68,10 @@ function getCellState(
 type Props = {
   calls: Call[];
   onNewCall: () => void;
+  onDeleteCall: (callId: string) => void;
 };
 
-export default function KanbanBoard({ calls, onNewCall }: Props) {
+export default function KanbanBoard({ calls, onNewCall, onDeleteCall }: Props) {
   const router    = useRouter();
   const params    = useParams<{ id: string }>();
   const projectId = params.id;
@@ -117,7 +118,7 @@ export default function KanbanBoard({ calls, onNewCall }: Props) {
           <div key={call.id} className="flex items-stretch gap-2">
 
             {/* Call label */}
-            <div className="flex-shrink-0 w-[140px] flex flex-col justify-center pr-4">
+            <div className="flex-shrink-0 w-[140px] flex flex-col justify-center pr-4 group/label relative">
               <span className="text-[12px] font-bold text-[#172b4d]">
                 Call {idx + 1}
               </span>
@@ -130,6 +131,17 @@ export default function KanbanBoard({ calls, onNewCall }: Props) {
                   day: "numeric",
                 })}
               </span>
+              <button
+                onClick={() => {
+                  if (confirm(`Delete "${call.title}"? This will also delete its transcript, artifacts, and files.`)) {
+                    onDeleteCall(call.id);
+                  }
+                }}
+                className="absolute top-0 right-4 opacity-0 group-hover/label:opacity-100 text-[#97a0af] hover:text-red-500 text-[13px] transition-opacity leading-none"
+                title="Delete call"
+              >
+                ✕
+              </button>
             </div>
 
             {/* Stage cells */}

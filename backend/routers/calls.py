@@ -56,6 +56,14 @@ def create_call(project_id: str, payload: CallCreate):
     return result.data[0]
 
 
+@router.delete("/calls/{call_id}", status_code=204)
+def delete_call(call_id: str):
+    client = get_client()
+    db_logger.info(f"🗄️ [DB] Deleting call: {call_id}")
+    client.table("calls").delete().eq("id", call_id).execute()
+    db_logger.info(f"✅ [DB] Deleted call: {call_id}")
+
+
 @router.get("/calls/{call_id}")
 def get_call(call_id: str):
     client = get_client()
