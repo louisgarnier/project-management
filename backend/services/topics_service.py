@@ -270,6 +270,7 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
             if t.status == "resolved":
                 db.table("topics").update({"calls_open": 0}).eq("id", topic_id).execute()
             else:
+                # Fetch-then-increment: not atomic, but safe for single-user app (no concurrent writes)
                 current = (
                     db.table("topics").select("calls_open").eq("id", topic_id).execute().data
                 )
