@@ -205,6 +205,30 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
 
   const typeMap = Object.fromEntries(artifactTypes.map((t) => [t.id, t]));
 
+  // Artifact types that have no artifact row yet for this call
+  const coveredTypeIds = new Set(artifacts.map((a) => a.artifact_type_id));
+  const newTypes = artifactTypes.filter((t) => !coveredTypeIds.has(t.id));
+
+  async function handleGenerateNew() {
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const payload = newTypes.map((t) => ({
+        artifact_type_id: t.id,
+        mode: (t.llm ?? projectDefaultLlm) as ArtifactMode,
+      }));
+      const created = await artifactsAPI.createSelections(callId, payload);
+      setArtifacts((prev) => [...prev, ...created]);
+      setPhase("generating");
+      logger.info("Generated new artifact types", { component: "ArtifactsStage", data: { count: created.length } });
+      await streamArtifacts();
+    } catch (err) {
+      logger.error("Generate new failed", { component: "ArtifactsStage", data: err });
+      setGenerateError(err instanceof Error ? err.message : "Failed to generate");
+      setGenerating(false);
+    }
+  }
+
   // "Proceed" enabled when every artifact is done
   const allDone = artifacts.length > 0 && artifacts.every((a) => a.status === "done");
 
@@ -294,6 +318,29 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
           />
         ))}
       </div>
+
+      {phase === "reviewing" && newTypes.length > 0 && (
+        <div className="border border-dashed border-[#dfe1e6] rounded-lg px-4 py-3 bg-[#f4f5f7]">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[12px] font-medium text-[#172b4d]">
+                {newTypes.length} new artifact type{newTypes.length > 1 ? "s" : ""} added
+              </p>
+              <p className="text-[11px] text-[#5e6c84] mt-0.5">
+                {newTypes.map((t) => t.name).join(", ")}
+              </p>
+            </div>
+            <button
+              onClick={handleGenerateNew}
+              disabled={generating}
+              className="px-3 py-1.5 bg-[#0052cc] text-white text-[11px] font-medium rounded hover:bg-[#0747a6] disabled:opacity-50 whitespace-nowrap"
+            >
+              {generating ? "Generating…" : "Generate →"}
+            </button>
+          </div>
+          {generateError && <p className="text-[11px] text-red-600 mt-2">{generateError}</p>}
+        </div>
+      )}
 
       {phase === "reviewing" && (
         <div className="flex justify-end pt-2">
