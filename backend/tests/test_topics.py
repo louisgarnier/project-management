@@ -219,3 +219,39 @@ def test_save_topics_keep_as_is_disposition(mock_save, mock_gc):
     r = http.post(f"/api/calls/{CALL_ID}/topics", json=payload)
     assert r.status_code == 200
     mock_save.assert_called_once()
+
+
+@patch("backend.routers.topics.get_client")
+@patch("backend.routers.topics.validate_call")
+def test_validate_advances_to_done(mock_validate, mock_gc):
+    mock_gc.return_value = MagicMock()
+    mock_validate.return_value = {"kanban_stage": "done"}
+
+    r = http.post(f"/api/calls/{CALL_ID}/topics/validate")
+    assert r.status_code == 200
+    assert r.json()["kanban_stage"] == "done"
+
+
+@patch("backend.routers.topics.get_client")
+@patch("backend.routers.topics.validate_call")
+def test_validate_returns_422_no_topics(mock_validate, mock_gc):
+    mock_gc.return_value = MagicMock()
+    mock_validate.side_effect = ValueError("no_topics")
+
+    r = http.post(f"/api/calls/{CALL_ID}/topics/validate")
+    assert r.status_code == 422
+
+
+@patch("backend.routers.topics.get_client")
+@patch("backend.routers.topics.validate_call")
+def test_validate_returns_422_unacknowledged(mock_validate, mock_gc):
+    mock_gc.return_value = MagicMock()
+    mock_validate.side_effect = ValueError(
+        f"unacknowledged_topics:{TOPIC_ID},{TOPIC_ID2}"
+    )
+
+    r = http.post(f"/api/calls/{CALL_ID}/topics/validate")
+    assert r.status_code == 422
+    body = r.json()
+    assert body["detail"]["error"] == "unacknowledged_topics"
+    assert TOPIC_ID in body["detail"]["ids"]

@@ -1,5 +1,5 @@
 from backend.database.supabase_client import get_client
-from backend.services.topics_service import TopicUpdate, extract_topics, save_topics
+from backend.services.topics_service import TopicUpdate, extract_topics, save_topics, validate_call
 from backend.utils.logger import get_logger
 from fastapi import APIRouter, HTTPException
 
@@ -31,3 +31,23 @@ async def save(call_id: str, topics: list[TopicUpdate]):
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/calls/{call_id}/topics/validate")
+async def validate(call_id: str):
+    logger.info(f"📥 [Topics] Validate requested: call={call_id}")
+    try:
+        result = await validate_call(call_id)
+        logger.info(f"✅ [Topics] Call validated: {call_id}")
+        return result
+    except ValueError as e:
+        msg = str(e)
+        if msg == "no_topics":
+            raise HTTPException(status_code=422, detail="No topics saved for this call")
+        if msg.startswith("unacknowledged_topics:"):
+            ids = msg.split(":")[1].split(",")
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "unacknowledged_topics", "ids": ids},
+            )
+        raise HTTPException(status_code=422, detail=msg)

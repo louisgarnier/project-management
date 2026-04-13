@@ -291,3 +291,61 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
         saved += 1
 
     return {"saved": saved}
+
+
+async def validate_call(call_id: str) -> dict:
+    """
+    1. Check at least one topic_update exists for this call → 422 "no_topics" if not
+    2. Check all non-archived previously-open topics have a topic_update for this call
+       → 422 "unacknowledged_topics:id1,id2" if any missing
+    3. Advance kanban_stage to 'done'
+    """
+    db = get_client()
+
+    # 1. At least one topic for this call
+    this_call_updates = (
+        db.table("topic_updates").select("topic_id").eq("call_id", call_id).execute().data
+    )
+    if not this_call_updates:
+        raise ValueError("no_topics")
+
+    acknowledged_ids = {r["topic_id"] for r in this_call_updates}
+
+    # 2. Find previously-open topics not acknowledged in this call
+    call_row = db.table("calls").select("project_id").eq("id", call_id).execute().data
+    project_id = call_row[0]["project_id"]
+
+    # All topic_update rows where status is not resolved (across all calls)
+    all_open_updates = (
+        db.table("topic_updates")
+        .select("topic_id")
+        .neq("status", "resolved")
+        .execute()
+        .data
+    )
+    # Non-archived topics in this project
+    project_topics = {
+        r["id"] for r in
+        db.table("topics")
+        .select("id")
+        .eq("project_id", project_id)
+        .eq("archived", False)
+        .execute()
+        .data
+    }
+    open_topic_ids = {r["topic_id"] for r in all_open_updates} & project_topics
+    unacknowledged = open_topic_ids - acknowledged_ids
+
+    if unacknowledged:
+        raise ValueError(f"unacknowledged_topics:{','.join(unacknowledged)}")
+
+    # 3. Advance stage
+    result = (
+        db.table("calls")
+        .update({"kanban_stage": "done"})
+        .eq("id", call_id)
+        .execute()
+        .data
+    )
+    logger.info(f"✅ [Topics] Call {call_id} validated → done")
+    return result[0]
