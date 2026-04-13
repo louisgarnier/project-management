@@ -1,4 +1,5 @@
 import json
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.main import app
@@ -294,3 +295,42 @@ def test_create_selections_accepts_groq_mode(mock_gc):
     inserted = m.table.return_value.insert.call_args[0][0]
     assert inserted[0]["mode"] == "groq"
     assert inserted[0]["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_generate_artifact_includes_topics_in_prompt():
+    """generate_artifact must include topics JSON in the user message when topics are provided."""
+    from backend.services.llm_service import generate_artifact
+    from unittest.mock import AsyncMock, patch, MagicMock
+
+    topics = [
+        {
+            "name": "Pricing",
+            "status": "open",
+            "owner": "Client",
+            "sentiment": "concern",
+            "summary": "Client pushed back on annual plan.",
+            "follow_up_items": ["Send monthly breakdown"],
+            "decisions": [],
+        }
+    ]
+
+    captured_messages = {}
+
+    async def fake_create(**kwargs):
+        captured_messages["messages"] = kwargs.get("messages", [])
+        m = MagicMock()
+        m.content = [MagicMock(text="result")]
+        m.usage = MagicMock(input_tokens=10, output_tokens=5)
+        return m
+
+    fake_client = MagicMock()
+    fake_client.messages.create = fake_create
+
+    with patch("backend.services.llm_service.anthropic.AsyncAnthropic", return_value=fake_client):
+        await generate_artifact("Write a summary.", "The call transcript.", "claude", topics=topics)
+
+    user_content = captured_messages["messages"][0]["content"]
+    assert "Pricing" in user_content
+    assert "Topics from this call" in user_content
+    assert "Write a summary." in user_content

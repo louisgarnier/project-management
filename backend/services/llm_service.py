@@ -82,17 +82,37 @@ async def call_llm_raw(system: str, user_message: str, llm: str, max_tokens: int
         raise ValueError(f"Unknown LLM provider: {llm!r}. Must be 'groq', 'deepseek', 'claude', or 'openai'.")
 
 
-async def generate_artifact(prompt_used: str, transcript: str, llm: str) -> str:
+async def generate_artifact(
+    prompt_used: str,
+    transcript: str,
+    llm: str,
+    topics: list[dict] | None = None,
+) -> str:
     """
     Generate an artifact using the specified LLM provider.
     llm must be one of: "groq", "deepseek", "claude", "openai".
+    If topics are provided, they are injected between transcript and task prompt.
     Retries up to 3 times with exponential backoff on rate-limit errors.
     """
+    import json as _json
+
+    topics_block = ""
+    if topics:
+        topics_block = (
+            f"\n\nTopics from this call:\n{_json.dumps(topics, indent=2)}"
+        )
+
+    user_message = (
+        f"Transcript:\n{transcript}"
+        f"{topics_block}"
+        f"\n\nTask:\n{prompt_used}"
+    )
+
     if llm == "claude":
-        return await _generate_claude(prompt_used, transcript)
+        return await _generate_claude(user_message)
     elif llm == "groq":
         return await _generate_openai_compat(
-            prompt_used, transcript,
+            user_message,
             api_key=os.environ.get("GROQ_API_KEY", ""),
             base_url="https://api.groq.com/openai/v1",
             model="llama-3.3-70b-versatile",
@@ -100,7 +120,7 @@ async def generate_artifact(prompt_used: str, transcript: str, llm: str) -> str:
         )
     elif llm == "deepseek":
         return await _generate_openai_compat(
-            prompt_used, transcript,
+            user_message,
             api_key=os.environ.get("DEEPSEEK_API_KEY", ""),
             base_url="https://api.deepseek.com",
             model="deepseek-chat",
@@ -108,7 +128,7 @@ async def generate_artifact(prompt_used: str, transcript: str, llm: str) -> str:
         )
     elif llm == "openai":
         return await _generate_openai_compat(
-            prompt_used, transcript,
+            user_message,
             api_key=os.environ.get("OPENAI_API_KEY", ""),
             base_url=None,
             model="gpt-4o-mini",
@@ -118,9 +138,8 @@ async def generate_artifact(prompt_used: str, transcript: str, llm: str) -> str:
         raise ValueError(f"Unknown LLM provider: {llm!r}. Must be 'groq', 'deepseek', 'claude', or 'openai'.")
 
 
-async def _generate_claude(prompt_used: str, transcript: str) -> str:
+async def _generate_claude(user_message: str) -> str:
     client = anthropic.AsyncAnthropic()
-    user_message = f"Transcript:\n{transcript}\n\nTask:\n{prompt_used}"
 
     for attempt in range(_MAX_RETRIES + 1):
         try:
@@ -148,8 +167,7 @@ async def _generate_claude(prompt_used: str, transcript: str) -> str:
 
 
 async def _generate_openai_compat(
-    prompt_used: str,
-    transcript: str,
+    user_message: str,
     api_key: str,
     base_url: str | None,
     model: str,
@@ -159,7 +177,6 @@ async def _generate_openai_compat(
     if base_url:
         kwargs["base_url"] = base_url
     client = AsyncOpenAI(**kwargs)
-    user_message = f"Transcript:\n{transcript}\n\nTask:\n{prompt_used}"
 
     for attempt in range(_MAX_RETRIES + 1):
         try:

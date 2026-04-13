@@ -150,6 +150,38 @@ async def stream_artifacts(call_id: str):
         raise HTTPException(status_code=404, detail="Call not found")
     transcript = call_result.data[0].get("transcript") or ""
 
+    # Fetch topics for this call to inject as context
+    topics_result = (
+        supabase.table("topic_updates")
+        .select("summary, follow_up_items, decisions, status, owner, sentiment, topic_id")
+        .eq("call_id", call_id)
+        .execute()
+    )
+    topic_ids = [r["topic_id"] for r in topics_result.data if "topic_id" in r]
+    topic_names: dict[str, str] = {}
+    if topic_ids:
+        names_result = (
+            supabase.table("topics")
+            .select("id, name")
+            .in_("id", topic_ids)
+            .execute()
+        )
+        topic_names = {r["id"]: r["name"] for r in names_result.data}
+
+    call_topics = [
+        {
+            "name": topic_names.get(r["topic_id"], "Unknown"),
+            "status": r.get("status", "open"),
+            "owner": r.get("owner", "Us"),
+            "sentiment": r.get("sentiment", "neutral"),
+            "summary": r.get("summary", ""),
+            "follow_up_items": r.get("follow_up_items") or [],
+            "decisions": r.get("decisions") or [],
+        }
+        for r in topics_result.data
+        if "topic_id" in r
+    ] or None
+
     artifacts_result = (
         supabase.table("artifacts")
         .select("id,prompt_used,mode")
@@ -172,7 +204,7 @@ async def stream_artifacts(call_id: str):
             await queue.put({"type": "status", "artifact_id": artifact_id, "status": "generating"})
             supabase.table("artifacts").update({"status": "generating"}).eq("id", artifact_id).execute()
             try:
-                content = await generate_artifact(prompt_used, transcript, artifact["mode"])
+                content = await generate_artifact(prompt_used, transcript, artifact["mode"], topics=call_topics)
                 supabase.table("artifacts").update(
                     {"status": "done", "content": content}
                 ).eq("id", artifact_id).execute()
