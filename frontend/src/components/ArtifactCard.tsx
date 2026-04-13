@@ -10,15 +10,20 @@ type Props = {
   onRetry: (id: string) => void;
 };
 
+const PREVIEW_LENGTH = 220;
+
 export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRetry }: Props) {
   const [content, setContent] = useState(artifact.content ?? "");
   const [marking, setMarking] = useState(false);
   const [markError, setMarkError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const isDone = artifact.status === "done";
   const isGenerating = artifact.status === "generating";
   const isPending = artifact.status === "pending";
   const isError = artifact.status === "error";
+  const isLlm = artifact.mode !== "manual";
 
   async function handleMarkDone() {
     setMarking(true);
@@ -32,6 +37,12 @@ export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRet
     }
   }
 
+  async function handleCopy() {
+    await navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
   const borderColor = isDone
     ? "#36b37e"
     : isError
@@ -39,6 +50,9 @@ export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRet
     : isGenerating
     ? "#ff8b00"
     : "#dfe1e6";
+
+  const isLong = content.length > PREVIEW_LENGTH;
+  const preview = isLong && !expanded ? content.slice(0, PREVIEW_LENGTH).trimEnd() + "…" : content;
 
   return (
     <div
@@ -54,7 +68,7 @@ export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRet
       </div>
 
       {/* Content area */}
-      {(isPending || isGenerating) && artifact.mode === "claude" ? (
+      {(isPending || isGenerating) && isLlm ? (
         <div className="flex items-center gap-2 py-4">
           {isGenerating && (
             <svg className="animate-spin h-4 w-4 text-[#ff8b00]" viewBox="0 0 24 24" fill="none">
@@ -75,6 +89,28 @@ export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRet
           >
             Retry
           </button>
+        </div>
+      ) : isDone ? (
+        <div className="mt-1">
+          <p className="text-[12px] text-[#172b4d] whitespace-pre-wrap leading-relaxed">
+            {preview}
+          </p>
+          <div className="flex items-center gap-3 mt-2">
+            {isLong && (
+              <button
+                onClick={() => setExpanded((v) => !v)}
+                className="text-[11px] text-[#0052cc] hover:underline"
+              >
+                {expanded ? "Show less" : "Show more"}
+              </button>
+            )}
+            <button
+              onClick={handleCopy}
+              className="text-[11px] text-[#5e6c84] hover:text-[#172b4d] transition-colors"
+            >
+              {copied ? "✓ Copied" : "Copy"}
+            </button>
+          </div>
         </div>
       ) : (
         <textarea
@@ -97,12 +133,6 @@ export default function ArtifactCard({ artifact, artifactType, onMarkDone, onRet
           >
             {marking ? "Saving…" : "Mark Done ✓"}
           </button>
-        </div>
-      )}
-
-      {isDone && (
-        <div className="mt-2 flex items-center gap-1">
-          <span className="text-[11px] text-[#36b37e] font-medium">✓ Done</span>
         </div>
       )}
     </div>
