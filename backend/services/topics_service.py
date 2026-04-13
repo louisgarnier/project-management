@@ -242,10 +242,10 @@ async def _extract_topics_impl(call_id: str) -> dict:
         stored_llm = proj_rows[0]["default_llm"] if proj_rows else "groq"
     llm = stored_llm or "groq"
 
-    base_instructions = stored_prompt or (
-        f"Extract all key business topics from this call.\n\n"
-        f"Return a JSON array where each element matches: {_TOPIC_SCHEMA}"
-    )
+    base_instructions = (
+        f"{stored_prompt}\n\n" if stored_prompt else
+        "Extract all key business topics from this call.\n\n"
+    ) + f"Return a JSON array where each element matches this exact schema:\n{_TOPIC_SCHEMA}"
 
     if call_number == 1:
         prompt = (
