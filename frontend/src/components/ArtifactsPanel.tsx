@@ -142,10 +142,8 @@ function ArtifactRow({ artifact, name, canRegenerate, onRegenerate }: {
 }) {
   const [expanded, setExpanded] = useState(false);
 
-  // status may be "stale" at runtime even if not in the TS union (backend can return it)
-  const statusStr = artifact.status as string;
-  const isStale = statusStr === "stale";
-  const isPending = statusStr === "pending" || statusStr === "generating";
+  const isStale = artifact.status === "stale";
+  const isPending = artifact.status === "pending" || artifact.status === "generating";
 
   return (
     <div style={{ borderBottom: "1px solid #f4f5f7", paddingBottom: 8, marginBottom: 8 }}>

@@ -26,7 +26,7 @@ export interface Call {
 }
 
 export type ArtifactMode = LLMProvider | "manual";
-export type ArtifactStatus = "pending" | "generating" | "done" | "error";
+export type ArtifactStatus = "pending" | "generating" | "done" | "error" | "stale";
 
 export type ArtifactCategory = "artifacts" | "topics";
 
