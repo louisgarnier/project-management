@@ -19,6 +19,11 @@ export default function BoardPage() {
   const [showModal, setShowModal] = useState(false);
   const [activeTab, setActiveTab] = useState<"kanban" | "topics">("kanban");
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "topics") setActiveTab("topics");
+  }, []);
+
   const loadCalls = useCallback(async () => {
     setLoading(true);
     setError(null);
