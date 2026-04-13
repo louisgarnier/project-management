@@ -1,10 +1,40 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-6 — Multi-LLM Support — COMPLETE**
-- Status: All stories done
-- Blocked by: nothing
+**EPIC-6 — Topics Stage — COMPLETE**
+- Status: Stories 6.1 + 6.2 done
+- Blocked by: DB migration `002_topics_schema.sql` must be run in Supabase dashboard before end-to-end testing
 - Next: EPIC-7 (not yet defined)
+
+---
+
+### 2026-04-13 — EPIC-6: Stories 6.1 + 6.2 — Topics API + Topics UI
+
+**Story 6.1: Topics API (backend)**
+- `backend/database/migrations/002_topics_schema.sql` — alters topics table: drops old `status` column, adds `calls_open INT`, `archived BOOL`; alters topic_updates: adds `decisions JSONB`, `status TEXT`, `owner TEXT`, `sentiment TEXT` — **must be run manually in Supabase dashboard**
+- `backend/services/topics_service.py` — `TopicIn`, `TopicUpdate`, `TopicOut`, `BriefItem`, `BriefOut` Pydantic models; `extract_topics(call_id)` — regular fn returning coroutine (allows MagicMock in tests); Call 1 flat extraction, Call 2+ three-bucket (followed_up/not_discussed/new_topics); `save_topics(call_id, topics)` — upserts topic_updates, increments/resets calls_open; `validate_call(call_id)` — uses `_get_previous_topics()` to check latest status, raises ValueError with unacknowledged topic IDs; `generate_brief(call_id)` — priority/decisions/watch_list; `list_project_topics(project_id)`
+- `backend/routers/topics.py` — 5 endpoints: POST /extract, POST /topics, POST /validate (422 on unacknowledged), GET /brief, GET /projects/{id}/topics
+- `backend/main.py` — topics router registered
+- `backend/tests/test_topics.py` — 9 tests (models + router); 86 total backend tests passing
+
+**Story 6.2: Topics UI (frontend)**
+- `frontend/src/types/index.ts` — replaced stale Topic types with: `TopicStatus`, `TopicOwner`, `TopicSentiment`, `TopicDisposition`, `TopicData`, `ExtractionResult`, `BriefItem`, `CallBrief`, `TopicSavePayload`
+- `frontend/src/api/client.ts` — added `topicsAPI` (extract, save, validate, brief, listForProject)
+- `frontend/src/components/PreCallBrief.tsx` — collapsible; lazy-loads `GET /brief` only on first open (NFR-08); shows priority topics / decisions to confirm / watch list; staleness badges; empty state
+- `frontend/src/components/TopicEditor.tsx` — inline editable topic row; all 9 fields; decisions append-only; staleness badge when calls_open ≥ 2; disposition buttons (Keep as-is / Archive) for not_discussed bucket
+- `frontend/src/components/AddTopicForm.tsx` — collapsed "+ Add topic" button; inline form with name/summary/status/owner/sentiment
+- `frontend/src/components/TopicsStage.tsx` — state machine (choice/extracting/reviewing/manual/validating); three-bucket view for Call 2+, flat list for Call 1; ActionBar with disabled Validate until dispositions set; error states for extract and validate
+- `frontend/src/components/TopicsDashboard.tsx` — table view; filter by status (All/Open/In Progress/Resolved); "Stale first" toggle; resolved rows at opacity 0.6; staleness badge when calls_open ≥ 2
+- `frontend/app/projects/[id]/calls/[call_id]/page.tsx` — TopicsStage wired for topics stage; green "Call complete" banner for done stage
+- `frontend/app/projects/[id]/board/page.tsx` — Topics tab renders TopicsDashboard; board page reads `?tab=topics` query param to activate tab
+- `frontend/app/projects/[id]/topics/page.tsx` — redirect shim to `/projects/{id}/board?tab=topics`
+
+**Key decisions:**
+- `_get_previous_topics()` helper reused across extract/validate/brief/list — single source of truth for "latest status per topic"
+- `extract_topics` is a regular function returning a coroutine (not `async def`) to allow `MagicMock` in unit tests
+- Three-bucket view gated on `call_number > 1` from extraction response — no separate DB query for call number
+- `canValidate` gate: `topics.length > 0 && unacknowledgedCount === 0` — enforces disposition on all not_discussed topics
+- Board tab query param uses `window.location.search` on mount (avoids Next.js `useSearchParams` + Suspense requirement)
 
 ---
 

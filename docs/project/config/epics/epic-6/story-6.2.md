@@ -3,7 +3,7 @@
 **Epic:** EPIC-6 — Topics Stage
 **Maps to plan:** Slice 6
 **Maps to PRD:** US-06, FR-08, FR-09, NFR-08
-**Status:** `pending`
+**Status:** `done`
 
 ---
 
