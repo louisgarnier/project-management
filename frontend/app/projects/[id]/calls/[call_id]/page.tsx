@@ -9,6 +9,7 @@ import TranscriptStage from "@/components/TranscriptStage";
 import TranscriptPanel from "@/components/TranscriptPanel";
 import ContextFiles from "@/components/ContextFiles";
 import ArtifactsStage from "@/components/ArtifactsStage";
+import TopicsStage from "@/components/TopicsStage";
 
 const STAGES = ["transcript", "artifacts", "topics", "done"] as const;
 
@@ -179,18 +180,23 @@ export default function CallDetailPage() {
             </div>
           </>
         )}
-        {isPastTranscript && call.kanban_stage !== "artifacts" && (
+        {call.kanban_stage === "topics" && (
           <>
-            <div className="flex items-center justify-center py-12">
-              <p className="text-[13px] text-[#5e6c84]">
-                {call.kanban_stage.charAt(0).toUpperCase() + call.kanban_stage.slice(1)} stage — coming soon.
-              </p>
+            <TopicsStage call={call} onAdvance={loadCall} />
+            {call.transcript && (
+              <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />
+            )}
+            <ContextFiles call={call} readonly />
+          </>
+        )}
+        {call.kanban_stage === "done" && (
+          <>
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8,
+              padding: "16px 20px", marginBottom: 16, fontSize: 13, color: "#15803d", fontWeight: 600 }}>
+              ✓ Call complete — all topics validated and saved.
             </div>
             {call.transcript && (
-              <TranscriptPanel
-                call={call}
-                onSaved={(updated) => setCall(updated)}
-              />
+              <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />
             )}
             <ContextFiles call={call} readonly />
           </>
