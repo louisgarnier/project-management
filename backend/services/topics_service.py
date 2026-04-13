@@ -131,10 +131,68 @@ async def _call_llm(prompt: str, llm: str) -> list[dict] | dict:
         if raw.startswith("json"):
             raw = raw[4:]
     try:
-        return json.loads(raw.strip())
+        parsed = json.loads(raw.strip())
+        logger.info(f"🔍 [{llm}] Topics raw keys sample: {_sample_keys(parsed)}")
+        return _normalize_topic_keys(parsed)
     except json.JSONDecodeError as e:
         logger.error(f"❌ [{llm}] Invalid JSON in topics response: {e}\nRaw: {raw[:200]}")
         raise ValueError(f"LLM returned invalid JSON: {e}") from e
+
+
+def _sample_keys(parsed: list | dict) -> str:
+    """Return field names from the first item for debugging."""
+    try:
+        first = parsed[0] if isinstance(parsed, list) else next(iter(parsed.values()))
+        if isinstance(first, list) and first:
+            first = first[0]
+        return str(list(first.keys())) if isinstance(first, dict) else "?"
+    except Exception:
+        return "?"
+
+
+_NAME_ALIASES = {"topic_name", "title", "topic", "subject", "heading"}
+_SUMMARY_ALIASES = {"description", "details", "detail", "overview", "content", "text", "body"}
+_FOLLOW_UP_ALIASES = {"follow_ups", "action_items", "actions", "followups", "follow_up", "next_steps"}
+_DECISIONS_ALIASES = {"decision", "key_decisions", "agreed", "agreements"}
+
+
+def _normalize_topic(t: dict) -> dict:
+    """Remap common LLM field-name variants to the canonical schema."""
+    if not isinstance(t, dict):
+        return t
+    out = dict(t)
+    for alias in _NAME_ALIASES:
+        if "name" not in out and alias in out:
+            out["name"] = out.pop(alias)
+            break
+    for alias in _SUMMARY_ALIASES:
+        if "summary" not in out and alias in out:
+            out["summary"] = out.pop(alias)
+            break
+    for alias in _FOLLOW_UP_ALIASES:
+        if "follow_up_items" not in out and alias in out:
+            out["follow_up_items"] = out.pop(alias)
+            break
+    for alias in _DECISIONS_ALIASES:
+        if "decisions" not in out and alias in out:
+            out["decisions"] = out.pop(alias)
+            break
+    # Ensure required string fields are never None/missing
+    out.setdefault("name", "")
+    out.setdefault("summary", "")
+    out.setdefault("follow_up_items", [])
+    out.setdefault("decisions", [])
+    return out
+
+
+def _normalize_topic_keys(parsed: list | dict) -> list | dict:
+    if isinstance(parsed, list):
+        return [_normalize_topic(t) for t in parsed]
+    # dict with buckets: followed_up / not_discussed / new_topics
+    return {
+        k: [_normalize_topic(t) for t in v] if isinstance(v, list) else v
+        for k, v in parsed.items()
+    }
 
 
 def _get_previous_topics(project_id: str, db) -> list[dict]:
