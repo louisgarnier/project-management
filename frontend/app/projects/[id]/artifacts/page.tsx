@@ -18,6 +18,7 @@ export default function ArtifactsPage() {
   const [showModal, setShowModal] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [savingLlm, setSavingLlm] = useState(false);
+  const [llmSaveError, setLlmSaveError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,11 +54,14 @@ export default function ArtifactsPage() {
   async function handleUpdateDefaultLlm(llm: LLMProvider) {
     if (!project) return;
     setSavingLlm(true);
+    setLlmSaveError(null);
     try {
       const updated = await projectsAPI.update(projectId, { default_llm: llm });
       setProject(updated);
       logger.info("Updated project default LLM", { component: "ArtifactsPage", data: { llm } });
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save";
+      setLlmSaveError(msg);
       logger.error("Failed to update default LLM", { component: "ArtifactsPage", data: err });
     } finally {
       setSavingLlm(false);
@@ -75,18 +79,24 @@ export default function ArtifactsPage() {
         <h1 className="text-[18px] font-bold text-[#172b4d]">Artifact Types</h1>
         <div className="flex items-center gap-3">
           {project && (
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-[#5e6c84]">Project default:</span>
-              <select
-                value={project.default_llm}
-                onChange={(e) => handleUpdateDefaultLlm(e.target.value as LLMProvider)}
-                disabled={savingLlm}
-                className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc] disabled:opacity-50"
-              >
-                <option value="groq">Groq (free)</option>
-                <option value="claude">Claude</option>
-                <option value="openai">ChatGPT (OpenAI)</option>
-              </select>
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-[#5e6c84]">Project default:</span>
+                <select
+                  value={project.default_llm}
+                  onChange={(e) => handleUpdateDefaultLlm(e.target.value as LLMProvider)}
+                  disabled={savingLlm}
+                  className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc] disabled:opacity-50"
+                >
+                  <option value="groq">Groq (free)</option>
+                  <option value="claude">Claude</option>
+                  <option value="openai">ChatGPT (OpenAI)</option>
+                </select>
+                {savingLlm && <span className="text-[11px] text-[#5e6c84]">Saving…</span>}
+              </div>
+              {llmSaveError && (
+                <span className="text-[11px] text-red-600">{llmSaveError}</span>
+              )}
             </div>
           )}
           <button

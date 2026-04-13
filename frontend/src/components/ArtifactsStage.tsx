@@ -60,6 +60,16 @@ export default function ArtifactsStage({ call, onAdvance }: Props) {
     return () => { streamAbortRef.current?.abort(); };
   }, [init]);
 
+  // Re-fetch project default whenever reviewing phase is shown — keeps LLM selector in sync
+  useEffect(() => {
+    if (phase === "reviewing") {
+      projectsAPI.get(projectId).then((p) => {
+        setProjectDefaultLlm(p.default_llm);
+        setApplyLlm(p.default_llm);
+      }).catch(() => {});
+    }
+  }, [phase, projectId]);
+
   function handleSelectionChange(typeId: string, mode: SelectionMode) {
     setSelections((prev) => ({ ...prev, [typeId]: mode }));
   }
