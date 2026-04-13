@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { artifactTypesAPI, artifactsAPI } from "@/api/client";
-import type { Artifact, ArtifactType, Call } from "@/types";
+import type { Artifact, ArtifactStatus, ArtifactType, Call } from "@/types";
 
 type Props = {
   callId: string;
@@ -17,6 +17,7 @@ export default function ArtifactsPanel({ callId, projectId, defaultOpen = false,
   const [types, setTypes] = useState<ArtifactType[]>([]);
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
@@ -42,9 +43,11 @@ export default function ArtifactsPanel({ callId, projectId, defaultOpen = false,
 
   async function handleRegenerate(artifact: Artifact) {
     // Reset to pending then stream
+    setStreaming(true);
+    streamAbortRef.current?.abort(); // abort any prior stream
+
     const updated = await artifactsAPI.update(artifact.id, { status: "pending" });
     setArtifacts((prev) => prev.map((a) => (a.id === artifact.id ? updated : a)));
-    setStreaming(true);
 
     const controller = new AbortController();
     streamAbortRef.current = controller;
@@ -92,9 +95,16 @@ export default function ArtifactsPanel({ callId, projectId, defaultOpen = false,
     } catch (err: unknown) {
       if ((err as Error)?.name !== "AbortError") {
         console.error("SSE error", err);
+        setStreamError("Regeneration failed — please try again.");
+        // Revert the stuck artifact back to its previous status
+        setArtifacts((prev) =>
+          prev.map((a) => (a.id === artifact.id ? { ...a, status: "error" as ArtifactStatus } : a))
+        );
       }
     } finally {
       setStreaming(false);
+      // Clear error after 5 seconds
+      setTimeout(() => setStreamError(null), 5000);
     }
   }
 
@@ -127,6 +137,9 @@ export default function ArtifactsPanel({ callId, projectId, defaultOpen = false,
                 onRegenerate={() => handleRegenerate(a)}
               />
             ))
+          )}
+          {streamError && (
+            <p style={{ fontSize: 11, color: "#ae2a19", marginTop: 8 }}>{streamError}</p>
           )}
         </div>
       )}
