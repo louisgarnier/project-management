@@ -59,7 +59,7 @@ function getCellState(
   if (callIdx === stageIdx) return "active";
 
   // Stage not yet reached — lock artifacts and topics if prev call is incomplete
-  if ((stageKey === "artifacts" || stageKey === "topics") && !prevCallDone) {
+  if (stageKey === "topics" && !prevCallDone) {
     return "locked";
   }
   return "pending";
