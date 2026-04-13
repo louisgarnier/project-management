@@ -1,6 +1,9 @@
 import pytest
 from pydantic import ValidationError
-from backend.services.topics_service import TopicIn, TopicUpdate, TopicOut, BriefItem, BriefOut
+import unittest
+import asyncio
+from unittest.mock import patch, MagicMock
+from backend.services.topics_service import TopicIn, TopicUpdate, TopicOut, BriefItem, BriefOut, extract_call_topics
 
 
 def test_topic_in_valid():
@@ -394,3 +397,46 @@ def test_validate_call_advances_to_artifacts(mock_gc):
 
     result = asyncio.run(validate_call("call-1"))
     assert result["kanban_stage"] == "artifacts"
+
+
+class TestExtractCallTopics(unittest.TestCase):
+
+    def _run(self, coro):
+        return asyncio.run(coro)
+
+    @patch("backend.services.topics_service.get_client")
+    @patch("backend.services.topics_service._call_llm")
+    def test_extract_call_topics_happy_path(self, mock_llm, mock_gc):
+        """Returns flat list of topics from transcript only."""
+        db = MagicMock()
+        mock_gc.return_value = db
+        db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+            {"project_id": "proj-1", "transcript": "We discussed the budget and timeline."}
+        ]
+        db.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+        db.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+        db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [{"default_llm": "groq"}]
+
+        async def fake_llm(prompt, llm):
+            return [
+                {"name": "Budget", "summary": "Discussed Q2 budget", "follow_up_items": [],
+                 "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral"}
+            ]
+        mock_llm.side_effect = fake_llm
+
+        result = self._run(extract_call_topics("call-1"))
+
+        self.assertIsInstance(result, list)
+        self.assertEqual(result[0]["name"], "Budget")
+
+    @patch("backend.services.topics_service.get_client")
+    def test_extract_call_topics_no_transcript(self, mock_gc):
+        """Raises ValueError when transcript is empty."""
+        db = MagicMock()
+        mock_gc.return_value = db
+        db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+            {"project_id": "proj-1", "transcript": ""}
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            self._run(extract_call_topics("call-1"))
+        self.assertEqual(str(ctx.exception), "no_transcript")

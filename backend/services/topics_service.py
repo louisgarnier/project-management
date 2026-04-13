@@ -361,6 +361,45 @@ async def _extract_topics_impl(call_id: str) -> dict:
     }
 
 
+async def extract_call_topics(call_id: str) -> list[dict]:
+    """
+    Step 1 of two-step extraction: extract topics from this call's transcript ONLY.
+    No previous project topics in context — eliminates extraction bias.
+    Returns a flat list of topic dicts (not yet saved to DB).
+    """
+    db = get_client()
+
+    call_row = db.table("calls").select("project_id, transcript").eq("id", call_id).execute().data
+    if not call_row:
+        raise ValueError(f"Call {call_id} not found")
+    transcript = (call_row[0]["transcript"] or "").strip()
+    if not transcript:
+        raise ValueError("no_transcript")
+
+    project_id = call_row[0]["project_id"]
+    stored_prompt, stored_llm = _get_topics_prompt(project_id, db)
+    if stored_llm is None:
+        proj_rows = db.table("projects").select("default_llm").eq("id", project_id).execute().data
+        stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
+    llm = stored_llm or "groq"
+
+    prompt = (
+        (f"{stored_prompt}\n\n" if stored_prompt else "Extract all key business topics from this call.\n\n")
+        + f"Return a JSON array where each element matches this exact schema:\n{_TOPIC_SCHEMA}\n\n"
+        + f"Transcript:\n{transcript}"
+    )
+
+    raw = await _call_llm(prompt, llm)
+    # Flatten if LLM returned a dict (shouldn't happen with flat-list prompt, but safe)
+    if isinstance(raw, dict):
+        flat: list[dict] = []
+        for v in raw.values():
+            if isinstance(v, list):
+                flat.extend(v)
+        return flat
+    return raw if isinstance(raw, list) else []
+
+
 async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
     """
     For each topic:
