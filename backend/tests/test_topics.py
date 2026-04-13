@@ -518,6 +518,7 @@ class TestAggregateTopics(unittest.TestCase):
 
         self.assertNotIn("auto_advanced", result)
         self.assertIn("followed_up", result)
+        self.assertIn("not_discussed", result)
         self.assertIn("new_topics", result)
         # _reattach_id: "Budget" should have topic_id = "t-1"
         self.assertEqual(result["followed_up"][0].get("topic_id"), "t-1")
