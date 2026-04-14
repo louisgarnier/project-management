@@ -635,7 +635,7 @@ async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
     Save merged/reviewed topics and advance to artifacts.
     - topic_id set   → update existing topic (topic_update record)
     - topic_id None  → create new topic
-    Clears pending_topics and topic_match_groups for this call.
+    match groups and pending_topics are preserved as permanent records.
     """
     db = get_client()
 
@@ -651,10 +651,8 @@ async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
     ]
     await save_topics(call_id, topic_updates)
 
-    # Clean up transient data
-    db.table("topic_match_groups").delete().eq("call_id", call_id).execute()
+    # Advance to artifacts — match groups and pending_topics are kept as permanent records
     db.table("calls").update({
-        "pending_topics": None,
         "kanban_stage": "artifacts",
     }).eq("id", call_id).execute()
 
