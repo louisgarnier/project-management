@@ -588,7 +588,17 @@ async def run_merge_preview(call_id: str) -> list[dict]:
             return {**existing, "topic_id": ptid}
 
     results = await asyncio.gather(*[merge_one(g) for g in groups])
-    return [r for r in results if r]
+
+    # Collect all project_topic_ids that are in match groups
+    matched_project_ids = {g.get("project_topic_id") for g in groups if g.get("project_topic_id")}
+
+    # Build not-discussed entries for project topics NOT in any match group
+    not_discussed = []
+    for t in previous:
+        if t["topic_id"] not in matched_project_ids:
+            not_discussed.append({**t, "not_discussed": True})
+
+    return [r for r in results if r] + not_discussed
 
 
 async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
@@ -600,13 +610,15 @@ async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
     """
     db = get_client()
 
+    # Skip not_discussed topics — they have no topic_update for this call
+    topics_to_save = [t for t in topics if not t.get("not_discussed")]
     topic_updates = [
         TopicUpdate(**{
             **t,
             "topic_id": t.get("topic_id"),
             "disposition": None,
         })
-        for t in topics
+        for t in topics_to_save
     ]
     await save_topics(call_id, topic_updates)
 
