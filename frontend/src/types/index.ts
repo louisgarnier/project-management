@@ -27,6 +27,8 @@ export interface Call {
   kanban_stage: KanbanStage;
   is_locked: boolean;
   topics_stale: boolean;
+  extraction_cache: TopicData[] | null;
+  extraction_status: "idle" | "processing" | "done" | "failed";
   created_at: string;
 }
 

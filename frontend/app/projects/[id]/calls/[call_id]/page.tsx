@@ -305,6 +305,7 @@ export default function CallDetailPage() {
               call={call}
               onAggregateComplete={() => loadCall()}
               onAutoAdvanced={() => loadCall()}
+              onPollCall={loadCall}
             />
           )}
           {call.kanban_stage === "artifacts" && (

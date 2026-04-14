@@ -34,6 +34,7 @@ type Props = {
   call: Call;
   onAggregateComplete: () => void;
   onAutoAdvanced: () => void;
+  onPollCall?: () => Promise<void>;
 };
 
 // ── Topic row ──────────────────────────────────────────────────────────────────
@@ -211,7 +212,7 @@ function TopicRow({
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvanced }: Props) {
+export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvanced, onPollCall }: Props) {
   const [topics, setTopics] = useState<TopicData[]>([]);
   const [extracting, setExtracting] = useState(false);
   const [aggregating, setAggregating] = useState(false);
@@ -220,6 +221,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   const [rateLimited, setRateLimited] = useState(false);
   const [promptName, setPromptName] = useState<string | null>(null);
   const [effectiveLlm, setEffectiveLlm] = useState<string | null>(null);
+  const [polling, setPolling] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -235,16 +237,36 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
     }).catch(() => {});
   }, [call.project_id]);
 
+  useEffect(() => {
+    if (call.extraction_status === "done" && call.extraction_cache && call.extraction_cache.length > 0 && !extracted) {
+      setTopics(call.extraction_cache);
+      setExtracted(true);
+    }
+    if (call.extraction_status === "failed" && !extracted) {
+      setError("Extraction failed in background. Please try again.");
+    }
+  }, [call.extraction_status, call.extraction_cache]);
+
+  useEffect(() => {
+    if (!polling) return;
+    if (call.extraction_status === "done" || call.extraction_status === "failed") {
+      setPolling(false);
+      return;
+    }
+    const timer = setInterval(() => {
+      onPollCall?.();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [polling, call.extraction_status, onPollCall]);
+
   async function handleExtract() {
     setExtracting(true);
     setError(null);
     setRateLimited(false);
     try {
       logger.info("Extracting call topics (Step 1)", { component: "CallTopicsStage" });
-      const result = await topicsAPI.extractCall(call.id);
-      setTopics(result);
-      setExtracted(true);
-      logger.info(`Extracted ${result.length} topics`, { component: "CallTopicsStage" });
+      await topicsAPI.extractCall(call.id);
+      setPolling(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Extraction failed";
       logger.error("Step 1 extraction failed", { component: "CallTopicsStage", data: err });
@@ -314,19 +336,25 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
       {/* Pre-extraction */}
       {!extracted ? (
         <div style={{ padding: 20 }}>
-          <button
-            onClick={handleExtract}
-            disabled={extracting}
-            style={{
-              padding: "10px 22px", borderRadius: 6, border: "none",
-              background: extracting ? "#f4f5f7" : "#0052cc",
-              color: extracting ? "#97a0af" : "white",
-              cursor: extracting ? "default" : "pointer",
-              fontSize: 13, fontWeight: 600,
-            }}
-          >
-            {extracting ? "Extracting…" : "Extract this call's topics"}
-          </button>
+          {polling ? (
+            <div style={{ fontSize: 13, color: "#5e6c84" }}>
+              ⏳ Extracting in background… you can navigate away and come back.
+            </div>
+          ) : (
+            <button
+              onClick={handleExtract}
+              disabled={extracting}
+              style={{
+                padding: "10px 22px", borderRadius: 6, border: "none",
+                background: extracting ? "#f4f5f7" : "#0052cc",
+                color: extracting ? "#97a0af" : "white",
+                cursor: extracting ? "default" : "pointer",
+                fontSize: 13, fontWeight: 600,
+              }}
+            >
+              {extracting ? "Starting extraction…" : "Extract this call's topics"}
+            </button>
+          )}
         </div>
       ) : (
         <>
