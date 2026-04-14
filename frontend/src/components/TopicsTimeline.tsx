@@ -60,7 +60,7 @@ function Cell({ cell }: { cell: TimelineCell | undefined }) {
       : { ...BADGE_BASE, background: "#0052cc", color: "white" };
 
   const badgeLabel = isResolved ? "✓ Resolved" : isNew ? "✦ New" : "Updated";
-  const canExpand = !isResolved;
+  const canExpand = true;
 
   return (
     <td style={{ width: 180, minWidth: 180, borderRight: "1px solid #f0f1f3",
