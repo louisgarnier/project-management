@@ -82,6 +82,7 @@ export interface TopicData {
   sentiment: TopicSentiment;
   calls_open?: number;
   not_discussed?: boolean;
+  pending_merge?: boolean;
 }
 
 /** Response from POST /extract */

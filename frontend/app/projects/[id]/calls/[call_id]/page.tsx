@@ -318,6 +318,7 @@ export default function CallDetailPage() {
           {call.kanban_stage === "project_updates" && (
             <ProjectUpdatesStage
               callId={call.id}
+              projectId={call.project_id}
               onValidated={() => loadCall()}
             />
           )}
