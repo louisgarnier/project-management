@@ -135,3 +135,30 @@ export interface CallFile {
   size_bytes: number | null;
   created_at: string;
 }
+
+// ── EPIC-8: Topics Timeline ───────────────────────────────────────────────
+
+export interface TimelineCell {
+  type: "new" | "followed_up" | "not_discussed";
+  summary?: string;
+  follow_up_items?: string[];
+  decisions?: string[];
+  status?: string;
+  owner?: string;
+  sentiment?: string;
+}
+
+export interface TimelineTopic {
+  topic_id: string;
+  name: string;
+  status: TopicStatus;
+  owner: string;
+  sentiment: TopicSentiment;
+  first_raised_call_id: string | null;
+  call_updates: Record<string, TimelineCell>;
+}
+
+export interface TopicsTimelineData {
+  calls: Array<{ id: string; title: string; call_number: number; kanban_stage: string }>;
+  topics: TimelineTopic[];
+}
