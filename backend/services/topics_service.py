@@ -182,6 +182,9 @@ def _normalize_topic(t: dict) -> dict:
     out.setdefault("summary", "")
     out.setdefault("follow_up_items", [])
     out.setdefault("decisions", [])
+    out.setdefault("status", "open")
+    out.setdefault("owner", "Us")
+    out.setdefault("sentiment", "neutral")
     return out
 
 
@@ -231,13 +234,13 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
     return result
 
 
-def _get_topics_prompt(project_id: str, db) -> tuple[str | None, str | None]:
-    """Return (prompt, llm) from the project's stored topics artifact_type, or (None, None)."""
+def _get_topics_prompt(project_id: str, db, category: str = "call_topics") -> tuple[str | None, str | None]:
+    """Return (prompt, llm) for the given workflow category, or (None, None) if not found."""
     rows = (
         db.table("artifact_types")
         .select("prompt, llm")
         .eq("project_id", project_id)
-        .eq("category", "topics")
+        .eq("category", category)
         .order("created_at")
         .limit(1)
         .execute()
@@ -377,7 +380,7 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         raise ValueError("no_transcript")
 
     project_id = call_row[0]["project_id"]
-    stored_prompt, stored_llm = _get_topics_prompt(project_id, db)
+    stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="call_topics")
     if stored_llm is None:
         proj_rows = db.table("projects").select("default_llm").eq("id", project_id).execute().data
         stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
@@ -423,7 +426,7 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
         raise ValueError(f"Call {call_id} not found")
     project_id = call_row[0]["project_id"]
 
-    previous = _get_previous_topics(project_id, db)
+    all_previous = _get_previous_topics(project_id, db)
 
     done_calls = (
         db.table("calls").select("id")
@@ -431,6 +434,20 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
         .execute().data
     )
     call_number = len(done_calls) + 1
+
+    # Exclude topics first raised by THIS call so that re-processing a call
+    # (after a reset) doesn't treat its own previously-saved topics as "prior context".
+    topics_from_other_calls = (
+        db.table("topics")
+        .select("id")
+        .eq("project_id", project_id)
+        .eq("archived", False)
+        .neq("first_raised_call_id", call_id)
+        .execute()
+        .data
+    )
+    other_ids = {r["id"] for r in topics_from_other_calls}
+    previous = [t for t in all_previous if t["topic_id"] in other_ids]
 
     if not previous:
         # Call 1: auto-advance — save all as new topics and jump to artifacts
@@ -441,78 +458,167 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
         await save_topics(call_id, new_topics_to_save)
         db.table("calls").update({"kanban_stage": "artifacts"}).eq("id", call_id).execute()
         logger.info(f"✅ [Topics] Call 1 auto-advanced: saved {len(new_topics_to_save)} topics → artifacts")
-        return {"auto_advanced": True, "call_number": 1}
+        return {"auto_advanced": True, "call_number": call_number}
 
-    # Call 2+: LLM matching
-    stored_prompt, stored_llm = _get_topics_prompt(project_id, db)
+    # Call 2+: save pending topics and advance to project_matching for manual matching
+    db.table("calls").update({
+        "pending_topics": call_topics,
+        "kanban_stage": "project_matching",
+    }).eq("id", call_id).execute()
+    logger.info(
+        f"✅ [Topics] Step-2 saved {len(call_topics)} pending topics → project_matching"
+    )
+    return {"advanced_to": "project_matching", "call_number": call_number}
+
+
+async def get_pending_topics(call_id: str) -> list[dict]:
+    """Return the validated call topics stored between call_topics and project_matching stages."""
+    db = get_client()
+    row = db.table("calls").select("pending_topics").eq("id", call_id).execute().data
+    if not row:
+        raise ValueError(f"Call {call_id} not found")
+    return row[0].get("pending_topics") or []
+
+
+async def save_match_groups(call_id: str, groups: list[dict]) -> dict:
+    """
+    Persist match groups and advance to project_updates.
+
+    groups: [{"project_topic_id": "uuid" | None, "call_topic_names": ["name1", ...]}]
+    """
+    db = get_client()
+
+    # Delete previous groups for this call (idempotent save)
+    db.table("topic_match_groups").delete().eq("call_id", call_id).execute()
+
+    for g in groups:
+        db.table("topic_match_groups").insert({
+            "call_id": call_id,
+            "project_topic_id": g.get("project_topic_id"),
+            "call_topic_names": [n.lower().strip() for n in g.get("call_topic_names", [])],
+        }).execute()
+
+    db.table("calls").update({"kanban_stage": "project_updates"}).eq("id", call_id).execute()
+    logger.info(f"✅ [Topics] Saved {len(groups)} match groups → project_updates")
+    return {"saved": len(groups)}
+
+
+async def run_merge_preview(call_id: str) -> list[dict]:
+    """
+    For each match group:
+    - matched (project_topic_id set): run LLM to merge existing topic + call topics → updated recap
+    - new (project_topic_id None): return call topics as-is, topic_id=None
+
+    Returns a list of topic dicts ready for ProjectUpdatesStage review.
+    Each item has all TopicData fields plus topic_id (existing UUID or None).
+    """
+    db = get_client()
+
+    call_row = db.table("calls").select("project_id, pending_topics").eq("id", call_id).execute().data
+    if not call_row:
+        raise ValueError(f"Call {call_id} not found")
+    project_id = call_row[0]["project_id"]
+    pending: list[dict] = call_row[0].get("pending_topics") or []
+
+    groups = (
+        db.table("topic_match_groups")
+        .select("project_topic_id, call_topic_names")
+        .eq("call_id", call_id)
+        .execute()
+        .data
+    )
+
+    # Build lookup: call topic name → topic dict
+    pending_by_name = {t["name"].lower().strip(): t for t in pending}
+
+    # Load previous project topics for context
+    previous = _get_previous_topics(project_id, db)
+    prev_by_id = {t["topic_id"]: t for t in previous}
+
+    # Get LLM config
+    stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="project_topics")
     if stored_llm is None:
         proj_rows = db.table("projects").select("default_llm").eq("id", project_id).execute().data
         stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
     llm = stored_llm or "groq"
 
-    # Build previous topics context with history for semantic matching
-    prev_context = [
-        {
-            "topic_id": t["topic_id"],
-            "name": t["name"],
-            "status": t["status"],
-            "summary": t["summary"],
-            "follow_up_items": t["follow_up_items"],
-            "decisions": t["decisions"],
-            "owner": t["owner"],
-            "sentiment": t["sentiment"],
-        }
-        for t in previous
+    merge_instructions = stored_prompt or (
+        "You are merging an existing project topic record with one or more new call topics that match it. "
+        "Produce an updated topic that synthesises the history with the latest call information. "
+        "Keep the most important follow-up items (max 5). Update status, sentiment, and owner to reflect current state."
+    )
+
+    async def merge_one(group: dict) -> dict:
+        ptid = group.get("project_topic_id")
+        call_names = group.get("call_topic_names", [])
+        call_matches = [pending_by_name[n.lower().strip()] for n in call_names if n.lower().strip() in pending_by_name]
+
+        if ptid is None:
+            # New topic — return first call topic as-is (or merged if multiple)
+            if not call_matches:
+                logger.warning(f"⚠️ [Topics] match group has project_topic_id=None but no matching call topics — skipping")
+                return {}
+            base = call_matches[0]
+            return {**base, "topic_id": None}
+
+        existing = prev_by_id.get(ptid)
+        if not existing:
+            # Existing topic not found — treat as new
+            base = call_matches[0] if call_matches else {}
+            return {**base, "topic_id": ptid}
+
+        if not call_matches:
+            # No call topics matched — return existing unchanged (not discussed)
+            return {**existing, "topic_id": ptid}
+
+        # Run LLM merge
+        try:
+            prompt = (
+                f"{merge_instructions}\n\n"
+                f"Existing project topic:\n{json.dumps(existing, indent=2)}\n\n"
+                f"New call topic(s) matching this:\n{json.dumps(call_matches, indent=2)}\n\n"
+                f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
+            )
+            merged = await _call_llm(prompt, llm)
+            if isinstance(merged, list):
+                merged = merged[0] if merged else {}
+            return {**merged, "topic_id": ptid}
+        except Exception as e:
+            logger.error(f"❌ [Topics] LLM merge failed for topic {ptid}: {e} — returning existing unchanged")
+            return {**existing, "topic_id": ptid}
+
+    results = await asyncio.gather(*[merge_one(g) for g in groups])
+    return [r for r in results if r]
+
+
+async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
+    """
+    Save merged/reviewed topics and advance to artifacts.
+    - topic_id set   → update existing topic (topic_update record)
+    - topic_id None  → create new topic
+    Clears pending_topics and topic_match_groups for this call.
+    """
+    db = get_client()
+
+    topic_updates = [
+        TopicUpdate(**{
+            **t,
+            "topic_id": t.get("topic_id"),
+            "disposition": None,
+        })
+        for t in topics
     ]
+    await save_topics(call_id, topic_updates)
 
-    prompt = (
-        f"Match the new call topics to the existing project topics.\n\n"
-        f"New call topics:\n{json.dumps(call_topics, indent=2)}\n\n"
-        f"Existing project topics (with history):\n{json.dumps(prev_context, indent=2)}\n\n"
-        f"Rules:\n"
-        f"- If a new topic matches an existing one (same subject, possibly different wording): "
-        f"put it in 'followed_up'. Use the existing topic name exactly. Update summary/status/follow_ups with new info.\n"
-        f"- Existing topics not covered by any new topic: put in 'not_discussed' unchanged.\n"
-        f"- New topics with no match: put in 'new_topics'.\n\n"
-        f"Return JSON: {{\"followed_up\": [...], \"not_discussed\": [...], \"new_topics\": [...]}}\n"
-        f"Each topic: {_TOPIC_SCHEMA}"
-    )
+    # Clean up transient data
+    db.table("topic_match_groups").delete().eq("call_id", call_id).execute()
+    db.table("calls").update({
+        "pending_topics": None,
+        "kanban_stage": "artifacts",
+    }).eq("id", call_id).execute()
 
-    raw = await _call_llm(prompt, llm)
-
-    # Re-attach topic_ids stripped by LLM
-    prev_by_name = {t["name"].lower().strip(): t["topic_id"] for t in previous}
-
-    def _reattach(topic: dict) -> dict:
-        if not topic.get("topic_id"):
-            key = topic.get("name", "").lower().strip()
-            if key in prev_by_name:
-                topic = {**topic, "topic_id": prev_by_name[key]}
-        return topic
-
-    if isinstance(raw, list):
-        prev_names = {t["name"] for t in previous}
-        followed_up = [_reattach(t) for t in raw if t["name"] in prev_names]
-        not_discussed = [t for t in previous if t["name"] not in {x["name"] for x in raw}]
-        new_topics_list = [t for t in raw if t["name"] not in prev_names]
-    else:
-        followed_up = [_reattach(t) for t in raw.get("followed_up", [])]
-        not_discussed = [_reattach(t) for t in raw.get("not_discussed", [])]
-        new_topics_list = raw.get("new_topics", [])
-
-    # Advance to project_topics stage for user review
-    db.table("calls").update({"kanban_stage": "project_topics"}).eq("id", call_id).execute()
-    logger.info(
-        f"✅ [Topics] Step-2 complete: {len(followed_up)} followed, "
-        f"{len(not_discussed)} not discussed, {len(new_topics_list)} new → project_topics"
-    )
-
-    return {
-        "call_number": call_number,
-        "followed_up": followed_up,
-        "not_discussed": not_discussed,
-        "new_topics": new_topics_list,
-    }
+    logger.info(f"✅ [Topics] project_updates validated → artifacts: {call_id}")
+    return {"status": "ok"}
 
 
 async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
@@ -702,6 +808,54 @@ async def generate_brief(call_id: str) -> dict:
         "decisions_to_confirm": decisions_to_confirm,
         "watch_list": watch_list,
     }
+
+
+async def list_call_topics(call_id: str) -> list[dict]:
+    """Return topics discussed in this specific call — one entry per topic (latest update)."""
+    db = get_client()
+
+    updates = (
+        db.table("topic_updates")
+        .select("topic_id, summary, follow_up_items, decisions, status, owner, sentiment, created_at")
+        .eq("call_id", call_id)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    # Deduplicate: keep only the latest update per topic_id
+    seen: set[str] = set()
+    deduped = []
+    for u in updates:
+        tid = u["topic_id"]
+        if tid not in seen:
+            seen.add(tid)
+            deduped.append(u)
+
+    result = []
+    for u in deduped:
+        topic_rows = (
+            db.table("topics")
+            .select("id, name, calls_open")
+            .eq("id", u["topic_id"])
+            .execute()
+            .data
+        )
+        if topic_rows:
+            t = topic_rows[0]
+            result.append({
+                "topic_id": t["id"],
+                "name": t["name"],
+                "calls_open": t["calls_open"],
+                "summary": u.get("summary") or "",
+                "follow_up_items": u.get("follow_up_items") or [],
+                "decisions": u.get("decisions") or [],
+                "status": u.get("status") or "open",
+                "owner": u.get("owner") or "Us",
+                "sentiment": u.get("sentiment") or "neutral",
+            })
+
+    return result
 
 
 async def list_project_topics(project_id: str, db=None) -> list[dict]:

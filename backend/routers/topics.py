@@ -1,7 +1,10 @@
+from typing import Optional
+
 from backend.database.supabase_client import get_client
 from backend.services.topics_service import (
     extract_topics, save_topics, validate_call, generate_brief,
-    list_project_topics, extract_call_topics, aggregate_topics,
+    list_project_topics, list_call_topics, extract_call_topics, aggregate_topics,
+    get_pending_topics, save_match_groups, run_merge_preview, validate_project_updates,
     TopicUpdate,
 )
 from backend.utils.logger import get_logger
@@ -61,7 +64,7 @@ class AggregatePayload(PydanticBaseModel):
 
 @router.post("/calls/{call_id}/topics/aggregate")
 async def aggregate(call_id: str, payload: AggregatePayload):
-    """Step 2: match call topics against project topics → 3 buckets or auto-advance."""
+    """Step 2: save pending call topics → advance to project_matching (or auto-advance Call 1)."""
     logger.info(
         f"📥 [Topics] Step-2 aggregate requested: call={call_id}, "
         f"input_topics={len(payload.topics)}"
@@ -71,8 +74,7 @@ async def aggregate(call_id: str, payload: AggregatePayload):
         if result.get("auto_advanced"):
             logger.info(f"✅ [Topics] Auto-advanced Call 1: {call_id}")
         else:
-            total = sum(len(result.get(k, [])) for k in ("followed_up", "not_discussed", "new_topics"))
-            logger.info(f"✅ [Topics] Step-2 returned {total} classified topics")
+            logger.info(f"✅ [Topics] Saved pending topics → project_matching: {call_id}")
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -137,6 +139,75 @@ async def validate(call_id: str):
         raise HTTPException(status_code=422, detail=msg)
 
 
+@router.get("/calls/{call_id}/topics/by-call")
+async def list_topics_by_call(call_id: str):
+    """Return topics that have a topic_update for this specific call (call-scoped view)."""
+    logger.info(f"📥 [Topics] Call-scoped topics requested: call={call_id}")
+    result = await list_call_topics(call_id)
+    logger.info(f"✅ [Topics] Returned {len(result)} call-scoped topics")
+    return result
+
+
+@router.get("/calls/{call_id}/topics/pending")
+async def get_pending(call_id: str):
+    """Return validated call topics stored between call_topics and project_matching stages."""
+    logger.info(f"📥 [Topics] Pending topics requested: call={call_id}")
+    try:
+        result = await get_pending_topics(call_id)
+        logger.info(f"✅ [Topics] Returned {len(result)} pending topics")
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+class MatchGroupPayload(PydanticBaseModel):
+    project_topic_id: Optional[str] = None
+    call_topic_names: list[str]
+
+
+@router.post("/calls/{call_id}/topics/save-matches", status_code=200)
+async def save_matches(call_id: str, groups: list[MatchGroupPayload]):
+    """Save manual match groups and advance to project_updates."""
+    logger.info(f"📥 [Topics] Save matches: call={call_id}, groups={len(groups)}")
+    try:
+        result = await save_match_groups(call_id, [g.model_dump() for g in groups])
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"❌ [Topics] Save matches failed: {e}")
+        raise HTTPException(status_code=500, detail="Save matches failed")
+
+
+@router.post("/calls/{call_id}/topics/merge-preview")
+async def merge_preview(call_id: str):
+    """Run parallel LLM merge for all match groups — returns preview, does not save."""
+    logger.info(f"📥 [Topics] Merge preview requested: call={call_id}")
+    try:
+        result = await run_merge_preview(call_id)
+        logger.info(f"✅ [Topics] Merge preview: {len(result)} topics")
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"❌ [Topics] Merge preview failed: {e}")
+        raise HTTPException(status_code=500, detail="Merge preview failed")
+
+
+@router.post("/calls/{call_id}/topics/validate-updates")
+async def validate_updates(call_id: str, topics: list[dict]):
+    """Save reviewed merged topics and advance to artifacts."""
+    logger.info(f"📥 [Topics] Validate updates: call={call_id}, count={len(topics)}")
+    try:
+        result = await validate_project_updates(call_id, topics)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.exception(f"❌ [Topics] Validate updates failed: {e}")
+        raise HTTPException(status_code=500, detail="Validate updates failed")
+
+
 @router.get("/projects/{project_id}/topics")
 async def list_topics(project_id: str):
     logger.info(f"📥 [Topics] Dashboard requested: project={project_id}")
@@ -144,6 +215,53 @@ async def list_topics(project_id: str):
     result = await list_project_topics(project_id, db)
     logger.info(f"✅ [Topics] Returned {len(result)} topics")
     return result
+
+
+@router.delete("/calls/{call_id}/topics/{topic_id}", status_code=204)
+async def delete_topic_from_call(call_id: str, topic_id: str):
+    """
+    Remove a topic from one specific call.
+    - Deletes the topic_update row for (topic_id, call_id).
+    - Recalculates topics.calls_open.
+    - Deletes the topics row entirely if no updates remain (orphan).
+    - Updates first_raised_call_id if it pointed at this call.
+    Does NOT touch topic_updates from other calls.
+    """
+    logger.info(f"📥 [Topics] Delete topic {topic_id} from call {call_id}")
+    db = get_client()
+
+    # 1. Delete this call's update for the topic
+    db.table("topic_updates").delete().eq("topic_id", topic_id).eq("call_id", call_id).execute()
+
+    # 2. Check remaining updates across all calls
+    remaining = (
+        db.table("topic_updates")
+        .select("call_id, status, created_at")
+        .eq("topic_id", topic_id)
+        .order("created_at")
+        .execute()
+        .data
+    )
+
+    if not remaining:
+        # No updates left anywhere — delete the topic row entirely
+        db.table("topics").delete().eq("id", topic_id).execute()
+        logger.info(f"🗄️ [DB] Deleted orphan topic {topic_id} (no remaining updates)")
+        return
+
+    # 3. Recalculate calls_open
+    calls_open = sum(1 for r in remaining if r["status"] in ("open", "in_progress"))
+    db.table("topics").update({"calls_open": calls_open}).eq("id", topic_id).execute()
+
+    # 4. Fix first_raised_call_id if it pointed at the deleted call
+    topic_row = db.table("topics").select("first_raised_call_id").eq("id", topic_id).execute().data
+    if topic_row and topic_row[0]["first_raised_call_id"] == call_id:
+        # Assign to the earliest remaining call that has an update
+        new_first = remaining[0]["call_id"]  # already ordered by created_at asc
+        db.table("topics").update({"first_raised_call_id": new_first}).eq("id", topic_id).execute()
+        logger.info(f"🗄️ [DB] Updated first_raised_call_id for topic {topic_id} → {new_first}")
+
+    logger.info(f"✅ [Topics] Removed topic {topic_id} from call {call_id}, calls_open={calls_open}")
 
 
 @router.get("/calls/{call_id}/brief")

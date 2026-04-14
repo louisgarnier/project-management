@@ -197,12 +197,26 @@ async def stream_artifacts(call_id: str):
 
     artifacts_result = (
         supabase.table("artifacts")
-        .select("id,prompt_used,mode")
+        .select("id,prompt_used,mode,artifact_type_id")
         .eq("call_id", call_id)
         .eq("status", "pending")
         .execute()
     )
     pending = artifacts_result.data
+
+    # Build context_scope map: artifact_type_id → "call" | "project"
+    context_scope_map: dict[str, str] = {}
+    if pending:
+        type_ids = list({a["artifact_type_id"] for a in pending if a.get("artifact_type_id")})
+        if type_ids:
+            scope_rows = (
+                supabase.table("artifact_types")
+                .select("id,context_scope")
+                .in_("id", type_ids)
+                .execute()
+                .data
+            )
+            context_scope_map = {r["id"]: r.get("context_scope", "call") for r in scope_rows}
 
     async def event_stream():
         if not pending:
@@ -214,12 +228,12 @@ async def stream_artifacts(call_id: str):
         async def gen_one(artifact: dict) -> None:
             artifact_id = artifact["id"]
             prompt_used = artifact["prompt_used"]
+            scope = context_scope_map.get(artifact.get("artifact_type_id", ""), "call")
             await queue.put({"type": "status", "artifact_id": artifact_id, "status": "generating"})
             supabase.table("artifacts").update({"status": "generating"}).eq("id", artifact_id).execute()
             try:
-                # Combine transcript with project topic context for richer artifact generation
                 full_context = transcript
-                if project_topics_context:
+                if scope == "project" and project_topics_context:
                     full_context = f"{transcript}\n\n{project_topics_context}"
                 content = await generate_artifact(prompt_used, full_context, artifact["mode"], topics=call_topics)
                 supabase.table("artifacts").update(

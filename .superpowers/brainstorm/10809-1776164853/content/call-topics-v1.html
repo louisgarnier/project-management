@@ -1,0 +1,231 @@
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f4f5f7; margin: 0; }
+
+  .stage-wrapper { display: flex; flex-direction: column; height: 100vh; background: #fff; }
+
+  /* Header */
+  .stage-header { padding: 16px 20px 12px; border-bottom: 1px solid #dfe1e6; flex-shrink: 0; }
+  .stage-header h2 { font-size: 15px; font-weight: 700; color: #172b4d; margin: 0 0 4px; }
+  .stage-meta { font-size: 12px; color: #5e6c84; line-height: 1.5; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .prompt-badge { display: inline-flex; align-items: center; gap: 4px; background: #f4f5f7; border-radius: 4px; padding: 2px 8px; font-size: 11px; color: #5e6c84; }
+  .prompt-badge strong { color: #172b4d; font-weight: 600; }
+
+  /* Topic list */
+  .topics-list { flex: 1; overflow-y: auto; }
+
+  .topics-count { padding: 10px 20px 6px; font-size: 11px; font-weight: 700; color: #5e6c84; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid #f4f5f7; }
+
+  /* Topic row */
+  .topic-row { border-bottom: 1px solid #f0f1f3; padding: 10px 20px; cursor: pointer; transition: background .1s; }
+  .topic-row:hover { background: #fafbfc; }
+  .topic-row.expanded { background: #fafbfc; border-left: 3px solid #0052cc; padding-left: 17px; }
+
+  .topic-row-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .topic-left { display: flex; align-items: baseline; gap: 8px; flex: 1; min-width: 0; }
+  .topic-name { font-size: 13px; font-weight: 600; color: #172b4d; }
+  .topic-name-input { font-size: 13px; font-weight: 600; color: #172b4d; border: none; border-bottom: 2px solid #0052cc; outline: none; background: transparent; flex: 1; min-width: 0; font-family: inherit; }
+
+  .badge { font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
+  .badge-open    { background: #e9f0ff; color: #0052cc; }
+  .badge-inprog  { background: #fff4e6; color: #974f0c; }
+  .badge-resolved{ background: #e3fcef; color: #006644; }
+
+  .topic-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .sentiment-label { font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .sent-positive { color: #216e4e; }
+  .sent-neutral  { color: #5e6c84; }
+  .sent-concern  { color: #ae2a19; }
+
+  .btn-icon { background: none; border: none; cursor: pointer; color: #bfc5ce; font-size: 13px; padding: 0 2px; line-height: 1; transition: color .1s; }
+  .btn-icon:hover { color: #ae2a19; }
+  .btn-edit { color: #97a0af; }
+  .btn-edit:hover { color: #0052cc; }
+
+  .topic-summary { font-size: 12px; color: #5e6c84; margin: 3px 0 0; line-height: 1.5; }
+  .topic-followups { margin-top: 4px; }
+  .followup-item { font-size: 11px; color: #5e6c84; padding: 1px 0; }
+  .followup-item::before { content: "→ "; color: #97a0af; }
+
+  /* Expanded edit controls */
+  .topic-edit-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .topic-edit-row select {
+    font-size: 11px; border: 1px solid #dfe1e6; border-radius: 4px; padding: 4px 8px;
+    background: white; color: #172b4d; cursor: pointer; font-family: inherit;
+  }
+  .topic-edit-row select:focus { outline: none; border-color: #0052cc; }
+  .topic-summary-edit {
+    width: 100%; margin-top: 8px; font-size: 12px; color: #172b4d;
+    border: 1px solid #dfe1e6; border-radius: 4px; padding: 6px 8px;
+    resize: vertical; font-family: inherit; box-sizing: border-box; min-height: 48px;
+  }
+  .topic-summary-edit:focus { outline: none; border-color: #0052cc; }
+
+  .followup-edit { display: flex; gap: 6px; margin-top: 6px; align-items: center; }
+  .followup-edit input {
+    flex: 1; font-size: 11px; border: 1px solid #dfe1e6; border-radius: 4px;
+    padding: 4px 7px; font-family: inherit;
+  }
+  .followup-edit input:focus { outline: none; border-color: #0052cc; }
+  .followup-item-edit { display: flex; align-items: center; gap: 4px; }
+  .followup-item-edit span { font-size: 11px; color: #5e6c84; }
+  .followup-item-edit button { font-size: 10px; color: #bfc5ce; background: none; border: none; cursor: pointer; }
+  .followup-item-edit button:hover { color: #ae2a19; }
+
+  /* Footer action bar */
+  .action-bar { padding: 12px 20px; border-top: 1px solid #dfe1e6; background: white; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .btn-secondary { padding: 7px 16px; border-radius: 6px; border: 1px solid #dfe1e6; background: white; color: #5e6c84; font-size: 12px; cursor: pointer; font-family: inherit; }
+  .btn-primary { padding: 8px 22px; border-radius: 6px; border: none; background: #0052cc; color: white; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-primary:hover { background: #0065ff; }
+</style>
+
+<div class="stage-wrapper">
+
+  <!-- Header -->
+  <div class="stage-header">
+    <h2>Call Topics</h2>
+    <div class="stage-meta">
+      Step 1 of 2 — Extract topics from this call only, without any previous context.
+      <span class="prompt-badge">Prompt: <strong>Call Topics Extraction</strong> · Groq – Llama 3.3</span>
+    </div>
+  </div>
+
+  <!-- Extract button (pre-extraction state) — hidden once extracted -->
+  <!-- After extraction, list is shown -->
+
+  <!-- Topics list -->
+  <div class="topics-list">
+    <div class="topics-count">Topics (8)</div>
+
+    <!-- Row 1 — collapsed -->
+    <div class="topic-row">
+      <div class="topic-row-header">
+        <div class="topic-left">
+          <span class="topic-name">Model Selection for Risk Analytics</span>
+          <span class="badge badge-open">Open</span>
+        </div>
+        <div class="topic-right">
+          <span class="sentiment-label sent-neutral">Neutral</span>
+          <button class="btn-icon btn-edit" title="Edit">✎</button>
+          <button class="btn-icon" title="Remove">✕</button>
+        </div>
+      </div>
+      <p class="topic-summary">Discussion on selecting appropriate models for risk analysis, weighing efficiency versus accuracy.</p>
+      <div class="topic-followups">
+        <div class="followup-item">Prepare a comparison of models based on efficiency and accuracy</div>
+      </div>
+    </div>
+
+    <!-- Row 2 — expanded / editing -->
+    <div class="topic-row expanded">
+      <div class="topic-row-header">
+        <div class="topic-left" style="flex:1">
+          <input class="topic-name-input" value="Technical Blockers — Memory Issues" style="width:100%" />
+        </div>
+        <div class="topic-right">
+          <button class="btn-icon btn-edit" title="Collapse" style="color:#0052cc">✎</button>
+          <button class="btn-icon" title="Remove">✕</button>
+        </div>
+      </div>
+      <!-- Edit controls inline -->
+      <div class="topic-edit-row">
+        <select><option>In Progress</option><option>Open</option><option>Resolved</option></select>
+        <select><option>Us</option><option>Client</option><option>Both</option></select>
+        <select><option selected style="color:#ae2a19">Concern</option><option>Neutral</option><option>Positive</option></select>
+      </div>
+      <textarea class="topic-summary-edit">Issues encountered with memory constraints during Monte Carlo simulations, which may affect the project timeline.</textarea>
+      <div style="margin-top:6px">
+        <div class="followup-item-edit">
+          <span style="color:#97a0af;font-size:11px">→</span>
+          <input style="flex:1;font-size:11px;border:1px solid #dfe1e6;border-radius:4px;padding:3px 6px;font-family:inherit" value="Investigate memory issues with managed services" />
+          <button style="font-size:10px;color:#bfc5ce;background:none;border:none;cursor:pointer">✕</button>
+        </div>
+        <div style="margin-top:4px;font-size:11px;color:#0052cc;cursor:pointer">+ Add follow-up</div>
+      </div>
+    </div>
+
+    <!-- Row 3 -->
+    <div class="topic-row">
+      <div class="topic-row-header">
+        <div class="topic-left">
+          <span class="topic-name">Portfolio Risk Analytics Setup</span>
+          <span class="badge badge-inprog">In Progress</span>
+        </div>
+        <div class="topic-right">
+          <span class="sentiment-label sent-concern">Concern</span>
+          <button class="btn-icon btn-edit" title="Edit">✎</button>
+          <button class="btn-icon" title="Remove">✕</button>
+        </div>
+      </div>
+      <p class="topic-summary">Portfolio risk analytics landing page with EDS+ data refreshed daily and risk modules with FactSet PAs.</p>
+      <div class="topic-followups">
+        <div class="followup-item">Outline the required modules for the landing page</div>
+        <div class="followup-item">Send wireframe of dashboard for review</div>
+      </div>
+    </div>
+
+    <!-- Row 4 -->
+    <div class="topic-row">
+      <div class="topic-row-header">
+        <div class="topic-left">
+          <span class="topic-name">Stress Testing / Scenario Analysis</span>
+          <span class="badge badge-open">Open</span>
+        </div>
+        <div class="topic-right">
+          <span class="sentiment-label sent-neutral">Neutral</span>
+          <button class="btn-icon btn-edit" title="Edit">✎</button>
+          <button class="btn-icon" title="Remove">✕</button>
+        </div>
+      </div>
+      <p class="topic-summary">Monthly run for stress testing and scenario analysis, composites grouped by business line and factors.</p>
+      <div class="topic-followups">
+        <div class="followup-item">Define specific scenarios for the monthly run</div>
+      </div>
+    </div>
+
+    <!-- Row 5 -->
+    <div class="topic-row">
+      <div class="topic-row-header">
+        <div class="topic-left">
+          <span class="topic-name">API Integration and Data Loading</span>
+          <span class="badge badge-open">Open</span>
+        </div>
+        <div class="topic-right">
+          <span class="sentiment-label sent-concern">Concern</span>
+          <button class="btn-icon btn-edit" title="Edit">✎</button>
+          <button class="btn-icon" title="Remove">✕</button>
+        </div>
+      </div>
+      <p class="topic-summary">Technical discussions about integrating Snowflake with FactSet for data loading and management.</p>
+      <div class="topic-followups">
+        <div class="followup-item">Identify necessary Snowflake configurations for data import</div>
+      </div>
+    </div>
+
+    <!-- Row 6 -->
+    <div class="topic-row">
+      <div class="topic-row-header">
+        <div class="topic-left">
+          <span class="topic-name">Funds Risk Analytics</span>
+          <span class="badge badge-inprog">In Progress</span>
+        </div>
+        <div class="topic-right">
+          <span class="sentiment-label sent-positive">Positive</span>
+          <button class="btn-icon btn-edit" title="Edit">✎</button>
+          <button class="btn-icon" title="Remove">✕</button>
+        </div>
+      </div>
+      <p class="topic-summary">Daily risk analytics breaking down by CTF, VTF, SMF, and by Business Line with risk metrics MV, TE, Vol, Active VaR.</p>
+      <div class="topic-followups">
+        <div class="followup-item">Clarify metrics to be used: MV, TE, Vol, Active VaR</div>
+      </div>
+    </div>
+
+  </div><!-- /topics-list -->
+
+  <!-- Action bar -->
+  <div class="action-bar">
+    <button class="btn-secondary">Re-extract</button>
+    <button class="btn-primary">Continue →</button>
+  </div>
+
+</div>

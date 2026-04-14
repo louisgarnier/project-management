@@ -73,8 +73,8 @@ DEFAULT_ARTIFACT_TYPES: list[dict] = [
     },
 ]
 
-DEFAULT_TOPICS_PROMPT = {
-    "name": "Topics Extraction",
+DEFAULT_CALL_TOPICS_PROMPT = {
+    "name": "Call Topics Extraction",
     "prompt": (
         "You are an expert at extracting business topics from client call transcripts.\n\n"
         "Extract all key business topics discussed. For each topic return a JSON object matching:\n"
@@ -87,30 +87,50 @@ DEFAULT_TOPICS_PROMPT = {
         '"API Integration Timeline" not "Technical".'
     ),
     "is_default": True,
-    "category": "topics",
+    "category": "call_topics",
+}
+
+DEFAULT_PROJECT_TOPICS_PROMPT = {
+    "name": "Project Topics Merge",
+    "prompt": (
+        "You are an expert at matching client call topics to an existing project topic backlog.\n\n"
+        "Given topics extracted from the current call and the existing project topic list, "
+        "classify each topic:\n"
+        '- "followed_up": call topics that match an existing project topic (same business subject, '
+        "possibly different wording). Use the existing topic name exactly. Update summary, status, "
+        "follow_up_items, and decisions with new information from this call.\n"
+        '- "not_discussed": existing project topics not covered by any call topic.\n'
+        '- "new_topics": call topics with no match in the existing project list.\n\n'
+        "Be generous with matching — slightly different wording for the same business subject "
+        "counts as a match."
+    ),
+    "is_default": True,
+    "category": "project_topics",
 }
 
 
 def seed_defaults(project_id: str) -> None:
-    """Insert 6 default artifact types + 1 topics prompt for a newly created project."""
+    """Insert 6 default artifact types + 2 workflow prompts for a newly created project."""
     client = get_client()
     artifact_rows = [{"project_id": project_id, "category": "artifacts", **t} for t in DEFAULT_ARTIFACT_TYPES]
     client.table("artifact_types").insert(artifact_rows).execute()
-    topics_row = {"project_id": project_id, **DEFAULT_TOPICS_PROMPT}
-    client.table("artifact_types").insert(topics_row).execute()
-    db_logger.info(f"✅ [DB] Seeded 6 artifact types + 1 topics prompt for project: {project_id}")
+    client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_CALL_TOPICS_PROMPT}).execute()
+    client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_PROJECT_TOPICS_PROMPT}).execute()
+    db_logger.info(f"✅ [DB] Seeded 6 artifact types + 2 workflow prompts for project: {project_id}")
 
 
 class ArtifactTypeCreate(BaseModel):
     name: str = Field(min_length=1)
     prompt: str = Field(min_length=1)
     llm: Literal["groq", "deepseek", "claude", "openai"] | None = None
+    context_scope: Literal["call", "project"] = "call"
 
 
 class ArtifactTypeUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     prompt: str | None = Field(default=None, min_length=1)
     llm: Literal["groq", "deepseek", "claude", "openai"] | None = Field(default=None)
+    context_scope: Literal["call", "project"] | None = Field(default=None)
 
 
 class ArtifactTypeImport(BaseModel):
@@ -145,6 +165,7 @@ def create_artifact_type(project_id: str, payload: ArtifactTypeCreate):
             "is_default": False,
             "category": "artifacts",
             "llm": payload.llm,
+            "context_scope": payload.context_scope,
         })
         .execute()
     )

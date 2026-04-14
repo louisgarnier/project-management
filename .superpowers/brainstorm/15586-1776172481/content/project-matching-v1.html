@@ -1,0 +1,355 @@
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f4f5f7; margin: 0; }
+
+  .stage-wrapper { display: flex; flex-direction: column; height: 100vh; background: #fff; }
+
+  .stage-header { padding: 16px 20px 12px; border-bottom: 1px solid #dfe1e6; flex-shrink: 0; }
+  .stage-header h2 { font-size: 15px; font-weight: 700; color: #172b4d; margin: 0 0 4px; }
+  .stage-meta { font-size: 12px; color: #5e6c84; }
+
+  /* Two-column layout */
+  .matching-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .col-left { border-right: 1px solid #dfe1e6; }
+
+  .col-header {
+    padding: 10px 16px 8px;
+    border-bottom: 1px solid #f0f1f3;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .col-header-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #5e6c84;
+  }
+  .col-count {
+    font-size: 10px;
+    color: #97a0af;
+    font-weight: 600;
+  }
+
+  .col-scroll { flex: 1; overflow-y: auto; padding: 8px 0; }
+
+  /* Topic pill */
+  .topic-pill {
+    margin: 4px 12px;
+    padding: 9px 12px;
+    border-radius: 6px;
+    border: 1.5px solid #dfe1e6;
+    background: white;
+    cursor: pointer;
+    transition: border-color .12s, background .12s;
+    user-select: none;
+  }
+  .topic-pill:hover { border-color: #b3c6e8; background: #f8f9ff; }
+
+  .topic-pill.selected {
+    border-color: #0052cc;
+    background: #e9f0ff;
+  }
+
+  .topic-pill.matched {
+    border-color: #36b37e;
+    background: #e3fcef;
+    cursor: default;
+  }
+
+  .topic-pill.matched-secondary {
+    border-color: #79dbb2;
+    background: #f0fdf7;
+    cursor: default;
+  }
+
+  .topic-pill-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #172b4d;
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .topic-pill-summary {
+    font-size: 11px;
+    color: #5e6c84;
+    line-height: 1.4;
+  }
+
+  .badge {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .badge-open    { background: #e9f0ff; color: #0052cc; }
+  .badge-inprog  { background: #fff4e6; color: #974f0c; }
+  .badge-resolved{ background: #e3fcef; color: #006644; }
+  .badge-matched { background: #e3fcef; color: #006644; }
+  .badge-new     { background: #f0f0f0; color: #5e6c84; }
+
+  .match-link {
+    font-size: 10px;
+    color: #36b37e;
+    font-weight: 600;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Center merge panel */
+  .merge-panel {
+    width: 72px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid #dfe1e6;
+    background: #fafbfc;
+    padding: 12px 0;
+    gap: 8px;
+  }
+
+  .merge-btn {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 11px;
+    font-weight: 700;
+    background: #0052cc;
+    color: white;
+    border: none;
+    padding: 12px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    letter-spacing: .04em;
+    opacity: 0.4;
+  }
+  .merge-btn.active { opacity: 1; }
+  .merge-btn:hover.active { background: #0065ff; }
+
+  .mark-new-btn {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 11px;
+    font-weight: 600;
+    background: white;
+    color: #5e6c84;
+    border: 1px solid #dfe1e6;
+    padding: 12px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: 0.4;
+  }
+  .mark-new-btn.active { opacity: 1; color: #172b4d; border-color: #97a0af; }
+
+  /* Action bar */
+  .action-bar {
+    padding: 12px 20px;
+    border-top: 1px solid #dfe1e6;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .progress-text { font-size: 12px; color: #5e6c84; }
+  .progress-text strong { color: #172b4d; }
+
+  .btn-primary {
+    padding: 8px 22px; border-radius: 6px; border: none;
+    background: #0052cc; color: white; font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  .btn-primary:hover { background: #0065ff; }
+  .btn-primary:disabled { background: #f4f5f7; color: #97a0af; cursor: default; }
+</style>
+
+<div class="stage-wrapper">
+
+  <!-- Header -->
+  <div class="stage-header">
+    <h2>Project Topic Matching</h2>
+    <div class="stage-meta">Step 1 of 2 — Match this call's topics to existing project topics, or mark as new.</div>
+  </div>
+
+  <!-- Body -->
+  <div class="matching-body">
+
+    <!-- LEFT — Existing project topics -->
+    <div class="col col-left">
+      <div class="col-header">
+        <span class="col-header-title">Existing Project Topics</span>
+        <span class="col-count">7 topics</span>
+      </div>
+      <div class="col-scroll">
+
+        <!-- Matched -->
+        <div class="topic-pill matched" onclick="toggleLeft(this)" id="L1">
+          <div class="topic-pill-name">
+            Technical Blockers — Memory Issues
+            <span class="badge badge-matched">Matched ↔ Call Topic 2</span>
+          </div>
+          <div class="topic-pill-summary">Issues with memory constraints during Monte Carlo simulations.</div>
+          <div class="match-link">⟵ Memory &amp; Infrastructure Issues</div>
+        </div>
+
+        <!-- Selected -->
+        <div class="topic-pill selected" onclick="toggleLeft(this)" id="L2">
+          <div class="topic-pill-name">
+            Model Selection for Risk Analytics
+            <span class="badge badge-open">Open</span>
+          </div>
+          <div class="topic-pill-summary">Weighing efficiency vs. accuracy for risk model selection.</div>
+        </div>
+
+        <!-- Normal -->
+        <div class="topic-pill" onclick="toggleLeft(this)" id="L3">
+          <div class="topic-pill-name">
+            Portfolio Risk Analytics Setup
+            <span class="badge badge-inprog">In Progress</span>
+          </div>
+          <div class="topic-pill-summary">Landing page with EDS+ data, FactSet PAs risk modules.</div>
+        </div>
+
+        <div class="topic-pill" onclick="toggleLeft(this)" id="L4">
+          <div class="topic-pill-name">
+            Stress Testing / Scenario Analysis
+            <span class="badge badge-open">Open</span>
+          </div>
+          <div class="topic-pill-summary">Monthly run composites by business line and factors.</div>
+        </div>
+
+        <div class="topic-pill" onclick="toggleLeft(this)" id="L5">
+          <div class="topic-pill-name">
+            API Integration and Data Loading
+            <span class="badge badge-open">Open</span>
+          </div>
+          <div class="topic-pill-summary">Snowflake + FactSet integration for data loading.</div>
+        </div>
+
+        <div class="topic-pill" onclick="toggleLeft(this)" id="L6">
+          <div class="topic-pill-name">
+            Funds Risk Analytics
+            <span class="badge badge-inprog">In Progress</span>
+          </div>
+          <div class="topic-pill-summary">Daily risk breakdown by CTF, VTF, SMF, business line.</div>
+        </div>
+
+        <div class="topic-pill" onclick="toggleLeft(this)" id="L7">
+          <div class="topic-pill-name">
+            Timeline &amp; Delivery Milestones
+            <span class="badge badge-open">Open</span>
+          </div>
+          <div class="topic-pill-summary">Agreed delivery dates for phase 1 modules.</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- CENTER — Action buttons -->
+    <div class="merge-panel">
+      <button class="merge-btn active" title="Link selected topics together">Link ↔</button>
+      <button class="mark-new-btn active" title="Mark as new project topic">New →</button>
+    </div>
+
+    <!-- RIGHT — This call's topics -->
+    <div class="col">
+      <div class="col-header">
+        <span class="col-header-title">This Call's Topics</span>
+        <span class="col-count">5 topics · <span style="color:#36b37e;font-weight:700">2 matched</span> · <span style="color:#97a0af">3 pending</span></span>
+      </div>
+      <div class="col-scroll">
+
+        <!-- Matched -->
+        <div class="topic-pill matched-secondary" onclick="toggleRight(this)" id="R1">
+          <div class="topic-pill-name">
+            Memory &amp; Infrastructure Issues
+            <span class="badge badge-matched">Matched ↔ Blockers</span>
+          </div>
+          <div class="topic-pill-summary">Server memory constraints blocking simulation runs; cloud migration proposed.</div>
+        </div>
+
+        <!-- Selected -->
+        <div class="topic-pill selected" onclick="toggleRight(this)" id="R2">
+          <div class="topic-pill-name">
+            Risk Model Benchmarking
+          </div>
+          <div class="topic-pill-summary">Discussed benchmarking Barra vs internal models for accuracy-cost tradeoff.</div>
+        </div>
+
+        <!-- Pending -->
+        <div class="topic-pill" onclick="toggleRight(this)" id="R3">
+          <div class="topic-pill-name">
+            FactSet PA Data Refresh Frequency
+          </div>
+          <div class="topic-pill-summary">Agreed to move from weekly to daily refresh for risk attribution.</div>
+        </div>
+
+        <div class="topic-pill" onclick="toggleRight(this)" id="R4">
+          <div class="topic-pill-name">
+            Snowflake Schema Migration
+          </div>
+          <div class="topic-pill-summary">New schema required for multi-entity support across fund structures.</div>
+        </div>
+
+        <div class="topic-pill" onclick="toggleRight(this)" id="R5">
+          <div class="topic-pill-name">
+            Q3 Delivery Commitment
+          </div>
+          <div class="topic-pill-summary">Client confirmed Q3 deadline for phase 1 modules; resource plan needed.</div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Action bar -->
+  <div class="action-bar">
+    <span class="progress-text"><strong>2 / 5</strong> call topics matched or marked — 3 remaining</span>
+    <button class="btn-primary" disabled>Done Matching →</button>
+  </div>
+
+</div>
+
+<script>
+  function toggleLeft(el) {
+    if (el.classList.contains('matched')) return;
+    el.classList.toggle('selected');
+    updateButtons();
+  }
+  function toggleRight(el) {
+    if (el.classList.contains('matched') || el.classList.contains('matched-secondary')) return;
+    el.classList.toggle('selected');
+    updateButtons();
+  }
+  function updateButtons() {
+    const leftSel = document.querySelectorAll('.col-left .topic-pill.selected').length;
+    const rightSel = document.querySelectorAll('.col:last-child .topic-pill.selected').length;
+    const mergeBtn = document.querySelector('.merge-btn');
+    const newBtn = document.querySelector('.mark-new-btn');
+    mergeBtn.classList.toggle('active', leftSel >= 1 && rightSel >= 1);
+    newBtn.classList.toggle('active', rightSel >= 1);
+  }
+</script>
