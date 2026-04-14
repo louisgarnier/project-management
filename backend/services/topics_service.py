@@ -403,6 +403,27 @@ async def extract_call_topics(call_id: str) -> list[dict]:
     return raw if isinstance(raw, list) else []
 
 
+async def run_extraction_background(call_id: str) -> None:
+    """
+    Run extract_call_topics in the background, saving result to extraction_cache.
+    Called via FastAPI BackgroundTasks so the HTTP response returns immediately.
+    """
+    db = get_client()
+    try:
+        topics = await extract_call_topics(call_id)
+        db.table("calls").update({
+            "extraction_cache": topics,
+            "extraction_status": "done",
+        }).eq("id", call_id).execute()
+        logger.info(f"✅ [Topics] Background extraction complete: {len(topics)} topics saved for call {call_id}")
+    except ValueError as e:
+        db.table("calls").update({"extraction_status": "failed"}).eq("id", call_id).execute()
+        logger.warning(f"⚠️ [Topics] Background extraction failed (ValueError): {e}")
+    except Exception as e:
+        db.table("calls").update({"extraction_status": "failed"}).eq("id", call_id).execute()
+        logger.exception(f"❌ [Topics] Background extraction failed: {e}")
+
+
 _AGGREGATE_SYSTEM = (
     "You are an expert at matching client call topics to an existing project topic list. "
     "Return ONLY valid JSON. No markdown, no explanation."
@@ -457,6 +478,10 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
         ]
         await save_topics(call_id, new_topics_to_save)
         db.table("calls").update({"kanban_stage": "artifacts"}).eq("id", call_id).execute()
+        db.table("calls").update({
+            "extraction_cache": None,
+            "extraction_status": "idle",
+        }).eq("id", call_id).execute()
         logger.info(f"✅ [Topics] Call 1 auto-advanced: saved {len(new_topics_to_save)} topics → artifacts")
         return {"auto_advanced": True, "call_number": call_number}
 
@@ -464,6 +489,10 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
     db.table("calls").update({
         "pending_topics": call_topics,
         "kanban_stage": "project_matching",
+    }).eq("id", call_id).execute()
+    db.table("calls").update({
+        "extraction_cache": None,
+        "extraction_status": "idle",
     }).eq("id", call_id).execute()
     logger.info(
         f"✅ [Topics] Step-2 saved {len(call_topics)} pending topics → project_matching"

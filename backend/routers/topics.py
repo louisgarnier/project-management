@@ -5,10 +5,11 @@ from backend.services.topics_service import (
     extract_topics, save_topics, validate_call, generate_brief,
     list_project_topics, list_call_topics, extract_call_topics, aggregate_topics,
     get_pending_topics, save_match_groups, run_merge_preview, validate_project_updates,
+    run_extraction_background,
     TopicUpdate,
 )
 from backend.utils.logger import get_logger
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from openai import APIStatusError as OpenAIStatusError
 from pydantic import BaseModel as PydanticBaseModel
 
@@ -32,30 +33,27 @@ async def extract(call_id: str):
 
 
 @router.post("/calls/{call_id}/topics/extract_call")
-async def extract_call(call_id: str):
-    """Step 1: extract topics from this call's transcript only (no previous context)."""
-    logger.info(f"📥 [Topics] Step-1 extract requested: call={call_id}")
-    try:
-        result = await extract_call_topics(call_id)
-        logger.info(f"✅ [Topics] Step-1 extracted {len(result)} topics")
-        return result
-    except ValueError as e:
-        msg = str(e)
-        if msg == "no_transcript":
-            raise HTTPException(status_code=422, detail="Call has no transcript")
-        raise HTTPException(status_code=404, detail=msg)
-    except OpenAIStatusError as e:
-        if e.status_code in (413, 429) or "rate_limit" in str(e).lower():
-            logger.warning(f"⚠️ [Topics] LLM rate limit on Step-1: {e}")
-            raise HTTPException(
-                status_code=429,
-                detail="Transcript too large for current LLM tier — wait a moment and try again",
-            )
-        logger.exception(f"❌ [Topics] Step-1 extraction failed: {e}")
-        raise HTTPException(status_code=500, detail="Topic extraction failed")
-    except Exception as e:
-        logger.exception(f"❌ [Topics] Step-1 extraction failed: {e}")
-        raise HTTPException(status_code=500, detail="Topic extraction failed")
+async def extract_call(call_id: str, background_tasks: BackgroundTasks):
+    """Step 1: fire-and-forget extraction. Result saved to calls.extraction_cache."""
+    logger.info(f"📥 [Topics] Background extraction requested: call={call_id}")
+    db = get_client()
+
+    # Check if already processing
+    call_row = db.table("calls").select("extraction_status").eq("id", call_id).execute().data
+    if not call_row:
+        raise HTTPException(status_code=404, detail=f"Call {call_id} not found")
+
+    status = call_row[0].get("extraction_status", "idle")
+    if status == "processing":
+        logger.info(f"⚠️ [Topics] Extraction already in progress: call={call_id}")
+        return {"status": "processing"}
+
+    # Mark as processing and fire background task
+    db.table("calls").update({"extraction_status": "processing", "extraction_cache": None}).eq("id", call_id).execute()
+    background_tasks.add_task(run_extraction_background, call_id)
+
+    logger.info(f"✅ [Topics] Background extraction started: call={call_id}")
+    return {"status": "processing"}
 
 
 class AggregatePayload(PydanticBaseModel):
