@@ -15,6 +15,7 @@ import TopicsPanel from "@/components/TopicsPanel";
 import CallTopicsStage from "@/components/CallTopicsStage";
 import ProjectMatchingStage from "@/components/ProjectMatchingStage";
 import ProjectUpdatesStage from "@/components/ProjectUpdatesStage";
+import ProjectMatchingHistoricalView from "@/components/ProjectMatchingHistoricalView";
 
 const STAGES = ["transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"] as const;
 
@@ -201,12 +202,27 @@ export default function CallDetailPage() {
     );
   }
 
-  // Project Matching / Project Updates historical view
-  if (viewStage === "project_matching" || viewStage === "project_updates") {
+  // Project Matching historical view — read-only two-column layout
+  if (viewStage === "project_matching") {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
+          <button onClick={() => router.push(`/projects/${projectId}/board`)}
+            className="text-[12px] text-[#5e6c84] hover:text-[#0052cc] hover:underline mb-2 block">
+            ← Board
+          </button>
+          <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+        </div>
+        <ProjectMatchingHistoricalView callId={callId} projectId={projectId} />
+      </div>
+    );
+  }
+
+  // Project Updates historical view
+  if (viewStage === "project_updates") {
     return (
       <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
-        <TopicsPanel callId={callId} projectId={projectId} defaultOpen callScoped
-          call={call} />
+        <TopicsPanel callId={callId} projectId={projectId} defaultOpen callScoped call={call} />
       </div>
     );
   }
