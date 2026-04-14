@@ -1,7 +1,7 @@
 # Story 7.5 — Project Topics UI (project_topics stage)
 
 **Epic:** EPIC-7 — Two-Step Topic Extraction
-**Status:** `pending`
+**Status:** `done` — 2026-04-14 (implemented as two stages: project_matching + project_updates, with ProjectMatchingStage and ProjectUpdatesStage components)
 
 ---
 

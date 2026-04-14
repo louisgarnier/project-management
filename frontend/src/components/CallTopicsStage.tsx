@@ -213,15 +213,16 @@ function TopicRow({
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvanced, onPollCall }: Props) {
-  const [topics, setTopics] = useState<TopicData[]>([]);
+  const alreadyExtracted = call.extraction_status === "done" && !!(call.extraction_cache?.length);
+  const [topics, setTopics] = useState<TopicData[]>(() => alreadyExtracted ? (call.extraction_cache ?? []) : []);
   const [extracting, setExtracting] = useState(false);
   const [aggregating, setAggregating] = useState(false);
-  const [extracted, setExtracted] = useState(false);
+  const [extracted, setExtracted] = useState(alreadyExtracted);
   const [error, setError] = useState<string | null>(null);
   const [rateLimited, setRateLimited] = useState(false);
   const [promptName, setPromptName] = useState<string | null>(null);
   const [effectiveLlm, setEffectiveLlm] = useState<string | null>(null);
-  const [polling, setPolling] = useState(false);
+  const [polling, setPolling] = useState(() => call.extraction_status === "processing");
 
   useEffect(() => {
     Promise.all([
@@ -405,7 +406,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                 cursor: aggregating || topics.length === 0 ? "default" : "pointer",
               }}
             >
-              {aggregating ? "Matching with project…" : "Continue →"}
+              {aggregating ? "Matching with project…" : "Save & Continue →"}
             </button>
           </div>
         </>

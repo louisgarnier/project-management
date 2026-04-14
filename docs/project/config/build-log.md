@@ -1,10 +1,10 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-6 — Topics Stage — COMPLETE**
-- Status: Stories 6.1 + 6.2 done
-- Blocked by: DB migration `002_topics_schema.sql` must be run in Supabase dashboard before end-to-end testing
-- Next: EPIC-7 (not yet defined)
+**EPIC-7 — Two-Step Topic Extraction — COMPLETE**
+- Status: All 6 stories done
+- Key divergence from spec: Story 7.5 was split into two stages (project_matching + project_updates) instead of one project_topics stage
+- Next: EPIC-8 (to be defined)
 
 ---
 

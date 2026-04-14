@@ -10,6 +10,7 @@ import ContextFiles from "@/components/ContextFiles";
 interface Props {
   call: Call;
   onAdvance: () => void;
+  onDeleteTranscript?: () => Promise<void>;
 }
 
 // Rough estimate: ~15s fixed overhead (Metal buffer init) + ~8s/MB
@@ -25,7 +26,7 @@ function formatRemaining(seconds: number): string {
   return s > 0 ? `~${m}m ${s}s remaining` : `~${m}m remaining`;
 }
 
-export default function TranscriptStage({ call, onAdvance }: Props) {
+export default function TranscriptStage({ call, onAdvance, onDeleteTranscript }: Props) {
   const [uploading, setUploading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -33,11 +34,13 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
   const [estimatedSecs, setEstimatedSecs] = useState<number | null>(null);
 
   // Review screen state — transcript lives here until user clicks "Save & continue"
-  const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
-  const [pendingFilename, setPendingFilename] = useState<string | null>(null);
-  const [editedTranscript, setEditedTranscript] = useState("");
+  // Initialize from call.transcript so rolling back to this stage shows existing content.
+  const [pendingTranscript, setPendingTranscript] = useState<string | null>(call.transcript ?? null);
+  const [pendingFilename, setPendingFilename] = useState<string | null>(call.transcript_source ?? null);
+  const [editedTranscript, setEditedTranscript] = useState(call.transcript ?? "");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const mp3Ref = useRef<HTMLInputElement>(null);
   const txtRef = useRef<HTMLInputElement>(null);
@@ -208,6 +211,19 @@ export default function TranscriptStage({ call, onAdvance }: Props) {
               >
                 ← Replace
               </button>
+              {onDeleteTranscript && (
+                <button
+                  onClick={async () => {
+                    setDeleting(true);
+                    try { await onDeleteTranscript(); }
+                    finally { setDeleting(false); }
+                  }}
+                  disabled={deleting}
+                  className="text-[12px] text-red-500 hover:text-red-700 hover:underline disabled:opacity-50"
+                >
+                  {deleting ? "Deleting…" : "✕ Delete transcript"}
+                </button>
+              )}
             </div>
             <button
               onClick={handleSave}

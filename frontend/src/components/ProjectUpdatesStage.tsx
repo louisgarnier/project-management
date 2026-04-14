@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { TopicData } from "@/types";
+import type { Call, TopicData } from "@/types";
 
 type Props = {
   callId: string;
   projectId: string;
+  call: Call;
   onValidated: () => void;
+  onPollCall?: () => Promise<void>;
 };
 
 const SEL: React.CSSProperties = {
@@ -164,15 +166,29 @@ function TopicRow({ topic, onChange }: { topic: TopicData; onChange: (t: TopicDa
   );
 }
 
-export default function ProjectUpdatesStage({ callId, projectId, onValidated }: Props) {
-  const [topics, setTopics] = useState<TopicData[]>([]);
-  const [loading, setLoading] = useState(false);
+export default function ProjectUpdatesStage({ callId, projectId, call, onValidated, onPollCall }: Props) {
+  const alreadyMerged = call.merge_status === "done" && !!(call.merge_cache?.length);
+  const [topics, setTopics] = useState<TopicData[]>(() => alreadyMerged ? (call.merge_cache ?? []) : []);
+  const [starting, setStarting] = useState(false);   // button click in-flight
+  const [merging, setMerging] = useState(() => call.merge_status === "processing");
+  const [merged, setMerged] = useState(alreadyMerged);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [merged, setMerged] = useState(false);
 
-  // Auto-populate on mount from match groups + pending + project topics
+  // Track whether we've applied the cache to avoid overwriting user edits
+  const mergeApplied = useRef(alreadyMerged);
+
+  // Load topics on mount
   useEffect(() => {
+    // If merge already done, load from cache
+    if (call.merge_status === "done" && call.merge_cache) {
+      setTopics(call.merge_cache);
+      setMerged(true);
+      mergeApplied.current = true;
+      logger.info("Loaded topics from merge_cache", { component: "ProjectUpdatesStage" });
+      return;
+    }
+    // Otherwise reconstruct from match groups (covers: idle, processing, failed)
     Promise.all([
       topicsAPI.getMatchGroups(callId),
       topicsAPI.getPending(callId),
@@ -188,13 +204,11 @@ export default function ProjectUpdatesStage({ callId, projectId, onValidated }: 
 
       for (const g of groups as { project_topic_id: string | null; call_topic_names: string[] }[]) {
         if (g.project_topic_id === null) {
-          // New topic — find call topic data
           for (const name of g.call_topic_names) {
             const ct = pendingByName.get(name.toLowerCase().trim());
             if (ct) result.push({ ...ct, topic_id: undefined });
           }
         } else {
-          // Matched — use existing project topic data as placeholder
           const existing = projectById.get(g.project_topic_id);
           if (existing) {
             result.push({ ...existing, pending_merge: true });
@@ -202,7 +216,6 @@ export default function ProjectUpdatesStage({ callId, projectId, onValidated }: 
         }
       }
 
-      // Not-discussed: project topics not in any group
       for (const pt of projectTopics as TopicData[]) {
         if (!matchedProjectIds.has(pt.topic_id ?? "")) {
           result.push({ ...pt, not_discussed: true });
@@ -212,21 +225,46 @@ export default function ProjectUpdatesStage({ callId, projectId, onValidated }: 
       logger.info(`Auto-populated ${result.length} topics`, { component: "ProjectUpdatesStage" });
       setTopics(result);
     }).catch(() => setError("Failed to load topics"));
-  }, [callId, projectId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Watch for merge completion when polling
+  useEffect(() => {
+    if (call.merge_status === "done" && call.merge_cache && !mergeApplied.current) {
+      setTopics(call.merge_cache);
+      setMerged(true);
+      setMerging(false);
+      mergeApplied.current = true;
+      logger.info("Merge complete — applied cache", { component: "ProjectUpdatesStage" });
+    }
+    if (call.merge_status === "failed" && merging) {
+      setMerging(false);
+      setError("Merge failed — please try again.");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [call.merge_status, call.merge_cache]);
+
+  // Poll every 3s while merging
+  useEffect(() => {
+    if (!merging || !onPollCall) return;
+    const interval = setInterval(async () => {
+      await onPollCall();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [merging, onPollCall]);
 
   async function handleRunMerge() {
-    setLoading(true);
+    setStarting(true);
     setError(null);
     try {
-      logger.info("Running merge preview", { component: "ProjectUpdatesStage" });
-      const result = await topicsAPI.mergePreview(callId);
-      setTopics(result);
-      setMerged(true);
-      logger.info(`Merge preview: ${result.length} topics`, { component: "ProjectUpdatesStage" });
+      await topicsAPI.mergePreview(callId);
+      setMerging(true);
+      mergeApplied.current = false;
+      logger.info("Merge started in background", { component: "ProjectUpdatesStage" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Merge failed");
     } finally {
-      setLoading(false);
+      setStarting(false);
     }
   }
 
@@ -243,8 +281,9 @@ export default function ProjectUpdatesStage({ callId, projectId, onValidated }: 
     }
   }
 
-  const newTopics = topics.filter(t => !t.not_discussed && !t.pending_merge && !t.topic_id);
+  const newTopics = topics.filter(t => !t.not_discussed && !t.topic_id);
   const mergeTopics = topics.filter(t => t.pending_merge);
+  const updatedTopics = topics.filter(t => !t.not_discussed && !!t.topic_id && !t.pending_merge);
   const notDiscussed = topics.filter(t => t.not_discussed);
   const discussed = topics.filter(t => !t.not_discussed);
 
@@ -294,7 +333,7 @@ export default function ProjectUpdatesStage({ callId, projectId, onValidated }: 
           </>
         )}
 
-        {/* Section 2: Needs Merge */}
+        {/* Section 2a: Needs Merge (before merge runs or while merging) */}
         {mergeTopics.length > 0 && (
           <div style={{ marginTop: newTopics.length > 0 ? 8 : 0 }}>
             <div style={{ padding: "8px 20px 6px", borderTop: newTopics.length > 0 ? "1px solid #dfe1e6" : undefined,
@@ -304,29 +343,33 @@ export default function ProjectUpdatesStage({ callId, projectId, onValidated }: 
                 Updated Topics — {mergeTopics.length} need{mergeTopics.length !== 1 ? "" : "s"} merge
               </div>
               <div style={{ fontSize: 11, color: "#97a0af", marginTop: 2 }}>
-                Showing existing data — click Run Merge to generate AI-updated content
+                {merging
+                  ? "⏳ Merging in background… you can navigate away and come back."
+                  : "Showing existing data — click Run Merge to generate AI-updated content"}
               </div>
             </div>
 
-            {/* Run Merge button */}
-            <div style={{ padding: "8px 20px", borderBottom: "1px solid #f0f1f3" }}>
-              <button
-                onClick={handleRunMerge}
-                disabled={loading}
-                style={{
-                  padding: "7px 16px", borderRadius: 6, border: "none",
-                  background: loading ? "#f4f5f7" : "#0052cc",
-                  color: loading ? "#97a0af" : "white",
-                  fontSize: 12, fontWeight: 600, cursor: loading ? "default" : "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                {loading ? "Merging…" : `Run Merge for ${mergeTopics.length} topic${mergeTopics.length !== 1 ? "s" : ""}`}
-              </button>
-              <span style={{ fontSize: 11, color: "#97a0af", marginLeft: 12 }}>
-                Generates AI-merged summaries for matched topics
-              </span>
-            </div>
+            {/* Run Merge button (only when not merging) */}
+            {!merging && (
+              <div style={{ padding: "8px 20px", borderBottom: "1px solid #f0f1f3" }}>
+                <button
+                  onClick={handleRunMerge}
+                  disabled={starting}
+                  style={{
+                    padding: "7px 16px", borderRadius: 6, border: "none",
+                    background: starting ? "#f4f5f7" : "#0052cc",
+                    color: starting ? "#97a0af" : "white",
+                    fontSize: 12, fontWeight: 600, cursor: starting ? "default" : "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {starting ? "Starting…" : `Run Merge for ${mergeTopics.length} topic${mergeTopics.length !== 1 ? "s" : ""}`}
+                </button>
+                <span style={{ fontSize: 11, color: "#97a0af", marginLeft: 12 }}>
+                  Generates AI-merged summaries for matched topics
+                </span>
+              </div>
+            )}
 
             {/* Placeholder rows — italic, read-only */}
             {mergeTopics.map((t, idx) => (
@@ -354,6 +397,36 @@ export default function ProjectUpdatesStage({ callId, projectId, onValidated }: 
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Section 2b: Updated Topics (after merge runs — editable) */}
+        {updatedTopics.length > 0 && (
+          <div style={{ marginTop: newTopics.length > 0 ? 8 : 0 }}>
+            <div style={{ padding: "8px 20px 6px", borderTop: newTopics.length > 0 ? "1px solid #dfe1e6" : undefined,
+              borderBottom: "1px solid #dfe1e6", background: "#f4f5f7" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#5e6c84",
+                letterSpacing: ".05em" }}>
+                Updated Topics ({updatedTopics.length})
+              </div>
+              <div style={{ fontSize: 11, color: "#97a0af", marginTop: 2 }}>
+                AI-merged summaries — review and edit before saving
+              </div>
+            </div>
+            {updatedTopics.map((t) => {
+              const i = topics.indexOf(t);
+              return (
+                <TopicRow
+                  key={t.topic_id ?? t.name ?? i}
+                  topic={t}
+                  onChange={(updated) => {
+                    const next = [...topics];
+                    next[i] = updated;
+                    setTopics(next);
+                  }}
+                />
+              );
+            })}
           </div>
         )}
 
@@ -406,26 +479,26 @@ export default function ProjectUpdatesStage({ callId, projectId, onValidated }: 
           {merged && (
             <button
               onClick={handleRunMerge}
-              disabled={loading}
+              disabled={starting || merging}
               style={{ padding: "7px 16px", borderRadius: 6, border: "1px solid #dfe1e6",
-                background: "white", color: "#5e6c84", fontSize: 12, cursor: loading ? "default" : "pointer",
+                background: "white", color: "#5e6c84", fontSize: 12, cursor: (starting || merging) ? "default" : "pointer",
                 fontFamily: "inherit" }}
             >
-              {loading ? "Re-running…" : "Re-run Merge"}
+              {starting ? "Starting…" : merging ? "Re-running…" : "Re-run Merge"}
             </button>
           )}
         </div>
         <button
           onClick={handleValidate}
-          disabled={validating || discussed.length === 0}
+          disabled={validating || discussed.length === 0 || merging}
           style={{ padding: "8px 22px", borderRadius: 6, border: "none",
-            background: validating || discussed.length === 0 ? "#f4f5f7" : "#0052cc",
-            color: validating || discussed.length === 0 ? "#97a0af" : "white",
+            background: validating || discussed.length === 0 || merging ? "#f4f5f7" : "#0052cc",
+            color: validating || discussed.length === 0 || merging ? "#97a0af" : "white",
             fontSize: 13, fontWeight: 600,
-            cursor: validating || discussed.length === 0 ? "default" : "pointer",
+            cursor: validating || discussed.length === 0 || merging ? "default" : "pointer",
             fontFamily: "inherit" }}
         >
-          {validating ? "Saving…" : "Validate →"}
+          {validating ? "Saving…" : merging ? "Merging…" : "Save & Continue →"}
         </button>
       </div>
     </div>

@@ -1,7 +1,7 @@
 # Story 7.4 — Call Topics UI (call_topics stage)
 
 **Epic:** EPIC-7 — Two-Step Topic Extraction
-**Status:** `pending`
+**Status:** `done` — 2026-04-14
 
 ---
 

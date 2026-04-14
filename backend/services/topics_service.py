@@ -630,6 +630,27 @@ async def run_merge_preview(call_id: str) -> list[dict]:
     return [r for r in results if r] + not_discussed
 
 
+async def run_merge_background(call_id: str) -> None:
+    """
+    Run run_merge_preview in the background, saving result to merge_cache.
+    Called via FastAPI BackgroundTasks so the HTTP response returns immediately.
+    """
+    db = get_client()
+    try:
+        result = await run_merge_preview(call_id)
+        db.table("calls").update({
+            "merge_cache": result,
+            "merge_status": "done",
+        }).eq("id", call_id).execute()
+        logger.info(f"✅ [Topics] Background merge complete: {len(result)} topics saved for call {call_id}")
+    except ValueError as e:
+        db.table("calls").update({"merge_status": "failed"}).eq("id", call_id).execute()
+        logger.warning(f"⚠️ [Topics] Background merge failed (ValueError): {e}")
+    except Exception as e:
+        db.table("calls").update({"merge_status": "failed"}).eq("id", call_id).execute()
+        logger.exception(f"❌ [Topics] Background merge failed: {e}")
+
+
 async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
     """
     Save merged/reviewed topics and advance to artifacts.
@@ -849,6 +870,173 @@ async def generate_brief(call_id: str) -> dict:
     }
 
 
+_ROLLBACK_STAGE_ORDER = [
+    "transcript",
+    "call_topics",
+    "project_matching",
+    "project_updates",
+    "artifacts",
+    "done",
+]
+
+
+def rollback_to_stage(call_id: str, target_stage: str) -> dict:
+    """
+    Roll back a call to the given target_stage, cascading cleanups as required.
+
+    Cascade (each level includes all levels above it in the list):
+      artifacts        → mark this call's artifacts stale; set kanban_stage="artifacts"
+      project_updates  → delete topic_updates + orphan-cleanup; mark artifacts stale;
+                         set kanban_stage="project_updates"  (keeps match_groups)
+      project_matching → same as project_updates + delete topic_match_groups;
+                         set kanban_stage="project_matching"  (keeps pending_topics)
+      call_topics      → same as project_matching + clear pending_topics, extraction_cache,
+                         extraction_status="idle"; set kanban_stage="call_topics"
+      transcript       → same as call_topics + clear transcript, transcript_source;
+                         set kanban_stage="transcript"
+    """
+    db = get_client()
+
+    def _mark_artifacts_stale() -> None:
+        artifacts = db.table("artifacts").select("id").eq("call_id", call_id).execute().data
+        artifact_ids = [a["id"] for a in artifacts]
+        if artifact_ids:
+            db.table("artifacts").update({"status": "stale"}).in_("id", artifact_ids).execute()
+            logger.info(f"⚠️ [Rollback] Marked {len(artifact_ids)} artifacts stale for call {call_id}")
+
+    def _delete_topic_updates() -> None:
+        # Collect affected topic_ids before deletion
+        updates_before = (
+            db.table("topic_updates").select("topic_id").eq("call_id", call_id).execute().data
+        )
+        affected_topic_ids = list({r["topic_id"] for r in updates_before})
+
+        # Delete topic_updates for this call
+        db.table("topic_updates").delete().eq("call_id", call_id).execute()
+        logger.info(f"🗄️ [Rollback] Deleted topic_updates for call {call_id}")
+
+        # Orphan-cleanup + calls_open recalc
+        for topic_id in affected_topic_ids:
+            remaining = (
+                db.table("topic_updates").select("status").eq("topic_id", topic_id).execute().data
+            )
+            if not remaining:
+                db.table("topics").delete().eq("id", topic_id).execute()
+                logger.info(f"🗄️ [Rollback] Deleted orphan topic {topic_id}")
+            else:
+                calls_open = sum(1 for r in remaining if r["status"] in ("open", "in_progress"))
+                db.table("topics").update({"calls_open": calls_open}).eq("id", topic_id).execute()
+                logger.info(f"🗄️ [Rollback] Recalculated calls_open={calls_open} for topic {topic_id}")
+
+    def _delete_match_groups() -> None:
+        db.table("topic_match_groups").delete().eq("call_id", call_id).execute()
+        logger.info(f"🗄️ [Rollback] Deleted topic_match_groups for call {call_id}")
+
+    def _clear_extraction_fields() -> None:
+        """Clear pending_topics, extraction_cache, extraction_status via raw HTTP (None-safe)."""
+        payload = json.dumps({
+            "pending_topics": None,
+            "extraction_cache": None,
+            "extraction_status": "idle",
+        })
+        response = db.postgrest.session.patch(
+            f"/calls?id=eq.{call_id}",
+            content=payload,
+            headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+        )
+        data = response.json()
+        if not data:
+            raise ValueError("Failed to clear fields via raw PATCH")
+        logger.info(f"🗄️ [Rollback] Cleared extraction fields for call {call_id}")
+
+    def _clear_merge_fields() -> None:
+        """Reset merge_cache and merge_status to idle. Non-fatal if migration 016 not yet applied."""
+        try:
+            payload = json.dumps({"merge_cache": None, "merge_status": "idle"})
+            response = db.postgrest.session.patch(
+                f"/calls?id=eq.{call_id}",
+                content=payload,
+                headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+            )
+            if response.json():
+                logger.info(f"🗄️ [Rollback] Cleared merge fields for call {call_id}")
+            else:
+                logger.warning(f"⚠️ [Rollback] merge fields clear returned empty — migration 016 not applied?")
+        except Exception as e:
+            logger.warning(f"⚠️ [Rollback] Could not clear merge fields (non-fatal): {e}")
+
+    def _clear_transcript_fields() -> None:
+        """Clear transcript and transcript_source via raw HTTP (None-safe)."""
+        payload = json.dumps({
+            "transcript": None,
+            "transcript_source": None,
+        })
+        response = db.postgrest.session.patch(
+            f"/calls?id=eq.{call_id}",
+            content=payload,
+            headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+        )
+        data = response.json()
+        if not data:
+            raise ValueError("Failed to clear fields via raw PATCH")
+        logger.info(f"🗄️ [Rollback] Cleared transcript fields for call {call_id}")
+
+    # --- Execute cascade based on target_stage ---
+
+    if target_stage == "artifacts":
+        _mark_artifacts_stale()
+
+    elif target_stage == "project_updates":
+        # Keep merge_cache/merge_status — that IS the project_updates content.
+        # Clear only what comes after: topic_updates (re-created on next save), artifacts.
+        _delete_topic_updates()
+        _mark_artifacts_stale()
+
+    elif target_stage == "project_matching":
+        # Keep match_groups — that IS the project_matching content.
+        # Clear everything after: topic_updates, merge, artifacts.
+        _delete_topic_updates()
+        _mark_artifacts_stale()
+        _clear_merge_fields()
+
+    elif target_stage == "call_topics":
+        # Keep extraction_cache/pending_topics — that IS the call_topics content.
+        # Clear everything after: match_groups, topic_updates, merge, artifacts.
+        _delete_topic_updates()
+        _mark_artifacts_stale()
+        _delete_match_groups()
+        _clear_merge_fields()
+        # aggregate_topics clears extraction_cache when advancing to project_matching.
+        # Restore it from pending_topics so the topics are visible on return.
+        call_data = db.table("calls").select("extraction_cache, pending_topics").eq("id", call_id).execute().data
+        if call_data:
+            row = call_data[0]
+            if not row.get("extraction_cache") and row.get("pending_topics"):
+                db.table("calls").update({
+                    "extraction_cache": row["pending_topics"],
+                    "extraction_status": "done",
+                }).eq("id", call_id).execute()
+                logger.info(f"🗄️ [Rollback] Restored extraction_cache from pending_topics for call {call_id}")
+
+    elif target_stage == "transcript":
+        # Keep transcript — that IS the transcript content.
+        # Clear everything after: extraction, match_groups, topic_updates, merge, artifacts.
+        _delete_topic_updates()
+        _mark_artifacts_stale()
+        _delete_match_groups()
+        _clear_extraction_fields()
+        _clear_merge_fields()
+
+    else:
+        raise ValueError(f"Unknown target_stage: {target_stage}")
+
+    # Set the kanban_stage last
+    db.table("calls").update({"kanban_stage": target_stage}).eq("id", call_id).execute()
+    logger.info(f"✅ [Rollback] Call {call_id} rolled back to stage: {target_stage}")
+
+    return {"rolled_back_to": target_stage}
+
+
 async def list_call_topics(call_id: str) -> list[dict]:
     """Return topics discussed in this specific call — one entry per topic (latest update)."""
     db = get_client()
@@ -902,6 +1090,135 @@ async def list_project_topics(project_id: str, db=None) -> list[dict]:
     if db is None:
         db = get_client()
     return _get_previous_topics(project_id, db)
+
+
+def list_topics_timeline(project_id: str, db=None) -> dict:
+    """
+    Build the full topic x call matrix for the timeline grid.
+
+    Returns:
+      {
+        "calls": [{"id", "title", "call_number", "kanban_stage"}, ...],
+        "topics": [{
+          "topic_id", "name", "status", "owner", "sentiment",
+          "first_raised_call_id",
+          "call_updates": {
+            "<call_id>": {
+              "type": "new" | "followed_up" | "not_discussed",
+              "summary": str,
+              "follow_up_items": [...],
+              "decisions": [...],
+              "status": str,
+              "owner": str,
+              "sentiment": str,
+            }
+          }
+        }, ...]
+      }
+
+    Cell classification:
+      - call before first_raised_call → absent (key not present)
+      - call has a topic_update row  → "new" (first call) or "followed_up"
+      - call >= first_raised and no row → "not_discussed"
+    """
+    if db is None:
+        db = get_client()
+
+    COMPLETED_STAGES = ("call_topics", "project_matching", "project_updates", "artifacts", "done")
+    all_calls = (
+        db.table("calls")
+        .select("id, title, call_number, kanban_stage")
+        .eq("project_id", project_id)
+        .in_("kanban_stage", list(COMPLETED_STAGES))
+        .order("call_number")
+        .execute()
+        .data
+    )
+    if not all_calls:
+        return {"calls": [], "topics": []}
+
+    call_ids = [c["id"] for c in all_calls]
+    call_order = {c["id"]: i for i, c in enumerate(all_calls)}
+
+    topics = (
+        db.table("topics")
+        .select("id, name, first_raised_call_id")
+        .eq("project_id", project_id)
+        .eq("archived", False)
+        .execute()
+        .data
+    )
+    if not topics:
+        return {"calls": all_calls, "topics": []}
+
+    topic_ids = [t["id"] for t in topics]
+
+    updates = (
+        db.table("topic_updates")
+        .select("topic_id, call_id, summary, follow_up_items, decisions, status, owner, sentiment")
+        .in_("topic_id", topic_ids)
+        .execute()
+        .data
+    )
+    updates_index: dict[str, dict[str, dict]] = {}
+    for u in updates:
+        tid = u["topic_id"]
+        cid = u["call_id"]
+        if tid not in updates_index:
+            updates_index[tid] = {}
+        updates_index[tid][cid] = u
+
+    latest_rows = (
+        db.table("topics")
+        .select("id, status, owner, sentiment")
+        .in_("id", topic_ids)
+        .execute()
+        .data
+    ) if topic_ids else []
+    latest_state = {r["id"]: r for r in latest_rows}
+
+    result_topics = []
+    for t in topics:
+        tid = t["id"]
+        first_call_id = t.get("first_raised_call_id")
+        first_idx = call_order.get(first_call_id, 0) if first_call_id else 0
+        topic_updates_by_call = updates_index.get(tid, {})
+
+        call_updates: dict[str, dict] = {}
+        for c in all_calls:
+            cid = c["id"]
+            cidx = call_order[cid]
+
+            if cidx < first_idx:
+                continue  # absent
+
+            if cid in topic_updates_by_call:
+                u = topic_updates_by_call[cid]
+                cell_type = "new" if cid == first_call_id else "followed_up"
+                call_updates[cid] = {
+                    "type": cell_type,
+                    "summary": u.get("summary", ""),
+                    "follow_up_items": u.get("follow_up_items") or [],
+                    "decisions": u.get("decisions") or [],
+                    "status": u.get("status", "open"),
+                    "owner": u.get("owner", "Us"),
+                    "sentiment": u.get("sentiment", "neutral"),
+                }
+            else:
+                call_updates[cid] = {"type": "not_discussed"}
+
+        ls = latest_state.get(tid, {})
+        result_topics.append({
+            "topic_id": tid,
+            "name": t["name"],
+            "status": ls.get("status", "open"),
+            "owner": ls.get("owner", "Us"),
+            "sentiment": ls.get("sentiment", "neutral"),
+            "first_raised_call_id": first_call_id,
+            "call_updates": call_updates,
+        })
+
+    return {"calls": all_calls, "topics": result_topics}
 
 
 def get_project_topics_context(project_id: str, db=None) -> str:

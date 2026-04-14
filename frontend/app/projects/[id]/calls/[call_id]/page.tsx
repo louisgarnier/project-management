@@ -16,6 +16,8 @@ import CallTopicsStage from "@/components/CallTopicsStage";
 import ProjectMatchingStage from "@/components/ProjectMatchingStage";
 import ProjectUpdatesStage from "@/components/ProjectUpdatesStage";
 import ProjectMatchingHistoricalView from "@/components/ProjectMatchingHistoricalView";
+import ProjectUpdatesHistoricalView from "@/components/ProjectUpdatesHistoricalView";
+import CallTopicsHistoricalView from "@/components/CallTopicsHistoricalView";
 
 const STAGES = ["transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"] as const;
 
@@ -26,6 +28,14 @@ const STAGE_LABELS: Record<string, string> = {
   project_updates:  "Project Updates",
   artifacts:        "Artifacts",
   done:             "Done",
+};
+
+const ROLLBACK_CLEARS: Record<string, string[]> = {
+  transcript:       ["Call Topics", "Project Matching", "Project Updates", "Artifacts"],
+  call_topics:      ["Project Matching", "Project Updates", "Artifacts"],
+  project_matching: ["Project Updates", "Artifacts"],
+  project_updates:  ["Artifacts"],
+  artifacts:        ["Artifacts"],
 };
 
 export default function CallDetailPage() {
@@ -42,6 +52,9 @@ export default function CallDetailPage() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetDeleteArtifacts, setResetDeleteArtifacts] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [rollbackTarget, setRollbackTarget] = useState<string | null>(null);
+  const [rolling, setRolling] = useState(false);
+  const [rollbackError, setRollbackError] = useState<string | null>(null);
   const [isLocking, setIsLocking] = useState(false);
   const [lockError, setLockError] = useState<string | null>(null);
   async function handleConfirmReset() {
@@ -74,6 +87,80 @@ export default function CallDetailPage() {
       setLoading(false);
     }
   }, [callId]);
+
+  async function handleRollback() {
+    if (!rollbackTarget) return;
+    setRolling(true);
+    setRollbackError(null);
+    try {
+      await callsAPI.rollback(callId, rollbackTarget);
+      setRollbackTarget(null);
+      await loadCall();
+      if (viewStage) {
+        router.push(`/projects/${projectId}/calls/${callId}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      // 409 means the call is already at (or before) the target stage —
+      // treat this as success: the state is already what we want, just reload.
+      if (msg.includes("already at or before")) {
+        setRollbackTarget(null);
+        await loadCall();
+        if (viewStage) {
+          router.push(`/projects/${projectId}/calls/${callId}`);
+        }
+      } else {
+        setRollbackError(msg || "Rollback failed");
+      }
+    } finally {
+      setRolling(false);
+    }
+  }
+
+  function renderRollbackModal() {
+    if (!rollbackTarget) return null;
+    return (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-6">
+          <h2 className="text-[16px] font-semibold text-[#172b4d] mb-2">
+            Edit from {STAGE_LABELS[rollbackTarget] ?? rollbackTarget}?
+          </h2>
+          <p className="text-[13px] text-[#5e6c84] mb-3">
+            Rolling back will clear the following data for this call:
+          </p>
+          <ul className="text-[12px] text-[#172b4d] mb-4 space-y-1">
+            {(ROLLBACK_CLEARS[rollbackTarget] ?? []).map((item) => (
+              <li key={item} className="flex items-center gap-2">
+                <span className="text-red-400">✕</span> {item}
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] text-[#97a0af] mb-4">
+            Data from other calls is never affected.
+          </p>
+          {rollbackError && (
+            <p className="text-[12px] text-red-600 mb-3">{rollbackError}</p>
+          )}
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => { setRollbackTarget(null); setRollbackError(null); }}
+              disabled={rolling}
+              className="text-[13px] text-[#5e6c84] hover:text-[#172b4d] disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRollback}
+              disabled={rolling}
+              className="px-4 py-2 bg-[#de350b] text-white text-[13px] font-medium rounded hover:bg-red-700 disabled:opacity-50"
+            >
+              {rolling ? "Rolling back…" : "Confirm & Edit"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     loadCall();
@@ -134,13 +221,22 @@ export default function CallDetailPage() {
           >
             ← Board
           </button>
-          <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+            <button
+              onClick={() => setRollbackTarget(viewStage!)}
+              className="text-[12px] font-medium px-3 py-1.5 rounded border border-[#dfe1e6] text-[#5e6c84] hover:border-[#0052cc] hover:text-[#0052cc] transition-colors"
+            >
+              ✏️ Edit
+            </button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
           <TranscriptPanel
             call={call}
             onSaved={(updated) => setCall(updated)}
             defaultOpen={true}
+            readonly
           />
           <ContextFiles call={call} readonly />
           {call.kanban_stage === "artifacts" && (
@@ -154,6 +250,7 @@ export default function CallDetailPage() {
             </div>
           )}
         </div>
+        {renderRollbackModal()}
       </div>
     );
   }
@@ -191,13 +288,18 @@ export default function CallDetailPage() {
           >
             ← Board
           </button>
-          <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+            <button
+              onClick={() => setRollbackTarget(viewStage!)}
+              className="text-[12px] font-medium px-3 py-1.5 rounded border border-[#dfe1e6] text-[#5e6c84] hover:border-[#0052cc] hover:text-[#0052cc] transition-colors"
+            >
+              ✏️ Edit
+            </button>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} callScoped />
-          {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
-          <ContextFiles call={call} readonly />
-        </div>
+        <CallTopicsHistoricalView callId={callId} />
+        {renderRollbackModal()}
       </div>
     );
   }
@@ -211,9 +313,18 @@ export default function CallDetailPage() {
             className="text-[12px] text-[#5e6c84] hover:text-[#0052cc] hover:underline mb-2 block">
             ← Board
           </button>
-          <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+            <button
+              onClick={() => setRollbackTarget(viewStage!)}
+              className="text-[12px] font-medium px-3 py-1.5 rounded border border-[#dfe1e6] text-[#5e6c84] hover:border-[#0052cc] hover:text-[#0052cc] transition-colors"
+            >
+              ✏️ Edit
+            </button>
+          </div>
         </div>
         <ProjectMatchingHistoricalView callId={callId} projectId={projectId} />
+        {renderRollbackModal()}
       </div>
     );
   }
@@ -229,11 +340,18 @@ export default function CallDetailPage() {
           >
             ← Board
           </button>
-          <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+            <button
+              onClick={() => setRollbackTarget(viewStage!)}
+              className="text-[12px] font-medium px-3 py-1.5 rounded border border-[#dfe1e6] text-[#5e6c84] hover:border-[#0052cc] hover:text-[#0052cc] transition-colors"
+            >
+              ✏️ Edit
+            </button>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          <TopicsPanel callId={callId} projectId={projectId} defaultOpen callScoped call={call} />
-        </div>
+        <ProjectUpdatesHistoricalView callId={callId} projectId={projectId} />
+        {renderRollbackModal()}
       </div>
     );
   }
@@ -285,18 +403,26 @@ export default function CallDetailPage() {
           return (
             <div key={stage} className="flex items-center gap-1">
               {i > 0 && <span className="text-[#dfe1e6] text-sm mx-0.5">›</span>}
-              <span
-                className={`text-[12px] font-medium px-2.5 py-1 rounded ${
-                  isCurrent
-                    ? "bg-[#e9f0ff] text-[#0052cc]"
-                    : isDone
-                    ? "text-[#36b37e]"
-                    : "text-[#97a0af]"
-                }`}
-              >
-                {isCurrent && "● "}
-                {STAGE_LABELS[stage] ?? stage}
-              </span>
+              {isDone ? (
+                <button
+                  onClick={() => setRollbackTarget(stage)}
+                  className="text-[12px] font-medium px-2.5 py-1 rounded text-[#36b37e] hover:bg-[#e3fcef] hover:text-[#006644] transition-colors"
+                  title={`Edit from ${STAGE_LABELS[stage] ?? stage}`}
+                >
+                  {STAGE_LABELS[stage] ?? stage}
+                </button>
+              ) : (
+                <span
+                  className={`text-[12px] font-medium px-2.5 py-1 rounded ${
+                    isCurrent
+                      ? "bg-[#e9f0ff] text-[#0052cc]"
+                      : "text-[#97a0af]"
+                  }`}
+                >
+                  {isCurrent && "● "}
+                  {STAGE_LABELS[stage] ?? stage}
+                </span>
+              )}
             </div>
           );
         })}
@@ -319,14 +445,24 @@ export default function CallDetailPage() {
             <ProjectUpdatesStage
               callId={call.id}
               projectId={call.project_id}
+              call={call}
               onValidated={() => loadCall()}
+              onPollCall={loadCall}
             />
           )}
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-5">
           {call.kanban_stage === "transcript" && (
-            <TranscriptStage call={call} onAdvance={loadCall} />
+            <TranscriptStage
+              key={call.transcript ? "has-transcript" : "empty"}
+              call={call}
+              onAdvance={loadCall}
+              onDeleteTranscript={call.transcript ? async () => {
+                await callsAPI.resetTranscript(callId);
+                await loadCall();
+              } : undefined}
+            />
           )}
           {call.kanban_stage === "call_topics" && (
             <CallTopicsStage
@@ -406,6 +542,9 @@ export default function CallDetailPage() {
           )}
         </div>
       )}
+
+      {/* Rollback confirmation modal */}
+      {renderRollbackModal()}
 
       {/* Reset transcript modal */}
       {showResetModal && (

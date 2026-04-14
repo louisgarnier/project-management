@@ -28,13 +28,17 @@ const STATUS_BADGE: Record<string, React.CSSProperties> = {
   resolved:    { background: "#e3fcef", color: "#006644" },
 };
 
+// Color used exclusively for the "selected but not yet linked" state.
+// Must never appear in GROUP_COLORS.
+const SELECTED_COLOR = { bg: "#fff0b3", border: "#f6c000", text: "#7a4e00" }; // amber
+
 const GROUP_COLORS = [
   { bg: "#e9f0ff", border: "#4c9aff", text: "#0052cc" },  // blue
   { bg: "#e3fcef", border: "#57d9a3", text: "#006644" },  // green
-  { bg: "#fffae6", border: "#ffc400", text: "#974f0c" },  // yellow
   { bg: "#fce4fa", border: "#cc57c5", text: "#6b2066" },  // purple
   { bg: "#ffe8d6", border: "#ff8b00", text: "#bf4300" },  // orange
   { bg: "#e6fcff", border: "#00b8d9", text: "#00668c" },  // cyan
+  { bg: "#ffd6d6", border: "#ff5630", text: "#ae2a19" },  // red
 ];
 
 function groupColor(idx: number) {
@@ -54,9 +58,19 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
     Promise.all([
       topicsAPI.listForProject(projectId),
       topicsAPI.getPending(callId),
-    ]).then(([proj, pending]) => {
+      topicsAPI.getMatchGroups(callId),
+    ]).then(([proj, pending, savedGroups]) => {
       setProjectTopics(proj);
       setCallTopics(pending);
+      // Restore existing match groups (e.g. after rollback).
+      // Backend lowercases call_topic_names on save, so remap to original case from pending.
+      if (savedGroups.length > 0) {
+        const nameMap = new Map((pending as TopicData[]).map((t) => [t.name.toLowerCase().trim(), t.name]));
+        setGroups(savedGroups.map((g: { project_topic_id: string | null; call_topic_names: string[] }) => ({
+          project_topic_id: g.project_topic_id,
+          call_topic_names: g.call_topic_names.map((n) => nameMap.get(n.toLowerCase().trim()) ?? n),
+        })));
+      }
     }).catch(() => setError("Failed to load topics"));
   }, [callId, projectId]);
 
@@ -181,8 +195,8 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                   onClick={() => toggleLeft(t.topic_id ?? "")}
                   style={{
                     ...PILL,
-                    borderColor: isMatched ? groupColor(groupIndex(group!)).border : isSelected ? "#0052cc" : "#dfe1e6",
-                    background: isMatched ? groupColor(groupIndex(group!)).bg : isSelected ? "#e9f0ff" : "white",
+                    borderColor: isMatched ? groupColor(groupIndex(group!)).border : isSelected ? SELECTED_COLOR.border : "#dfe1e6",
+                    background: isMatched ? groupColor(groupIndex(group!)).bg : isSelected ? SELECTED_COLOR.bg : "white",
                     cursor: isMatched ? "default" : "pointer",
                   }}
                 >
@@ -289,8 +303,8 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                   onClick={() => toggleRight(t.name)}
                   style={{
                     ...PILL,
-                    borderColor: isAccounted && group ? groupColor(groupIndex(group)).border : isSelected ? "#0052cc" : "#dfe1e6",
-                    background: isAccounted && group ? groupColor(groupIndex(group)).bg : isSelected ? "#e9f0ff" : "white",
+                    borderColor: isAccounted && group ? groupColor(groupIndex(group)).border : isSelected ? SELECTED_COLOR.border : "#dfe1e6",
+                    background: isAccounted && group ? groupColor(groupIndex(group)).bg : isSelected ? SELECTED_COLOR.bg : "white",
                     cursor: isAccounted ? "default" : "pointer",
                   }}
                 >
@@ -354,7 +368,7 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
             fontFamily: "inherit",
           }}
         >
-          {saving ? "Saving…" : "Done Matching →"}
+          {saving ? "Saving…" : "Save & Continue →"}
         </button>
       </div>
 

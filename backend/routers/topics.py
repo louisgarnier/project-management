@@ -5,7 +5,7 @@ from backend.services.topics_service import (
     extract_topics, save_topics, validate_call, generate_brief,
     list_project_topics, list_call_topics, extract_call_topics, aggregate_topics,
     get_pending_topics, save_match_groups, run_merge_preview, validate_project_updates,
-    run_extraction_background,
+    run_extraction_background, run_merge_background,
     TopicUpdate,
 )
 from backend.utils.logger import get_logger
@@ -209,18 +209,26 @@ async def get_match_groups(call_id: str):
 
 
 @router.post("/calls/{call_id}/topics/merge-preview")
-async def merge_preview(call_id: str):
-    """Run parallel LLM merge for all match groups — returns preview, does not save."""
-    logger.info(f"📥 [Topics] Merge preview requested: call={call_id}")
-    try:
-        result = await run_merge_preview(call_id)
-        logger.info(f"✅ [Topics] Merge preview: {len(result)} topics")
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.exception(f"❌ [Topics] Merge preview failed: {e}")
-        raise HTTPException(status_code=500, detail="Merge preview failed")
+async def merge_preview(call_id: str, background_tasks: BackgroundTasks):
+    """Fire-and-forget merge preview. Result saved to calls.merge_cache."""
+    logger.info(f"📥 [Topics] Background merge requested: call={call_id}")
+    db = get_client()
+
+    call_row = db.table("calls").select("merge_status").eq("id", call_id).execute().data
+    if not call_row:
+        raise HTTPException(status_code=404, detail=f"Call {call_id} not found")
+
+    status = call_row[0].get("merge_status", "idle")
+    if status == "processing":
+        logger.info(f"⚠️ [Topics] Merge already in progress: call={call_id}")
+        return {"status": "processing"}
+
+    # Mark as processing and fire background task
+    db.table("calls").update({"merge_status": "processing", "merge_cache": None}).eq("id", call_id).execute()
+    background_tasks.add_task(run_merge_background, call_id)
+
+    logger.info(f"✅ [Topics] Background merge started: call={call_id}")
+    return {"status": "processing"}
 
 
 @router.post("/calls/{call_id}/topics/validate-updates")

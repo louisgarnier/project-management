@@ -1,7 +1,7 @@
 # Story 7.2 — Step 1: Call Topics Extraction Endpoint
 
 **Epic:** EPIC-7 — Two-Step Topic Extraction
-**Status:** `pending`
+**Status:** `done` — 2026-04-14
 
 ---
 

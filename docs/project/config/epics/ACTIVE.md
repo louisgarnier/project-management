@@ -1,8 +1,8 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-6 complete — Stories 6.1 + 6.2 done
-- **Next:** EPIC-7 / Story 7.1 — DB Migration: New Kanban Stages
+- **Story:** EPIC-7 complete — all 6 stories done
+- **Next:** EPIC-8 (to be defined)
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
@@ -29,3 +29,9 @@
 - [x] EPIC-5 / Story 5.5 — Kanban Row-Per-Call Redesign — 2026-04-13
 - [x] EPIC-6 / Story 6.1 — Topics API (backend) — 2026-04-13
 - [x] EPIC-6 / Story 6.2 — Topics UI (frontend) — 2026-04-13
+- [x] EPIC-7 / Story 7.1 — DB Migration: New Kanban Stages — 2026-04-14
+- [x] EPIC-7 / Story 7.2 — Step 1: Call Topics Extraction Endpoint — 2026-04-14
+- [x] EPIC-7 / Story 7.3 — Step 2: Aggregate Endpoint — 2026-04-14
+- [x] EPIC-7 / Story 7.4 — Call Topics UI — 2026-04-14
+- [x] EPIC-7 / Story 7.5 — Project Matching + Project Updates UI (2 stages) — 2026-04-14
+- [x] EPIC-7 / Story 7.6 — Artifact Context: Inject Project Topics — 2026-04-14

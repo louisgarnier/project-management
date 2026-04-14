@@ -1,7 +1,7 @@
 # Story 7.6 — Artifact Context: Inject Project Topics
 
 **Epic:** EPIC-7 — Two-Step Topic Extraction
-**Status:** `pending`
+**Status:** `done` — 2026-04-14
 
 ---
 

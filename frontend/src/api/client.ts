@@ -96,6 +96,11 @@ export const callsAPI = {
   clearTopicsStale: (callId: string) =>
     proxyFetch<Call>(`/api/calls/${callId}/clear_stale`, { method: "POST" }),
   delete: (callId: string) => proxyFetch<void>(`/api/calls/${callId}`, { method: "DELETE" }),
+  rollback: (callId: string, targetStage: string) =>
+    proxyFetch<{ rolled_back_to: string }>(`/api/calls/${callId}/rollback`, {
+      method: "POST",
+      body: JSON.stringify({ target_stage: targetStage }),
+    }),
 };
 
 async function proxyFetchForm<T>(path: string, formData: FormData): Promise<T> {
@@ -280,7 +285,7 @@ export const topicsAPI = {
     ),
 
   mergePreview: (callId: string) =>
-    proxyFetch<import("@/types").TopicData[]>(`/api/calls/${callId}/topics/merge-preview`, {
+    proxyFetch<{ status: string }>(`/api/calls/${callId}/topics/merge-preview`, {
       method: "POST",
     }),
 

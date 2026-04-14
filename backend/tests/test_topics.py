@@ -522,3 +522,104 @@ class TestAggregateTopics(unittest.TestCase):
         self.assertIn("new_topics", result)
         # _reattach_id: "Budget" should have topic_id = "t-1"
         self.assertEqual(result["followed_up"][0].get("topic_id"), "t-1")
+
+
+class TestTopicsTimeline(unittest.TestCase):
+
+    @patch("backend.services.topics_service.get_client")
+    def test_timeline_no_topics(self, mock_gc):
+        """Empty project returns empty topics list and empty calls list."""
+        from backend.services.topics_service import list_topics_timeline
+        db = MagicMock()
+        db.table.return_value.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = []
+        db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
+        db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+        result = list_topics_timeline("proj-1", db)
+        self.assertEqual(result["calls"], [])
+        self.assertEqual(result["topics"], [])
+
+    @patch("backend.services.topics_service.get_client")
+    def test_timeline_new_and_not_discussed(self, mock_gc):
+        """Topic raised in call 2 appears as new in call 2, not_discussed in call 3, absent in call 1."""
+        from backend.services.topics_service import list_topics_timeline
+        db = MagicMock()
+
+        calls = [
+            {"id": "c1", "title": "Kickoff", "call_number": 1, "kanban_stage": "done"},
+            {"id": "c2", "title": "Review", "call_number": 2, "kanban_stage": "done"},
+            {"id": "c3", "title": "Follow-up", "call_number": 3, "kanban_stage": "done"},
+        ]
+        topics = [{"id": "t1", "name": "Risk Model", "first_raised_call_id": "c2"}]
+        updates = [
+            {
+                "topic_id": "t1", "call_id": "c2",
+                "summary": "First discussion", "follow_up_items": ["item1"],
+                "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral",
+            }
+        ]
+        latest = [{"id": "t1", "status": "open", "owner": "Us", "sentiment": "neutral"}]
+
+        def table_side_effect(name):
+            m = MagicMock()
+            if name == "calls":
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+            elif name == "topics":
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = topics
+                m.select.return_value.in_.return_value.execute.return_value.data = latest
+            elif name == "topic_updates":
+                m.select.return_value.in_.return_value.execute.return_value.data = updates
+            return m
+        db.table.side_effect = table_side_effect
+
+        result = list_topics_timeline("proj-1", db)
+        self.assertEqual(len(result["calls"]), 3)
+        self.assertEqual(len(result["topics"]), 1)
+
+        t = result["topics"][0]
+        self.assertNotIn("c1", t["call_updates"])
+        self.assertEqual(t["call_updates"]["c2"]["type"], "new")
+        self.assertEqual(t["call_updates"]["c2"]["summary"], "First discussion")
+        self.assertEqual(t["call_updates"]["c3"]["type"], "not_discussed")
+
+    @patch("backend.services.topics_service.get_client")
+    def test_timeline_followed_up_and_absent(self, mock_gc):
+        """Topic raised in call 1 and followed up in call 2."""
+        from backend.services.topics_service import list_topics_timeline
+        db = MagicMock()
+
+        calls = [
+            {"id": "c1", "title": "Kickoff", "call_number": 1, "kanban_stage": "done"},
+            {"id": "c2", "title": "Review", "call_number": 2, "kanban_stage": "done"},
+        ]
+        topics = [{"id": "t1", "name": "Dashboard", "first_raised_call_id": "c1"}]
+        updates = [
+            {
+                "topic_id": "t1", "call_id": "c1",
+                "summary": "Raised", "follow_up_items": [], "decisions": [],
+                "status": "open", "owner": "Us", "sentiment": "neutral",
+            },
+            {
+                "topic_id": "t1", "call_id": "c2",
+                "summary": "Resolved now", "follow_up_items": [], "decisions": [],
+                "status": "resolved", "owner": "Us", "sentiment": "positive",
+            },
+        ]
+        latest = [{"id": "t1", "status": "resolved", "owner": "Us", "sentiment": "positive"}]
+
+        def table_side_effect(name):
+            m = MagicMock()
+            if name == "calls":
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+            elif name == "topics":
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = topics
+                m.select.return_value.in_.return_value.execute.return_value.data = latest
+            elif name == "topic_updates":
+                m.select.return_value.in_.return_value.execute.return_value.data = updates
+            return m
+        db.table.side_effect = table_side_effect
+
+        result = list_topics_timeline("proj-1", db)
+        t = result["topics"][0]
+        self.assertEqual(t["call_updates"]["c1"]["type"], "new")
+        self.assertEqual(t["call_updates"]["c2"]["type"], "followed_up")
+        self.assertEqual(t["call_updates"]["c2"]["status"], "resolved")

@@ -1,7 +1,8 @@
 import json
-from typing import Optional
+from typing import Literal, Optional
 
 from backend.database.supabase_client import get_client
+from backend.services.topics_service import rollback_to_stage
 from backend.utils.logger import db_logger
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -174,10 +175,10 @@ def reset_transcript(call_id: str):
         raise HTTPException(status_code=404, detail="Call not found")
 
     current_stage = result.data[0]["kanban_stage"]
-    if current_stage not in ("artifacts", "project_topics"):
+    if current_stage not in ("artifacts", "project_topics", "transcript"):
         raise HTTPException(
             status_code=409,
-            detail=f"Transcript reset is only allowed from the artifacts stage (current: {current_stage})",
+            detail=f"Transcript reset is only allowed from the artifacts or transcript stage (current: {current_stage})",
         )
 
     db_logger.info(f"🗄️ [DB] Resetting transcript for call: {call_id}")
@@ -272,3 +273,55 @@ def clear_topics_stale(call_id: str):
         raise HTTPException(status_code=404, detail="Call not found")
     db_logger.info(f"✅ [DB] topics_stale cleared: {call_id}")
     return result.data[0]
+
+
+_ROLLBACK_STAGE_ORDER = [
+    "transcript",
+    "call_topics",
+    "project_matching",
+    "project_updates",
+    "artifacts",
+    "done",
+]
+
+
+class RollbackPayload(BaseModel):
+    target_stage: Literal[
+        "transcript", "call_topics", "project_matching", "project_updates", "artifacts"
+    ]
+
+
+@router.post("/calls/{call_id}/rollback")
+def rollback_call(call_id: str, payload: RollbackPayload):
+    """Roll a call back to an earlier stage, cascading cleanups as required."""
+    client = get_client()
+
+    # 1. Verify call exists
+    result = client.table("calls").select("kanban_stage").eq("id", call_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Call not found")
+
+    current_stage = result.data[0]["kanban_stage"]
+
+    # 2. Verify target is strictly earlier than current stage
+    if current_stage not in _ROLLBACK_STAGE_ORDER:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Call has unknown stage '{current_stage}' — cannot determine rollback validity",
+        )
+    current_idx = _ROLLBACK_STAGE_ORDER.index(current_stage)
+    target_idx = _ROLLBACK_STAGE_ORDER.index(payload.target_stage)
+
+    if current_idx <= target_idx:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Cannot roll back to '{payload.target_stage}': "
+                f"call is already at or before that stage (current: '{current_stage}')"
+            ),
+        )
+
+    db_logger.info(f"🔄 [DB] Rolling back call {call_id}: {current_stage} → {payload.target_stage}")
+    result = rollback_to_stage(call_id, payload.target_stage)
+    db_logger.info(f"✅ [DB] Rollback complete: {call_id} → {payload.target_stage}")
+    return result
