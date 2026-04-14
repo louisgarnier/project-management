@@ -5,7 +5,7 @@ from backend.services.topics_service import (
     extract_topics, save_topics, validate_call, generate_brief,
     list_project_topics, list_call_topics, extract_call_topics, aggregate_topics,
     get_pending_topics, save_match_groups, run_merge_preview, validate_project_updates,
-    run_extraction_background, run_merge_background,
+    run_extraction_background, run_merge_background, list_topics_timeline,
     TopicUpdate,
 )
 from backend.utils.logger import get_logger
@@ -251,6 +251,18 @@ async def list_topics(project_id: str):
     db = get_client()
     result = await list_project_topics(project_id, db)
     logger.info(f"✅ [Topics] Returned {len(result)} topics")
+    return result
+
+
+@router.get("/projects/{project_id}/topics/timeline")
+async def get_topics_timeline(project_id: str):
+    """Return the full topic x call matrix for the timeline grid."""
+    logger.info(f"📥 [Topics] Timeline requested: project={project_id}")
+    db = get_client()
+    result = list_topics_timeline(project_id, db)
+    logger.info(
+        f"✅ [Topics] Timeline: {len(result['calls'])} calls, {len(result['topics'])} topics"
+    )
     return result
 
 
