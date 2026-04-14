@@ -28,6 +28,19 @@ const STATUS_BADGE: Record<string, React.CSSProperties> = {
   resolved:    { background: "#e3fcef", color: "#006644" },
 };
 
+const GROUP_COLORS = [
+  { bg: "#e9f0ff", border: "#4c9aff", text: "#0052cc" },  // blue
+  { bg: "#e3fcef", border: "#57d9a3", text: "#006644" },  // green
+  { bg: "#fffae6", border: "#ffc400", text: "#974f0c" },  // yellow
+  { bg: "#fce4fa", border: "#cc57c5", text: "#6b2066" },  // purple
+  { bg: "#ffe8d6", border: "#ff8b00", text: "#bf4300" },  // orange
+  { bg: "#e6fcff", border: "#00b8d9", text: "#00668c" },  // cyan
+];
+
+function groupColor(idx: number) {
+  return GROUP_COLORS[idx % GROUP_COLORS.length];
+}
+
 export default function ProjectMatchingStage({ callId, projectId, onMatchingComplete }: Props) {
   const [projectTopics, setProjectTopics] = useState<TopicData[]>([]);
   const [callTopics, setCallTopics] = useState<TopicData[]>([]);
@@ -121,6 +134,10 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
     return groups.find((g) => g.call_topic_names.includes(name));
   }
 
+  function groupIndex(group: MatchGroup): number {
+    return groups.indexOf(group);
+  }
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
@@ -164,8 +181,8 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                   onClick={() => toggleLeft(t.topic_id ?? "")}
                   style={{
                     ...PILL,
-                    borderColor: isMatched ? "#36b37e" : isSelected ? "#0052cc" : "#dfe1e6",
-                    background: isMatched ? "#e3fcef" : isSelected ? "#e9f0ff" : "white",
+                    borderColor: isMatched ? groupColor(groupIndex(group!)).border : isSelected ? "#0052cc" : "#dfe1e6",
+                    background: isMatched ? groupColor(groupIndex(group!)).bg : isSelected ? "#e9f0ff" : "white",
                     cursor: isMatched ? "default" : "pointer",
                   }}
                 >
@@ -179,17 +196,30 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                     )}
                     {isMatched && (
                       <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
-                        padding: "2px 6px", borderRadius: 3, background: "#e3fcef", color: "#006644" }}>
+                        padding: "2px 6px", borderRadius: 3,
+                        background: groupColor(groupIndex(group!)).bg,
+                        color: groupColor(groupIndex(group!)).text,
+                        border: `1px solid ${groupColor(groupIndex(group!)).border}` }}>
                         Matched
                       </span>
+                    )}
+                    {isMatched && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeGroup(groupIndex(group!)); }}
+                        title="Remove match"
+                        style={{ marginLeft: "auto", fontSize: 10, color: "#bfc5ce",
+                          background: "none", border: "none", cursor: "pointer" }}
+                      >
+                        ✕
+                      </button>
                     )}
                   </div>
                   {t.summary && (
                     <div style={{ fontSize: 11, color: "#5e6c84", lineHeight: 1.4 }}>{t.summary}</div>
                   )}
                   {isMatched && (
-                    <div style={{ fontSize: 10, color: "#36b37e", fontWeight: 600, marginTop: 4 }}>
-                      ↔ {group.call_topic_names.join(", ")}
+                    <div style={{ fontSize: 10, color: groupColor(groupIndex(group!)).text, fontWeight: 600, marginTop: 4 }}>
+                      ↔ {group!.call_topic_names.join(", ")}
                     </div>
                   )}
                 </div>
@@ -259,8 +289,8 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                   onClick={() => toggleRight(t.name)}
                   style={{
                     ...PILL,
-                    borderColor: isAccounted ? "#79dbb2" : isSelected ? "#0052cc" : "#dfe1e6",
-                    background: isAccounted ? "#f0fdf7" : isSelected ? "#e9f0ff" : "white",
+                    borderColor: isAccounted && group ? groupColor(groupIndex(group)).border : isSelected ? "#0052cc" : "#dfe1e6",
+                    background: isAccounted && group ? groupColor(groupIndex(group)).bg : isSelected ? "#e9f0ff" : "white",
                     cursor: isAccounted ? "default" : "pointer",
                   }}
                 >
@@ -269,14 +299,15 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                     {isAccounted && group && (
                       <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
                         padding: "2px 6px", borderRadius: 3,
-                        background: group.project_topic_id ? "#e3fcef" : "#f0f0f0",
-                        color: group.project_topic_id ? "#006644" : "#5e6c84" }}>
+                        background: groupColor(groupIndex(group)).bg,
+                        color: groupColor(groupIndex(group)).text,
+                        border: `1px solid ${groupColor(groupIndex(group)).border}` }}>
                         {group.project_topic_id ? "Matched" : "New Topic"}
                       </span>
                     )}
                     {isAccounted && group && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); removeGroup(groups.indexOf(group)); }}
+                        onClick={(e) => { e.stopPropagation(); removeGroup(groupIndex(group)); }}
                         title="Remove match"
                         style={{ marginLeft: "auto", fontSize: 10, color: "#bfc5ce",
                           background: "none", border: "none", cursor: "pointer" }}
@@ -289,8 +320,8 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                     <div style={{ fontSize: 11, color: "#5e6c84", lineHeight: 1.4 }}>{t.summary}</div>
                   )}
                   {isAccounted && group?.project_topic_id && (
-                    <div style={{ fontSize: 10, color: "#36b37e", fontWeight: 600, marginTop: 4 }}>
-                      ↔ {projectTopics.find((p) => p.topic_id === group.project_topic_id)?.name}
+                    <div style={{ fontSize: 10, color: groupColor(groupIndex(group!)).text, fontWeight: 600, marginTop: 4 }}>
+                      ↔ {projectTopics.find((p) => p.topic_id === group!.project_topic_id)?.name}
                     </div>
                   )}
                 </div>
