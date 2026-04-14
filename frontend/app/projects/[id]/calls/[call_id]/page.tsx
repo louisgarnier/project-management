@@ -225,7 +225,7 @@ export default function CallDetailPage() {
           <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} callScoped />
+          <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
           <ArtifactsPanel callId={callId} projectId={projectId} call={call} />
           {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
           <ContextFiles call={call} readonly />
@@ -367,7 +367,7 @@ export default function CallDetailPage() {
                   {lockError}
                 </div>
               )}
-              <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} callScoped />
+              <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
               <ArtifactsPanel callId={callId} projectId={projectId} call={call} />
               {call.transcript && (
                 <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />
