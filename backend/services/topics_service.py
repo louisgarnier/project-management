@@ -1157,6 +1157,7 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
         db.table("topic_updates")
         .select("topic_id, call_id, summary, follow_up_items, decisions, status, owner, sentiment")
         .in_("topic_id", topic_ids)
+        .in_("call_id", call_ids)
         .execute()
         .data
     )
@@ -1181,6 +1182,8 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
     for t in topics:
         tid = t["id"]
         first_call_id = t.get("first_raised_call_id")
+        # If first_raised_call_id is None or not in the timeline's call set,
+        # treat the topic as visible from the first call (all calls get not_discussed or update cells).
         first_idx = call_order.get(first_call_id, 0) if first_call_id else 0
         topic_updates_by_call = updates_index.get(tid, {})
 

@@ -567,7 +567,7 @@ class TestTopicsTimeline(unittest.TestCase):
                 m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = topics
                 m.select.return_value.in_.return_value.execute.return_value.data = latest
             elif name == "topic_updates":
-                m.select.return_value.in_.return_value.execute.return_value.data = updates
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = updates
             return m
         db.table.side_effect = table_side_effect
 
@@ -614,7 +614,7 @@ class TestTopicsTimeline(unittest.TestCase):
                 m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = topics
                 m.select.return_value.in_.return_value.execute.return_value.data = latest
             elif name == "topic_updates":
-                m.select.return_value.in_.return_value.execute.return_value.data = updates
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = updates
             return m
         db.table.side_effect = table_side_effect
 
