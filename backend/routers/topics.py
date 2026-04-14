@@ -177,6 +177,37 @@ async def save_matches(call_id: str, groups: list[MatchGroupPayload]):
         raise HTTPException(status_code=500, detail="Save matches failed")
 
 
+@router.get("/calls/{call_id}/topics/match-groups")
+async def get_match_groups(call_id: str):
+    """Return saved match groups for a call with project topic names resolved."""
+    logger.info(f"📥 [Topics] Match groups requested: call={call_id}")
+    db = get_client()
+
+    groups = (
+        db.table("topic_match_groups")
+        .select("project_topic_id, call_topic_names")
+        .eq("call_id", call_id)
+        .execute()
+        .data
+    )
+
+    result = []
+    for g in groups:
+        ptid = g.get("project_topic_id")
+        name = None
+        if ptid:
+            row = db.table("topics").select("name").eq("id", ptid).execute().data
+            name = row[0]["name"] if row else None
+        result.append({
+            "project_topic_id": ptid,
+            "project_topic_name": name,
+            "call_topic_names": g.get("call_topic_names", []),
+        })
+
+    logger.info(f"✅ [Topics] Returned {len(result)} match groups")
+    return result
+
+
 @router.post("/calls/{call_id}/topics/merge-preview")
 async def merge_preview(call_id: str):
     """Run parallel LLM merge for all match groups — returns preview, does not save."""

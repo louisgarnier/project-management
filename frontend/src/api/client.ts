@@ -274,6 +274,11 @@ export const topicsAPI = {
       body: JSON.stringify(groups),
     }),
 
+  getMatchGroups: (callId: string) =>
+    proxyFetch<{ project_topic_id: string | null; project_topic_name: string | null; call_topic_names: string[] }[]>(
+      `/api/calls/${callId}/topics/match-groups`
+    ),
+
   mergePreview: (callId: string) =>
     proxyFetch<import("@/types").TopicData[]>(`/api/calls/${callId}/topics/merge-preview`, {
       method: "POST",
