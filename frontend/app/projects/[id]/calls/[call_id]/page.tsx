@@ -221,8 +221,19 @@ export default function CallDetailPage() {
   // Project Updates historical view
   if (viewStage === "project_updates") {
     return (
-      <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
-        <TopicsPanel callId={callId} projectId={projectId} defaultOpen callScoped call={call} />
+      <div className="h-full flex flex-col">
+        <div className="px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
+          <button
+            onClick={() => router.push(`/projects/${projectId}/board`)}
+            className="text-[12px] text-[#5e6c84] hover:text-[#0052cc] hover:underline mb-2 block"
+          >
+            ← Board
+          </button>
+          <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          <TopicsPanel callId={callId} projectId={projectId} defaultOpen callScoped call={call} />
+        </div>
       </div>
     );
   }
