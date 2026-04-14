@@ -239,47 +239,98 @@ export default function ProjectUpdatesStage({ callId, onValidated }: Props) {
         </div>
       ) : (
         <>
-          <div style={{ padding: "10px 20px 6px", fontSize: 11, fontWeight: 700, color: "#5e6c84",
-            textTransform: "uppercase", letterSpacing: ".05em", borderBottom: "1px solid #f4f5f7", flexShrink: 0 }}>
-            Topics ({topics.length})
-          </div>
-          <div style={{ flex: 1, overflowY: "auto" }}>
-            {topics.map((t, i) => (
-              <TopicRow
-                key={t.topic_id ?? t.name ?? i}
-                topic={t}
-                onChange={(updated) => {
-                  const next = [...topics];
-                  next[i] = updated;
-                  setTopics(next);
-                }}
-              />
-            ))}
-          </div>
-          <div style={{ padding: "12px 20px", borderTop: "1px solid #dfe1e6", background: "white",
-            display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-            <button
-              onClick={handleRunMerge}
-              disabled={loading}
-              style={{ padding: "7px 16px", borderRadius: 6, border: "1px solid #dfe1e6",
-                background: "white", color: "#5e6c84", fontSize: 12, cursor: loading ? "default" : "pointer",
-                fontFamily: "inherit" }}
-            >
-              {loading ? "Re-running…" : "Re-run Merge"}
-            </button>
-            <button
-              onClick={handleValidate}
-              disabled={validating || topics.length === 0}
-              style={{ padding: "8px 22px", borderRadius: 6, border: "none",
-                background: validating || topics.length === 0 ? "#f4f5f7" : "#0052cc",
-                color: validating || topics.length === 0 ? "#97a0af" : "white",
-                fontSize: 13, fontWeight: 600,
-                cursor: validating || topics.length === 0 ? "default" : "pointer",
-                fontFamily: "inherit" }}
-            >
-              {validating ? "Saving…" : "Validate →"}
-            </button>
-          </div>
+          {(() => {
+            const discussed = topics.filter(t => !t.not_discussed);
+            const notDiscussed = topics.filter(t => t.not_discussed);
+            return (
+              <>
+                <div style={{ padding: "10px 20px 6px", fontSize: 11, fontWeight: 700, color: "#5e6c84",
+                  textTransform: "uppercase", letterSpacing: ".05em", borderBottom: "1px solid #f4f5f7", flexShrink: 0 }}>
+                  Topics ({discussed.length})
+                </div>
+                <div style={{ flex: 1, overflowY: "auto" }}>
+                  {discussed.map((t) => {
+                    const i = topics.indexOf(t);
+                    return (
+                      <TopicRow
+                        key={t.topic_id ?? t.name ?? i}
+                        topic={t}
+                        onChange={(updated) => {
+                          const next = [...topics];
+                          next[i] = updated;
+                          setTopics(next);
+                        }}
+                      />
+                    );
+                  })}
+
+                  {notDiscussed.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ padding: "8px 20px 6px", borderTop: "1px solid #dfe1e6", borderBottom: "1px solid #dfe1e6",
+                        background: "#f4f5f7" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#97a0af",
+                          letterSpacing: ".05em" }}>
+                          Not discussed in this call&nbsp;&nbsp;({notDiscussed.length} topic{notDiscussed.length !== 1 ? "s" : ""})
+                        </div>
+                        <div style={{ fontSize: 11, color: "#97a0af", marginTop: 2 }}>
+                          These topics exist in the project but were not mentioned in this call. They carry over unchanged.
+                        </div>
+                      </div>
+                      {notDiscussed.map((t, idx) => (
+                        <div key={t.topic_id ?? t.name ?? idx}
+                          style={{ opacity: 0.7, borderBottom: "1px solid #f0f1f3",
+                            paddingLeft: 20, paddingRight: 20, paddingTop: 10, paddingBottom: 10,
+                            borderLeft: "3px solid transparent", background: "white" }}>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                            <span style={{ color: "#97a0af", fontSize: 12 }}>•</span>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: "#172b4d" }}>{t.name}</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
+                              padding: "2px 6px", borderRadius: 3, whiteSpace: "nowrap", flexShrink: 0,
+                              ...(STATUS_BADGE[t.status ?? "open"] ?? STATUS_BADGE.open) }}>
+                              {(t.status ?? "open").replace("_", " ")}
+                            </span>
+                            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase",
+                              color: SENTIMENT_COLOR[t.sentiment ?? "neutral"] ?? "#5e6c84", marginLeft: "auto" }}>
+                              {t.sentiment}
+                            </span>
+                          </div>
+                          {t.summary && (
+                            <p style={{ fontSize: 12, color: "#5e6c84", margin: "3px 0 0 18px", lineHeight: 1.5 }}>
+                              {t.summary}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{ padding: "12px 20px", borderTop: "1px solid #dfe1e6", background: "white",
+                  display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+                  <button
+                    onClick={handleRunMerge}
+                    disabled={loading}
+                    style={{ padding: "7px 16px", borderRadius: 6, border: "1px solid #dfe1e6",
+                      background: "white", color: "#5e6c84", fontSize: 12, cursor: loading ? "default" : "pointer",
+                      fontFamily: "inherit" }}
+                  >
+                    {loading ? "Re-running…" : "Re-run Merge"}
+                  </button>
+                  <button
+                    onClick={handleValidate}
+                    disabled={validating || discussed.length === 0}
+                    style={{ padding: "8px 22px", borderRadius: 6, border: "none",
+                      background: validating || discussed.length === 0 ? "#f4f5f7" : "#0052cc",
+                      color: validating || discussed.length === 0 ? "#97a0af" : "white",
+                      fontSize: 13, fontWeight: 600,
+                      cursor: validating || discussed.length === 0 ? "default" : "pointer",
+                      fontFamily: "inherit" }}
+                  >
+                    {validating ? "Saving…" : "Validate →"}
+                  </button>
+                </div>
+              </>
+            );
+          })()}
         </>
       )}
     </div>

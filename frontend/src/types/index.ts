@@ -79,6 +79,7 @@ export interface TopicData {
   owner: TopicOwner;
   sentiment: TopicSentiment;
   calls_open?: number;
+  not_discussed?: boolean;
 }
 
 /** Response from POST /extract */
