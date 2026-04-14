@@ -77,9 +77,20 @@ export default function ProjectMatchingHistoricalView({ callId, projectId }: Pro
   }
 
   function getGroupForCallTopic(name: string): { group: SavedMatchGroup; idx: number } | undefined {
-    const idx = matchGroups.findIndex((g) => g.call_topic_names.includes(name));
+    const lower = name.toLowerCase().trim();
+    const idx = matchGroups.findIndex((g) =>
+      g.call_topic_names.some((n) => n.toLowerCase().trim() === lower)
+    );
     if (idx === -1) return undefined;
     return { group: matchGroups[idx], idx };
+  }
+
+  // Resolve lowercase stored names back to original-casing display names
+  function resolveCallTopicNames(storedNames: string[]): string[] {
+    return storedNames.map((stored) => {
+      const found = callTopics.find((t) => t.name.toLowerCase().trim() === stored.toLowerCase().trim());
+      return found ? found.name : stored;
+    });
   }
 
   if (loading) {
@@ -179,7 +190,7 @@ export default function ProjectMatchingHistoricalView({ callId, projectId }: Pro
                   )}
                   {matched && (
                     <div style={{ fontSize: 10, color: color!.text, fontWeight: 600, marginTop: 4 }}>
-                      ↔ {matched.group.call_topic_names.join(", ")}
+                      ↔ {resolveCallTopicNames(matched.group.call_topic_names).join(", ")}
                     </div>
                   )}
                 </div>
