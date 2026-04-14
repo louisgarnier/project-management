@@ -259,11 +259,15 @@ async def get_topics_timeline(project_id: str):
     """Return the full topic x call matrix for the timeline grid."""
     logger.info(f"📥 [Topics] Timeline requested: project={project_id}")
     db = get_client()
-    result = list_topics_timeline(project_id, db)
-    logger.info(
-        f"✅ [Topics] Timeline: {len(result['calls'])} calls, {len(result['topics'])} topics"
-    )
-    return result
+    try:
+        result = list_topics_timeline(project_id, db)
+        logger.info(
+            f"✅ [Topics] Timeline: {len(result['calls'])} calls, {len(result['topics'])} topics"
+        )
+        return result
+    except Exception as e:
+        logger.error(f"❌ [Topics] Timeline failed: project={project_id} — {e}")
+        raise HTTPException(status_code=500, detail="Failed to load topics timeline")
 
 
 @router.delete("/calls/{call_id}/topics/{topic_id}", status_code=204)

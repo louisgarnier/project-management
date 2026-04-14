@@ -623,3 +623,29 @@ class TestTopicsTimeline(unittest.TestCase):
         self.assertEqual(t["call_updates"]["c1"]["type"], "new")
         self.assertEqual(t["call_updates"]["c2"]["type"], "followed_up")
         self.assertEqual(t["call_updates"]["c2"]["status"], "resolved")
+
+    @patch("backend.services.topics_service.get_client")
+    def test_timeline_calls_exist_no_topics(self, mock_gc):
+        """When calls exist but project has no topics, returns calls list with empty topics."""
+        from backend.services.topics_service import list_topics_timeline
+        db = MagicMock()
+
+        calls = [
+            {"id": "c1", "title": "Kickoff", "call_number": 1, "kanban_stage": "done"},
+        ]
+
+        def table_side_effect(name):
+            m = MagicMock()
+            if name == "calls":
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+            elif name == "topics":
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+                m.select.return_value.in_.return_value.execute.return_value.data = []
+            elif name == "topic_updates":
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = []
+            return m
+        db.table.side_effect = table_side_effect
+
+        result = list_topics_timeline("proj-1", db)
+        self.assertEqual(len(result["calls"]), 1)
+        self.assertEqual(result["topics"], [])
