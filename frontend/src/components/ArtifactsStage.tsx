@@ -38,7 +38,9 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
         artifactsAPI.list(callId),
         projectsAPI.get(projectId),
       ]);
-      const artifactTypes = types.filter((t) => t.category !== "topics");
+      const artifactTypes = types.filter(
+        (t) => t.category !== "topics" && t.category !== "call_topics" && t.category !== "project_topics"
+      );
       setArtifactTypes(artifactTypes);
       setProjectDefaultLlm(project.default_llm);
 

@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode } from "@/types";
+import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -186,7 +186,7 @@ export const artifactTypesAPI = {
   update: (
     projectId: string,
     typeId: string,
-    data: { name?: string; prompt?: string; llm?: LLMProvider | null }
+    data: { name?: string; prompt?: string; llm?: LLMProvider | null; context_scope?: ContextScope }
   ) =>
     proxyFetch<ArtifactType>(`/api/projects/${projectId}/artifact-types/${typeId}`, {
       method: "PATCH",
@@ -248,6 +248,9 @@ export const topicsAPI = {
   listForProject: (projectId: string) =>
     proxyFetch<import("@/types").TopicData[]>(`/api/projects/${projectId}/topics`),
 
+  listForCall: (callId: string) =>
+    proxyFetch<import("@/types").TopicData[]>(`/api/calls/${callId}/topics/by-call`),
+
   extractCall: (callId: string) =>
     proxyFetch<import("@/types").TopicData[]>(`/api/calls/${callId}/topics/extract_call`, {
       method: "POST",
@@ -257,5 +260,28 @@ export const topicsAPI = {
     proxyFetch<import("@/types").AggregateResult>(`/api/calls/${callId}/topics/aggregate`, {
       method: "POST",
       body: JSON.stringify({ topics }),
+    }),
+
+  deleteFromCall: (callId: string, topicId: string) =>
+    proxyFetch<void>(`/api/calls/${callId}/topics/${topicId}`, { method: "DELETE" }),
+
+  getPending: (callId: string) =>
+    proxyFetch<import("@/types").TopicData[]>(`/api/calls/${callId}/topics/pending`),
+
+  saveMatches: (callId: string, groups: import("@/types").MatchGroup[]) =>
+    proxyFetch<{ saved: number }>(`/api/calls/${callId}/topics/save-matches`, {
+      method: "POST",
+      body: JSON.stringify(groups),
+    }),
+
+  mergePreview: (callId: string) =>
+    proxyFetch<import("@/types").TopicData[]>(`/api/calls/${callId}/topics/merge-preview`, {
+      method: "POST",
+    }),
+
+  validateUpdates: (callId: string, topics: import("@/types").TopicData[]) =>
+    proxyFetch<{ status: string }>(`/api/calls/${callId}/topics/validate-updates`, {
+      method: "POST",
+      body: JSON.stringify(topics),
     }),
 };

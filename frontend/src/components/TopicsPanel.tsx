@@ -11,9 +11,10 @@ type Props = {
   projectId: string;
   defaultOpen?: boolean;
   call?: Call; // when provided, enables stale banner and lock enforcement
+  callScoped?: boolean; // when true, shows only topics from this specific call
 };
 
-export default function TopicsPanel({ callId, projectId, defaultOpen = false, call }: Props) {
+export default function TopicsPanel({ callId, projectId, defaultOpen = false, call, callScoped = false }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const [topics, setTopics] = useState<TopicData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -33,12 +34,14 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false, ca
     if (!open) return;
     setLoading(true);
     try {
-      const data = await topicsAPI.listForProject(projectId);
+      const data = callScoped
+        ? await topicsAPI.listForCall(callId)
+        : await topicsAPI.listForProject(projectId);
       setTopics(data);
     } finally {
       setLoading(false);
     }
-  }, [open, projectId]);
+  }, [open, callScoped, callId, projectId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -145,7 +148,7 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false, ca
               ) : (
                 <div style={{ padding: "8px 14px" }}>
                   {topics.map((t) => (
-                    <TopicRow key={t.topic_id ?? t.name} topic={t} callId={callId} onSaved={load} callIsLocked={!!(call?.is_locked)} />
+                    <TopicRow key={t.topic_id ?? t.name} topic={t} callId={callId} onSaved={load} callIsLocked={!!(call?.is_locked)} hideCallsOpen={callScoped} callScoped={callScoped} />
                   ))}
                 </div>
               )}
@@ -192,13 +195,14 @@ export default function TopicsPanel({ callId, projectId, defaultOpen = false, ca
   );
 }
 
-function TopicRow({ topic, callId, onSaved, callIsLocked }: {
-  topic: TopicData; callId: string; onSaved: () => void; callIsLocked: boolean;
+function TopicRow({ topic, callId, onSaved, callIsLocked, hideCallsOpen, callScoped }: {
+  topic: TopicData; callId: string; onSaved: () => void; callIsLocked: boolean; hideCallsOpen?: boolean; callScoped?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<TopicData>(topic);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [newFollowUp, setNewFollowUp] = useState("");
 
   function set<K extends keyof TopicData>(key: K, val: TopicData[K]) {
@@ -227,6 +231,19 @@ function TopicRow({ topic, callId, onSaved, callIsLocked }: {
     setDraft(topic);
     setSaveError(null);
     setEditing(false);
+  }
+
+  async function handleDelete() {
+    if (!topic.topic_id) return;
+    setDeleting(true);
+    try {
+      await topicsAPI.deleteFromCall(callId, topic.topic_id);
+      onSaved(); // refresh list
+    } catch (err) {
+      logger.error("Failed to delete topic from call", { component: "TopicsPanel", data: err });
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const SENTIMENT_COLOR: Record<string, string> = {
@@ -343,7 +360,7 @@ function TopicRow({ topic, callId, onSaved, callIsLocked }: {
             color: STATUS_COLOR[topic.status] ?? "#5e6c84" }}>
             {topic.status?.replace("_", " ")}
           </span>
-          {topic.calls_open && topic.calls_open >= 2 && (
+          {!hideCallsOpen && topic.calls_open && topic.calls_open >= 2 && (
             <span style={{ fontSize: 9, fontWeight: 700, background: "#fff4e6",
               color: "#974f0c", padding: "1px 5px", borderRadius: 3 }}>
               Open · {topic.calls_open} calls
@@ -371,6 +388,17 @@ function TopicRow({ topic, callId, onSaved, callIsLocked }: {
             style={{ fontSize: 11, color: "#97a0af", background: "none", border: "none",
               cursor: "pointer", padding: 0 }} title="Edit">
             ✎
+          </button>
+        )}
+        {callScoped && !callIsLocked && (
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            title="Remove from this call"
+            style={{ fontSize: 11, color: "#bfc5ce", background: "none", border: "none",
+              cursor: deleting ? "default" : "pointer", padding: 0, opacity: deleting ? 0.5 : 1 }}
+          >
+            ✕
           </button>
         )}
       </div>

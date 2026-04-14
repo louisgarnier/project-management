@@ -81,7 +81,9 @@ export default function ArtifactsPage() {
   }
 
   const artifactTypes = types.filter((t) => t.category === "artifacts" || !t.category);
-  const topicsPrompts = types.filter((t) => t.category === "topics");
+  const workflowPrompts = types.filter(
+    (t) => t.category === "call_topics" || t.category === "project_topics" || t.category === "topics"
+  );
 
   return (
     <div className="h-full flex flex-col">
@@ -145,26 +147,28 @@ export default function ArtifactsPage() {
               )}
             </div>
 
-            {/* ── Topics Extraction Prompt section ── */}
-            {topicsPrompts.length > 0 && (
+            {/* ── Workflow Prompts section ── */}
+            {workflowPrompts.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-[13px] font-bold text-[#172b4d]">Topics Extraction Prompt</h2>
-                  <span className="text-[10px] font-bold uppercase tracking-wide bg-[#e9f0ff] text-[#0052cc] px-2 py-[2px] rounded">
-                    Topics
+                  <h2 className="text-[13px] font-bold text-[#172b4d]">Workflow Prompts</h2>
+                  <span className="text-[10px] font-bold uppercase tracking-wide bg-[#e3fcef] text-[#006644] px-2 py-[2px] rounded">
+                    Workflow
                   </span>
-                  <span className="text-[11px] text-[#5e6c84]">— used by &quot;Extract via Claude&quot; on the Topics stage</span>
+                  <span className="text-[11px] text-[#5e6c84]">— used automatically during call processing</span>
                 </div>
-                {topicsPrompts.map((t) => (
-                  <ArtifactTypeCard
-                    key={t.id}
-                    type={t}
-                    projectDefaultLlm={project?.default_llm ?? "groq"}
-                    onDelete={() => {}}
-                    onUpdate={handleUpdate}
-                    hideDelete
-                  />
-                ))}
+                <div className="flex flex-col gap-3">
+                  {workflowPrompts.map((t) => (
+                    <ArtifactTypeCard
+                      key={t.id}
+                      type={t}
+                      projectDefaultLlm={project?.default_llm ?? "groq"}
+                      onDelete={() => {}}
+                      onUpdate={handleUpdate}
+                      hideDelete
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </>

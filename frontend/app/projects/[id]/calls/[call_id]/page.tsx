@@ -13,17 +13,18 @@ import ArtifactsPanel from "@/components/ArtifactsPanel";
 import TopicsStage from "@/components/TopicsStage";
 import TopicsPanel from "@/components/TopicsPanel";
 import CallTopicsStage from "@/components/CallTopicsStage";
-import ProjectTopicsStage from "@/components/ProjectTopicsStage";
-import type { AggregateResult } from "@/types";
+import ProjectMatchingStage from "@/components/ProjectMatchingStage";
+import ProjectUpdatesStage from "@/components/ProjectUpdatesStage";
 
-const STAGES = ["transcript", "call_topics", "project_topics", "artifacts", "done"] as const;
+const STAGES = ["transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"] as const;
 
 const STAGE_LABELS: Record<string, string> = {
-  transcript:     "Transcript",
-  call_topics:    "Call Topics",
-  project_topics: "Project Topics",
-  artifacts:      "Artifacts",
-  done:           "Done",
+  transcript:       "Transcript",
+  call_topics:      "Call Topics",
+  project_matching: "Project Matching",
+  project_updates:  "Project Updates",
+  artifacts:        "Artifacts",
+  done:             "Done",
 };
 
 export default function CallDetailPage() {
@@ -42,8 +43,6 @@ export default function CallDetailPage() {
   const [resetting, setResetting] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
   const [lockError, setLockError] = useState<string | null>(null);
-  const [aggregateResult, setAggregateResult] = useState<AggregateResult | null>(null);
-
   async function handleConfirmReset() {
     setResetting(true);
     try {
@@ -194,7 +193,7 @@ export default function CallDetailPage() {
           <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
+          <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} callScoped />
           {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
           <ContextFiles call={call} readonly />
         </div>
@@ -202,24 +201,12 @@ export default function CallDetailPage() {
     );
   }
 
-  // Project Topics-only mode: navigated from a historical project_topics card
-  if (viewStage === "project_topics") {
+  // Project Matching / Project Updates historical view
+  if (viewStage === "project_matching" || viewStage === "project_updates") {
     return (
-      <div className="h-full flex flex-col">
-        <div className="px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
-          <button
-            onClick={() => router.push(`/projects/${projectId}/board`)}
-            className="text-[12px] text-[#5e6c84] hover:text-[#0052cc] hover:underline mb-2 block"
-          >
-            ← Board
-          </button>
-          <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
-          {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
-          <ContextFiles call={call} readonly />
-        </div>
+      <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
+        <TopicsPanel callId={callId} projectId={projectId} defaultOpen callScoped
+          call={call} />
       </div>
     );
   }
@@ -238,7 +225,7 @@ export default function CallDetailPage() {
           <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
+          <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} callScoped />
           <ArtifactsPanel callId={callId} projectId={projectId} call={call} />
           {call.transcript && <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />}
           <ContextFiles call={call} readonly />
@@ -288,102 +275,108 @@ export default function CallDetailPage() {
         })}
       </div>
 
-      {/* Stage content */}
-      <div className="flex-1 overflow-y-auto p-5">
-        {call.kanban_stage === "transcript" && (
-          <TranscriptStage call={call} onAdvance={loadCall} />
-        )}
-        {call.kanban_stage === "call_topics" && (
-          <CallTopicsStage
-            call={call}
-            onAggregateComplete={(result) => {
-              setAggregateResult(result);
-              loadCall(); // reload call — stage is now project_topics
-            }}
-            onAutoAdvanced={() => {
-              loadCall(); // reload call — stage is now artifacts
-            }}
-          />
-        )}
-        {call.kanban_stage === "project_topics" && (
-          <ProjectTopicsStage
-            call={call}
-            initialResult={aggregateResult}
-            onValidated={() => {
-              setAggregateResult(null);
-              loadCall();
-            }}
-          />
-        )}
-        {call.kanban_stage === "artifacts" && (
-          <>
-            <ArtifactsStage call={call} onAdvance={loadCall} />
-            {call.transcript && (
-              <TranscriptPanel
-                call={call}
-                onSaved={(updated) => setCall(updated)}
-              />
-            )}
-            <ContextFiles call={call} readonly />
-            <div className="mt-4 text-right">
-              <button
-                onClick={() => setShowResetModal(true)}
-                className="text-[11px] text-[#97a0af] hover:text-red-500 hover:underline"
-              >
-                ↩ Reset transcript
-              </button>
-            </div>
-          </>
-        )}
-        {call.kanban_stage === "done" && (
-          <>
-            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8,
-              padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#15803d",
-              display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontWeight: 600 }}>✓ Call complete — all topics validated and artifacts saved.</span>
-              {call.is_locked ? (
-                <button
-                  onClick={handleUnlock}
-                  disabled={isLocking}
-                  style={{ fontSize: 12, fontWeight: 600, background: "white", color: "#5e6c84",
-                    border: "1px solid #dfe1e6", borderRadius: 6, padding: "5px 14px",
-                    cursor: isLocking ? "not-allowed" : "pointer", opacity: isLocking ? 0.6 : 1 }}
-                >
-                  {isLocking ? "…" : "🔓 Unlock"}
-                </button>
-              ) : (
-                <button
-                  onClick={handleLock}
-                  disabled={isLocking}
-                  style={{ fontSize: 12, fontWeight: 600, background: "#172b4d", color: "white",
-                    border: "none", borderRadius: 6, padding: "5px 14px",
-                    cursor: isLocking ? "not-allowed" : "pointer", opacity: isLocking ? 0.6 : 1 }}
-                >
-                  {isLocking ? "…" : "🔒 Lock Call"}
-                </button>
+      {/* Stage content — two rendering paths:
+          Path A: project_matching / project_updates need flex-1 + overflow-hidden so their
+                  internal two-column layouts can stretch to fill available height.
+          Path B: all other stages scroll normally inside overflow-y-auto. */}
+      {call.kanban_stage === "project_matching" || call.kanban_stage === "project_updates" ? (
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {call.kanban_stage === "project_matching" && (
+            <ProjectMatchingStage
+              callId={call.id}
+              projectId={call.project_id}
+              onMatchingComplete={() => loadCall()}
+            />
+          )}
+          {call.kanban_stage === "project_updates" && (
+            <ProjectUpdatesStage
+              callId={call.id}
+              onValidated={() => loadCall()}
+            />
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-5">
+          {call.kanban_stage === "transcript" && (
+            <TranscriptStage call={call} onAdvance={loadCall} />
+          )}
+          {call.kanban_stage === "call_topics" && (
+            <CallTopicsStage
+              call={call}
+              onAggregateComplete={() => loadCall()}
+              onAutoAdvanced={() => loadCall()}
+            />
+          )}
+          {call.kanban_stage === "artifacts" && (
+            <>
+              <ArtifactsStage call={call} onAdvance={loadCall} />
+              {call.transcript && (
+                <TranscriptPanel
+                  call={call}
+                  onSaved={(updated) => setCall(updated)}
+                />
               )}
-            </div>
-            {call.is_locked && (
-              <div style={{ fontSize: 11, color: "#97a0af", background: "#f4f5f7",
-                borderRadius: 6, padding: "6px 12px", marginBottom: 12 }}>
-                🔒 This call is locked. Unlock to edit transcript, topics, or regenerate artifacts.
+              <ContextFiles call={call} readonly />
+              <div className="mt-4 text-right">
+                <button
+                  onClick={() => setShowResetModal(true)}
+                  className="text-[11px] text-[#97a0af] hover:text-red-500 hover:underline"
+                >
+                  ↩ Reset transcript
+                </button>
               </div>
-            )}
-            {lockError && (
-              <div style={{ fontSize: 11, color: "#ae2a19", background: "#fff1f0",
-                border: "1px solid #ffc2c2", borderRadius: 4, padding: "5px 10px", marginBottom: 8 }}>
-                {lockError}
+            </>
+          )}
+          {call.kanban_stage === "done" && (
+            <>
+              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8,
+                padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#15803d",
+                display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontWeight: 600 }}>✓ Call complete — all topics validated and artifacts saved.</span>
+                {call.is_locked ? (
+                  <button
+                    onClick={handleUnlock}
+                    disabled={isLocking}
+                    style={{ fontSize: 12, fontWeight: 600, background: "white", color: "#5e6c84",
+                      border: "1px solid #dfe1e6", borderRadius: 6, padding: "5px 14px",
+                      cursor: isLocking ? "not-allowed" : "pointer", opacity: isLocking ? 0.6 : 1 }}
+                  >
+                    {isLocking ? "…" : "🔓 Unlock"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleLock}
+                    disabled={isLocking}
+                    style={{ fontSize: 12, fontWeight: 600, background: "#172b4d", color: "white",
+                      border: "none", borderRadius: 6, padding: "5px 14px",
+                      cursor: isLocking ? "not-allowed" : "pointer", opacity: isLocking ? 0.6 : 1 }}
+                  >
+                    {isLocking ? "…" : "🔒 Lock Call"}
+                  </button>
+                )}
               </div>
-            )}
-            <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} />
-            <ArtifactsPanel callId={callId} projectId={projectId} call={call} />
-            {call.transcript && (
-              <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />
-            )}
-            <ContextFiles call={call} readonly />
-          </>
-        )}
-      </div>
+              {call.is_locked && (
+                <div style={{ fontSize: 11, color: "#97a0af", background: "#f4f5f7",
+                  borderRadius: 6, padding: "6px 12px", marginBottom: 12 }}>
+                  🔒 This call is locked. Unlock to edit transcript, topics, or regenerate artifacts.
+                </div>
+              )}
+              {lockError && (
+                <div style={{ fontSize: 11, color: "#ae2a19", background: "#fff1f0",
+                  border: "1px solid #ffc2c2", borderRadius: 4, padding: "5px 10px", marginBottom: 8 }}>
+                  {lockError}
+                </div>
+              )}
+              <TopicsPanel callId={callId} projectId={projectId} defaultOpen call={call} callScoped />
+              <ArtifactsPanel callId={callId} projectId={projectId} call={call} />
+              {call.transcript && (
+                <TranscriptPanel call={call} onSaved={(updated) => setCall(updated)} />
+              )}
+              <ContextFiles call={call} readonly />
+            </>
+          )}
+        </div>
+      )}
 
       {/* Reset transcript modal */}
       {showResetModal && (

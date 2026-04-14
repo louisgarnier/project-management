@@ -11,7 +11,12 @@ export interface Project {
   created_at: string;
 }
 
-export type KanbanStage = "transcript" | "call_topics" | "project_topics" | "artifacts" | "done";
+export type KanbanStage = "transcript" | "call_topics" | "project_matching" | "project_updates" | "artifacts" | "done";
+
+export type MatchGroup = {
+  project_topic_id: string | null;   // null = new project topic
+  call_topic_names: string[];         // names from pending call topics
+};
 
 export interface Call {
   id: string;
@@ -28,7 +33,9 @@ export interface Call {
 export type ArtifactMode = LLMProvider | "manual";
 export type ArtifactStatus = "pending" | "generating" | "done" | "error" | "stale";
 
-export type ArtifactCategory = "artifacts" | "topics";
+export type ArtifactCategory = "artifacts" | "topics" | "call_topics" | "project_topics";
+
+export type ContextScope = "call" | "project";
 
 export interface ArtifactType {
   id: string;
@@ -38,6 +45,7 @@ export interface ArtifactType {
   is_default: boolean;
   category: ArtifactCategory;
   llm: LLMProvider | null;
+  context_scope: ContextScope;
   created_at: string;
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { ArtifactType, LLMProvider } from "@/types";
+import type { ArtifactType, LLMProvider, ContextScope } from "@/types";
 
 const LLM_OPTIONS: { value: LLMProvider; label: string }[] = [
   { value: "groq",     label: "Groq – Llama 3.3 (free)" },
@@ -18,7 +18,7 @@ type Props = {
   type: ArtifactType;
   projectDefaultLlm: LLMProvider;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null }) => Promise<void>;
+  onUpdate: (id: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null; context_scope?: ContextScope }) => Promise<void>;
   hideDelete?: boolean;
 };
 
@@ -28,6 +28,7 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
   const [name, setName] = useState(type.name);
   const [prompt, setPrompt] = useState(type.prompt);
   const [llm, setLlm] = useState<LLMProvider | null>(type.llm);
+  const [contextScope, setContextScope] = useState<ContextScope>(type.context_scope ?? "call");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -36,6 +37,7 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
     setName(type.name);
     setPrompt(type.prompt);
     setLlm(type.llm);
+    setContextScope(type.context_scope ?? "call");
     setSaveError(null);
   }
 
@@ -43,7 +45,7 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
     setSaving(true);
     setSaveError(null);
     try {
-      await onUpdate(type.id, { name, prompt, llm });
+      await onUpdate(type.id, { name, prompt, llm, context_scope: contextScope });
       setEditing(false);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");
@@ -81,25 +83,47 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
           )}
         </div>
 
-        {/* LLM selector — always visible in header */}
-        <div className="flex items-center gap-1 flex-shrink-0">
+        {/* LLM + context scope — always visible in header */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           {editing ? (
-            <select
-              value={llm ?? ""}
-              onChange={(e) => setLlm((e.target.value as LLMProvider) || null)}
-              className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
-            >
-              <option value="">Default ({LLM_LABELS[projectDefaultLlm]})</option>
-              {LLM_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+            <>
+              <select
+                value={llm ?? ""}
+                onChange={(e) => setLlm((e.target.value as LLMProvider) || null)}
+                className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
+              >
+                <option value="">Default ({LLM_LABELS[projectDefaultLlm]})</option>
+                {LLM_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <select
+                value={contextScope}
+                onChange={(e) => setContextScope(e.target.value as ContextScope)}
+                className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
+              >
+                <option value="call">Call only</option>
+                <option value="project">Full project</option>
+              </select>
+            </>
           ) : (
-            <span className="text-[11px] text-[#5e6c84] bg-[#f4f5f7] px-2 py-[3px] rounded">
-              {type.llm
-                ? LLM_LABELS[type.llm]
-                : `Default · ${LLM_LABELS[projectDefaultLlm]}`}
-            </span>
+            <>
+              <span className="text-[11px] text-[#5e6c84] bg-[#f4f5f7] px-2 py-[3px] rounded">
+                {type.llm
+                  ? LLM_LABELS[type.llm]
+                  : `Default · ${LLM_LABELS[projectDefaultLlm]}`}
+              </span>
+              <span
+                className="text-[10px] font-medium px-2 py-[3px] rounded"
+                style={
+                  (type.context_scope ?? "call") === "project"
+                    ? { background: "#e3fcef", color: "#006644" }
+                    : { background: "#f4f5f7", color: "#5e6c84" }
+                }
+              >
+                {(type.context_scope ?? "call") === "project" ? "Full project" : "Call only"}
+              </span>
+            </>
           )}
         </div>
 

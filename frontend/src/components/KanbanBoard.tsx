@@ -4,14 +4,16 @@ import { useRouter, useParams } from "next/navigation";
 import type { Call, KanbanStage } from "@/types";
 
 const STAGES: { key: KanbanStage; label: string }[] = [
-  { key: "transcript",     label: "Transcript"      },
-  { key: "call_topics",    label: "Call Topics"     },
-  { key: "project_topics", label: "Project Topics"  },
-  { key: "artifacts",      label: "Artifacts"       },
-  { key: "done",           label: "Done"            },
+  { key: "transcript",       label: "Transcript"       },
+  { key: "call_topics",      label: "Call Topics"      },
+  { key: "project_matching", label: "Project Matching" },
+  { key: "project_updates",  label: "Project Updates"  },
+  { key: "artifacts",        label: "Artifacts"        },
+  { key: "done",             label: "Done"             },
 ];
-
-const STAGE_ORDER: KanbanStage[] = ["transcript", "call_topics", "project_topics", "artifacts", "done"];
+const STAGE_ORDER: KanbanStage[] = [
+  "transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"
+];
 
 const STAGE_INDEX: Record<KanbanStage, number> = Object.fromEntries(
   STAGE_ORDER.map((s, i) => [s, i])
@@ -64,7 +66,7 @@ function getCellState(
   }
 
   // Artifacts and beyond locked until previous call is fully done
-  if ((stageKey === "project_topics" || stageKey === "artifacts" || stageKey === "done") && !prevCallDone) {
+  if ((stageKey === "project_matching" || stageKey === "project_updates" || stageKey === "artifacts" || stageKey === "done") && !prevCallDone) {
     return "locked";
   }
   return "pending";
@@ -86,14 +88,6 @@ export default function KanbanBoard({ calls, onNewCall, onDeleteCall }: Props) {
   const sorted = [...calls].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
-
-  if (sorted.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-[13px] text-[#5e6c84]">No calls yet. Create your first call above.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="p-4 flex flex-col gap-3 flex-1 overflow-y-auto">
