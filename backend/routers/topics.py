@@ -6,6 +6,7 @@ from backend.services.topics_service import (
     list_project_topics, list_call_topics, extract_call_topics, aggregate_topics,
     get_pending_topics, save_match_groups, run_merge_preview, validate_project_updates,
     run_extraction_background, run_merge_background, list_topics_timeline,
+    list_topics_prior_to_call,
     TopicUpdate,
 )
 from backend.utils.logger import get_logger
@@ -252,6 +253,20 @@ async def list_topics(project_id: str):
     result = await list_project_topics(project_id, db)
     logger.info(f"✅ [Topics] Returned {len(result)} topics")
     return result
+
+
+@router.get("/projects/{project_id}/topics/prior-to-call/{call_id}")
+async def get_topics_prior_to_call(project_id: str, call_id: str):
+    """Return project topics that existed before the given call (timestamp-scoped)."""
+    logger.info(f"📥 [Topics] Prior-to-call requested: project={project_id}, call={call_id}")
+    db = get_client()
+    try:
+        result = list_topics_prior_to_call(call_id, project_id, db)
+        logger.info(f"✅ [Topics] Prior-to-call: {len(result)} topics")
+        return result
+    except Exception as e:
+        logger.error(f"❌ [Topics] Prior-to-call failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load prior topics")
 
 
 @router.get("/projects/{project_id}/topics/timeline")

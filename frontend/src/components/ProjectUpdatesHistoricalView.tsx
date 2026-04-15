@@ -88,7 +88,7 @@ export default function ProjectUpdatesHistoricalView({ callId, projectId }: Prop
     Promise.all([
       topicsAPI.getMatchGroups(callId),
       topicsAPI.listForCall(callId),
-      topicsAPI.listForProject(projectId),
+      topicsAPI.priorToCall(projectId, callId),
     ]).then(([groups, callTopics, projectTopics]) => {
       // Index call-specific topic data (from topic_updates) by project topic ID and by name
       const callTopicsByProjectId = new Map(

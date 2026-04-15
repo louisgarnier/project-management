@@ -53,12 +53,12 @@ export default function ProjectMatchingHistoricalView({ callId, projectId }: Pro
 
   useEffect(() => {
     Promise.all([
-      topicsAPI.listForProject(projectId),
-      topicsAPI.getPending(callId),
+      topicsAPI.priorToCall(projectId, callId),
+      topicsAPI.listForCall(callId),
       topicsAPI.getMatchGroups(callId),
-    ]).then(([proj, pending, groups]) => {
+    ]).then(([proj, callTopicsData, groups]) => {
       setProjectTopics(proj);
-      setCallTopics(pending);
+      setCallTopics(callTopicsData);
       setMatchGroups(groups);
       logger.info("[ProjectMatchingHistoricalView] Loaded match data", {
         component: "ProjectMatchingHistoricalView",

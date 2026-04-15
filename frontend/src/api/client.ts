@@ -253,6 +253,9 @@ export const topicsAPI = {
   listForProject: (projectId: string) =>
     proxyFetch<import("@/types").TopicData[]>(`/api/projects/${projectId}/topics`),
 
+  priorToCall: (projectId: string, callId: string) =>
+    proxyFetch<import("@/types").TopicData[]>(`/api/projects/${projectId}/topics/prior-to-call/${callId}`),
+
   timeline: (projectId: string) =>
     proxyFetch<TopicsTimelineData>(`/api/projects/${projectId}/topics/timeline`),
 

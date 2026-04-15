@@ -1092,6 +1092,69 @@ async def list_project_topics(project_id: str, db=None) -> list[dict]:
     return _get_previous_topics(project_id, db)
 
 
+def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[dict]:
+    """
+    Return project topics that existed BEFORE the given call, based on call creation timestamps.
+    A topic 'existed before call X' if its first_raised_call_id points to a call created before X.
+    For the very first call, this always returns [].
+    """
+    if db is None:
+        db = get_client()
+
+    call_row = db.table("calls").select("created_at").eq("id", call_id).execute().data
+    if not call_row:
+        return []
+    call_created_at = call_row[0]["created_at"]
+
+    prior_calls = (
+        db.table("calls")
+        .select("id")
+        .eq("project_id", project_id)
+        .lt("created_at", call_created_at)
+        .execute()
+        .data
+    )
+    if not prior_calls:
+        return []
+
+    prior_call_ids = [c["id"] for c in prior_calls]
+
+    topics = (
+        db.table("topics")
+        .select("id, name, calls_open, first_raised_call_id")
+        .eq("project_id", project_id)
+        .eq("archived", False)
+        .in_("first_raised_call_id", prior_call_ids)
+        .execute()
+        .data
+    )
+
+    result = []
+    for t in topics:
+        updates = (
+            db.table("topic_updates")
+            .select("summary, follow_up_items, decisions, status, owner, sentiment")
+            .eq("topic_id", t["id"])
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        latest = updates[0] if updates else {}
+        result.append({
+            "topic_id": t["id"],
+            "name": t["name"],
+            "calls_open": t["calls_open"],
+            "summary": latest.get("summary", ""),
+            "follow_up_items": latest.get("follow_up_items", []),
+            "decisions": latest.get("decisions", []),
+            "status": latest.get("status", "open"),
+            "owner": latest.get("owner", "Us"),
+            "sentiment": latest.get("sentiment", "neutral"),
+        })
+    return result
+
+
 def list_topics_timeline(project_id: str, db=None) -> dict:
     """
     Build the full topic x call matrix for the timeline grid.
