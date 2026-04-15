@@ -218,6 +218,59 @@ def test_update_transcript_on_done_call_sets_stale():
     assert r.json()["topics_stale"] is True
 
 
+def test_rollback_cascades_later_calls_to_call_topics():
+    """POST /rollback on Call N must roll back all later calls to call_topics."""
+    mc = _mock_client()
+    call_count = 0
+
+    later_call_1 = {"id": "call-2", "kanban_stage": "project_matching"}
+    later_call_2 = {"id": "call-3", "kanban_stage": "artifacts"}
+
+    def table_side(name):
+        nonlocal call_count
+        m = MagicMock()
+        if name == "calls":
+            call_count += 1
+            if call_count == 1:
+                # verify call exists + get current stage
+                m.select.return_value.eq.return_value.execute.return_value = MagicMock(
+                    data=[{"kanban_stage": "done"}]
+                )
+            elif call_count == 2:
+                # get project_id + created_at for cascade
+                m.select.return_value.eq.return_value.execute.return_value = MagicMock(
+                    data=[{"project_id": PROJECT_ID, "created_at": "2026-04-09T01:00:00Z"}]
+                )
+            elif call_count == 3:
+                # fetch later calls
+                m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = MagicMock(
+                    data=[later_call_1, later_call_2]
+                )
+            else:
+                m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+                m.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"kanban_stage": "call_topics"}])
+        else:
+            m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+            m.delete.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+            m.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+            m.update.return_value.in_.return_value.execute.return_value = MagicMock(data=[])
+        return m
+
+    mc.table.side_effect = table_side
+
+    with patch("backend.routers.calls.get_client", return_value=mc), \
+         patch("backend.routers.calls.rollback_to_stage") as mock_rollback:
+        mock_rollback.return_value = {"rolled_back_to": "project_matching"}
+        r = client.post(f"/api/calls/{CALL_ID}/rollback", json={"target_stage": "project_matching"})
+
+    assert r.status_code == 200
+    # rollback_to_stage called for the target call + both later calls
+    calls_made = [c.args for c in mock_rollback.call_args_list]
+    assert (CALL_ID, "project_matching") in calls_made
+    assert ("call-2", "call_topics") in calls_made
+    assert ("call-3", "call_topics") in calls_made
+
+
 def test_lock_call():
     mc = _mock_client()
     mc.table.return_value.update.return_value.eq.return_value.execute.return_value = (

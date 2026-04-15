@@ -350,4 +350,25 @@ def rollback_call(call_id: str, payload: RollbackPayload):
     db_logger.info(f"🔄 [DB] Rolling back call {call_id}: {current_stage} → {payload.target_stage}")
     result = rollback_to_stage(call_id, payload.target_stage)
     db_logger.info(f"✅ [DB] Rollback complete: {call_id} → {payload.target_stage}")
+
+    # Cascade: roll back all later calls in the same project to call_topics
+    call_row = client.table("calls").select("project_id, created_at").eq("id", call_id).execute().data
+    if call_row:
+        project_id = call_row[0]["project_id"]
+        created_at = call_row[0]["created_at"]
+        later_calls = (
+            client.table("calls")
+            .select("id, kanban_stage")
+            .eq("project_id", project_id)
+            .gt("created_at", created_at)
+            .order("created_at")
+            .execute()
+            .data
+        )
+        _STAGE_ORDER = ["transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"]
+        for lc in later_calls:
+            if _STAGE_ORDER.index(lc["kanban_stage"]) > _STAGE_ORDER.index("call_topics"):
+                rollback_to_stage(lc["id"], "call_topics")
+                db_logger.info(f"🔄 [DB] Cascade-rolled back later call {lc['id']} to call_topics")
+
     return result

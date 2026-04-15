@@ -136,7 +136,7 @@ export default function CallDetailPage() {
             ))}
           </ul>
           <p className="text-[11px] text-[#97a0af] mb-4">
-            Data from other calls is never affected.
+            All later calls will also be rolled back to Call Topics stage. Their confirmed topics are preserved — only project matching, updates, and artifacts will be cleared.
           </p>
           {rollbackError && (
             <p className="text-[12px] text-red-600 mb-3">{rollbackError}</p>
