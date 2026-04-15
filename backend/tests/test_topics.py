@@ -124,52 +124,6 @@ SAMPLE_TOPIC = {
 }
 
 
-@patch("backend.routers.topics.get_client")
-@patch("backend.routers.topics.extract_topics")
-def test_extract_call1_returns_flat_list(mock_extract, mock_gc):
-    """POST /extract on Call 1 returns a flat list with no buckets."""
-    mock_gc.return_value = MagicMock()
-    async def _fake():
-        return {
-            "call_number": 1,
-            "followed_up": [],
-            "not_discussed": [],
-            "new_topics": [SAMPLE_TOPIC],
-        }
-    mock_extract.return_value = _fake()
-
-    r = http.post(f"/api/calls/{CALL_ID}/topics/extract")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["call_number"] == 1
-    assert len(body["new_topics"]) == 1
-    assert body["new_topics"][0]["name"] == "Pricing"
-
-
-@patch("backend.routers.topics.get_client")
-@patch("backend.routers.topics.extract_topics")
-def test_extract_call2_returns_three_buckets(mock_extract, mock_gc):
-    """POST /extract on Call 2+ returns followed_up, not_discussed, new_topics."""
-    mock_gc.return_value = MagicMock()
-    async def _fake():
-        return {
-            "call_number": 2,
-            "followed_up": [SAMPLE_TOPIC],
-            "not_discussed": [{**SAMPLE_TOPIC, "name": "Legal Review"}],
-            "new_topics": [{**SAMPLE_TOPIC, "name": "Support SLA"}],
-        }
-    mock_extract.return_value = _fake()
-
-    r = http.post(f"/api/calls/{CALL_ID}/topics/extract")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["call_number"] == 2
-    assert len(body["followed_up"]) == 1
-    assert len(body["not_discussed"]) == 1
-    assert body["not_discussed"][0]["name"] == "Legal Review"
-    assert len(body["new_topics"]) == 1
-    assert body["new_topics"][0]["name"] == "Support SLA"
-
 
 TOPIC_ID  = "cccccccc-0000-0000-0000-000000000001"
 TOPIC_ID2 = "cccccccc-0000-0000-0000-000000000002"
@@ -477,51 +431,40 @@ class TestAggregateTopics(unittest.TestCase):
         self.assertEqual(result["call_number"], 1)
 
     @patch("backend.services.topics_service.get_client")
-    @patch("backend.services.topics_service._call_llm")
-    def test_aggregate_call2_returns_buckets(self, mock_llm, mock_gc):
-        """Call 2: previous topics exist → runs LLM, returns 3 buckets."""
+    def test_aggregate_call2_advances_to_project_matching(self, mock_gc):
+        """Call 2: previous topics exist → saves pending_topics, advances to project_matching."""
         db = MagicMock()
         mock_gc.return_value = db
-
-        # call row
-        db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            {"project_id": "proj-1"}
-        ]
 
         prev_topic = {"topic_id": "t-1", "name": "Budget", "calls_open": 1,
                       "summary": "old summary", "follow_up_items": [], "decisions": [],
                       "status": "open", "owner": "Us", "sentiment": "neutral"}
 
-        async def fake_llm(prompt, llm):
-            return {
-                "followed_up": [{"name": "Budget", "summary": "Updated", "follow_up_items": [],
-                                 "decisions": [], "status": "in_progress", "owner": "Us", "sentiment": "neutral"}],
-                "not_discussed": [],
-                "new_topics": [{"name": "Timeline", "summary": "New topic", "follow_up_items": [],
-                                "decisions": [], "status": "open", "owner": "Client", "sentiment": "concern"}],
-            }
-        mock_llm.side_effect = fake_llm
+        def table_side_effect(table_name):
+            m = MagicMock()
+            if table_name == "calls":
+                m.select.return_value.eq.return_value.execute.return_value.data = [{"project_id": "proj-1"}]
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{"id": "call-0"}]
+                m.update.return_value.eq.return_value.execute.return_value.data = [{}]
+            elif table_name == "topics":
+                m.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "t-1"}]
+            else:
+                m.select.return_value.eq.return_value.execute.return_value.data = []
+            return m
+        db.table.side_effect = table_side_effect
 
-        # done calls count: one done call
-        done_q = (db.table.return_value.select.return_value
-                  .eq.return_value.eq.return_value.execute)
-        done_q.return_value.data = [{"id": "call-0"}]
-
+        call_topics = [
+            {"name": "Budget", "summary": "Budget discussed", "follow_up_items": [],
+             "decisions": [], "status": "in_progress", "owner": "Us", "sentiment": "neutral"},
+            {"name": "Timeline", "summary": "New topic", "follow_up_items": [],
+             "decisions": [], "status": "open", "owner": "Client", "sentiment": "concern"},
+        ]
         with patch("backend.services.topics_service._get_previous_topics", return_value=[prev_topic]):
             with patch("backend.services.topics_service._get_topics_prompt", return_value=(None, "groq")):
-                result = self._run(aggregate_topics("call-1", [
-                    {"name": "Budget", "summary": "Budget discussed", "follow_up_items": [],
-                     "decisions": [], "status": "in_progress", "owner": "Us", "sentiment": "neutral"},
-                    {"name": "Timeline", "summary": "New topic", "follow_up_items": [],
-                     "decisions": [], "status": "open", "owner": "Client", "sentiment": "concern"},
-                ]))
+                result = self._run(aggregate_topics("call-1", call_topics))
 
-        self.assertNotIn("auto_advanced", result)
-        self.assertIn("followed_up", result)
-        self.assertIn("not_discussed", result)
-        self.assertIn("new_topics", result)
-        # _reattach_id: "Budget" should have topic_id = "t-1"
-        self.assertEqual(result["followed_up"][0].get("topic_id"), "t-1")
+        self.assertEqual(result["advanced_to"], "project_matching")
+        self.assertEqual(result["call_number"], 2)
 
 
 class TestTopicsTimeline(unittest.TestCase):

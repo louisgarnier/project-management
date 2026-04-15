@@ -2,7 +2,7 @@ from typing import Optional
 
 from backend.database.supabase_client import get_client
 from backend.services.topics_service import (
-    extract_topics, save_topics, validate_call, generate_brief,
+    save_topics, validate_call, generate_brief,
     list_project_topics, list_call_topics, extract_call_topics, aggregate_topics,
     get_pending_topics, save_match_groups, run_merge_preview, validate_project_updates,
     run_extraction_background, run_merge_background, list_topics_timeline,
@@ -17,20 +17,6 @@ from pydantic import BaseModel as PydanticBaseModel
 router = APIRouter(prefix="/api", tags=["topics"])
 logger = get_logger("topics_router")
 
-
-@router.post("/calls/{call_id}/topics/extract")
-async def extract(call_id: str):
-    logger.info(f"📥 [Topics] Extract requested: call={call_id}")
-    try:
-        result = await extract_topics(call_id)
-        total = sum(len(v) for v in result.values() if isinstance(v, list))
-        logger.info(f"✅ [Topics] Extracted {total} topics")
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.exception(f"❌ [Topics] Extraction failed: {e}")
-        raise HTTPException(status_code=500, detail="Topic extraction failed")
 
 
 @router.post("/calls/{call_id}/topics/extract_call")
