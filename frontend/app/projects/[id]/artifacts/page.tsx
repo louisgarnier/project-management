@@ -26,6 +26,8 @@ export default function ArtifactsPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [savingLlm, setSavingLlm] = useState(false);
   const [llmSaveError, setLlmSaveError] = useState<string | null>(null);
+  const [projectContext, setProjectContext] = useState<string>("");
+  const [contextSaving, setContextSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -38,6 +40,7 @@ export default function ArtifactsPage() {
       ]);
       setTypes(data);
       setProject(proj);
+      setProjectContext(proj.context ?? "");
     } catch (err) {
       logger.error("Failed to load", { component: "ArtifactsPage", data: err });
       setError("Failed to load artifact types.");
@@ -72,6 +75,18 @@ export default function ArtifactsPage() {
       logger.error("Failed to update default LLM", { component: "ArtifactsPage", data: err });
     } finally {
       setSavingLlm(false);
+    }
+  }
+
+  async function handleContextBlur() {
+    setContextSaving(true);
+    try {
+      const updated = await projectsAPI.update(projectId, { context: projectContext });
+      setProject(updated);
+    } catch (err) {
+      logger.error("Failed to save project context", { component: "ArtifactsPage", data: err });
+    } finally {
+      setContextSaving(false);
     }
   }
 
@@ -130,6 +145,25 @@ export default function ArtifactsPage() {
           </div>
         ) : (
           <>
+            {/* ── Project context ── */}
+            <div className="border border-[#dfe1e6] rounded-lg p-4 bg-white mb-6">
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="text-[13px] font-bold text-[#172b4d]">Project context</h2>
+                {contextSaving && <span className="text-[10px] text-[#5e6c84]">Saving…</span>}
+              </div>
+              <p className="text-[11px] text-[#5e6c84] mb-2">
+                Prepended to every prompt for this project — artifact generation, topic extraction, and topic merge.
+              </p>
+              <textarea
+                value={projectContext}
+                onChange={(e) => setProjectContext(e.target.value)}
+                onBlur={handleContextBlur}
+                rows={4}
+                placeholder="e.g. This is a software project with ACME Corp. The client is a mid-size e-commerce company focused on improving their checkout flow. Always use formal language."
+                className="w-full text-[12px] text-[#172b4d] border border-[#dfe1e6] rounded px-3 py-2 resize-y focus:outline-none focus:border-[#0052cc] placeholder-[#97a0af]"
+              />
+            </div>
+
             {/* ── Artifacts section ── */}
             <div className="flex flex-col gap-3 mb-8">
               {artifactTypes.length === 0 ? (

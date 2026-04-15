@@ -28,8 +28,6 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [advancing, setAdvancing] = useState(false);
-  const [projectContext, setProjectContext] = useState<string>("");
-  const [contextSaving, setContextSaving] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
 
   // Load artifact types and check for existing artifacts
@@ -45,7 +43,6 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
       );
       setArtifactTypes(artifactTypes);
       setProjectDefaultLlm(project.default_llm);
-      setProjectContext(project.context ?? "");
 
       // Default all types to "generate"
       const defaultSels: Record<string, SelectionMode> = {};
@@ -74,17 +71,6 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
       }).catch(() => {});
     }
   }, [phase, projectId]);
-
-  async function handleContextBlur() {
-    setContextSaving(true);
-    try {
-      await projectsAPI.update(projectId, { context: projectContext });
-    } catch (err) {
-      logger.error("Failed to save project context", { component: "ArtifactsStage", data: err });
-    } finally {
-      setContextSaving(false);
-    }
-  }
 
   function handleSelectionChange(typeId: string, mode: SelectionMode) {
     setSelections((prev) => ({ ...prev, [typeId]: mode }));
@@ -290,24 +276,6 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
           </p>
         </div>
 
-        <div className="border border-[#dfe1e6] rounded-lg p-4 bg-white">
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-[12px] font-semibold text-[#172b4d]">Project context</label>
-            {contextSaving && <span className="text-[10px] text-[#5e6c84]">Saving…</span>}
-          </div>
-          <p className="text-[11px] text-[#5e6c84] mb-2">
-            Added to every prompt for this project. Describe the project, client, goals, or any standing instructions.
-          </p>
-          <textarea
-            value={projectContext}
-            onChange={(e) => setProjectContext(e.target.value)}
-            onBlur={handleContextBlur}
-            rows={4}
-            placeholder="e.g. This is a software project with ACME Corp. The client is a mid-size e-commerce company focused on improving their checkout flow. Always use formal language."
-            className="w-full text-[12px] text-[#172b4d] border border-[#dfe1e6] rounded px-3 py-2 resize-y focus:outline-none focus:border-[#0052cc] placeholder-[#97a0af]"
-          />
-        </div>
-
         {artifactTypes.length === 0 ? (
           <p className="text-[13px] text-[#5e6c84]">No artifact types configured. Add some in the Artifacts tab.</p>
         ) : (
@@ -338,21 +306,6 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
 
   return (
     <div className="flex flex-col gap-4 max-w-3xl">
-      <div className="border border-[#dfe1e6] rounded-lg p-3 bg-white">
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-[11px] font-semibold text-[#5e6c84] uppercase tracking-wide">Project context</label>
-          {contextSaving && <span className="text-[10px] text-[#5e6c84]">Saving…</span>}
-        </div>
-        <textarea
-          value={projectContext}
-          onChange={(e) => setProjectContext(e.target.value)}
-          onBlur={handleContextBlur}
-          rows={2}
-          placeholder="Describe the project, client, or standing instructions…"
-          className="w-full text-[11px] text-[#172b4d] border border-[#dfe1e6] rounded px-2 py-1.5 resize-y focus:outline-none focus:border-[#0052cc] placeholder-[#97a0af]"
-        />
-      </div>
-
       <div className="flex items-center justify-between">
         <h2 className="text-[15px] font-semibold text-[#172b4d]">
           {phase === "generating" ? "Generating artifacts…" : "Artifacts"}
