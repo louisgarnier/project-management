@@ -87,13 +87,17 @@ export default function ProjectUpdatesHistoricalView({ callId, projectId }: Prop
   useEffect(() => {
     Promise.all([
       topicsAPI.getMatchGroups(callId),
-      topicsAPI.getPending(callId),
+      topicsAPI.listForCall(callId),
       topicsAPI.listForProject(projectId),
-    ]).then(([groups, pending, projectTopics]) => {
-      const pendingByName = new Map(pending.map((t: TopicData) => [t.name.toLowerCase().trim(), t]));
-      const projectById = new Map(projectTopics.map((t: TopicData) => [t.topic_id ?? "", t]));
+    ]).then(([groups, callTopics, projectTopics]) => {
+      // Index call-specific topic data (from topic_updates) by project topic ID and by name
+      const callTopicsByProjectId = new Map(
+        callTopics.filter((t: TopicData) => t.topic_id).map((t: TopicData) => [t.topic_id!, t])
+      );
+      const callTopicsByName = new Map(
+        callTopics.map((t: TopicData) => [t.name.toLowerCase().trim(), t])
+      );
 
-      // Names of call topics grouped as "new" (project_topic_id === null)
       const newCallTopicNames = new Set<string>();
       const matchedProjectIds = new Set<string>();
 
@@ -105,13 +109,14 @@ export default function ProjectUpdatesHistoricalView({ callId, projectId }: Prop
           for (const name of g.call_topic_names) {
             const lower = name.toLowerCase().trim();
             newCallTopicNames.add(lower);
-            const ct = pendingByName.get(lower);
+            const ct = callTopicsByName.get(lower);
             if (ct) newBucket.push({ ...ct, topic_id: undefined });
           }
         } else {
           matchedProjectIds.add(g.project_topic_id);
-          const pt = projectById.get(g.project_topic_id);
-          if (pt) updatedBucket.push(pt);
+          // Use call-specific data (from topic_updates for this call) not current project state
+          const ct = callTopicsByProjectId.get(g.project_topic_id);
+          if (ct) updatedBucket.push(ct);
         }
       }
 
