@@ -277,7 +277,19 @@ async def extract_call_topics(call_id: str) -> list[dict]:
     llm = stored_llm or "groq"
     project_context = (proj_rows[0].get("context") or "").strip() if proj_rows else ""
 
-    base_instruction = stored_prompt or "Extract all key business topics from this call."
+    base_instruction = stored_prompt or (
+        "You are an expert at analysing business call transcripts. Extract every distinct topic discussed — "
+        "be exhaustive, do not merge separate topics into one.\n\n"
+        "For each topic:\n"
+        "- name: short label (3–6 words)\n"
+        "- summary: 1–2 sentence recap of what was said\n"
+        "- follow_up_items: concrete next steps or open questions (empty array if none)\n"
+        "- decisions: anything explicitly agreed or decided (empty array if none)\n"
+        "- status: open (unresolved), in_progress (being worked on), resolved (closed/agreed)\n"
+        "- owner: Us (our team owns it), Client (client owns it), Both (shared)\n"
+        "- sentiment: positive (good news/progress), neutral (informational), concern (risk/problem/blocker)\n\n"
+        "Return ONLY a JSON array. No markdown, no explanation."
+    )
     context_prefix = f"Project context:\n{project_context}\n\n" if project_context else ""
     prompt = (
         context_prefix
