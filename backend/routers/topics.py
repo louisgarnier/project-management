@@ -88,13 +88,13 @@ async def save(call_id: str, topics: list[TopicUpdate]):
         logger.exception(f"❌ [Topics] Save failed: {e}")
         raise HTTPException(status_code=500, detail="Topic save failed")
 
-    # When saving topics on a done call:
+    # After saving topics:
     # 1. Mark this call's artifacts stale
-    # 2. Roll back all later calls to call_topics (their project matching/updates are now stale)
+    # 2. Roll back any later calls that are past call_topics (their data is now stale)
     try:
         db = get_client()
         call_row = db.table("calls").select("kanban_stage, project_id, created_at").eq("id", call_id).execute().data
-        if call_row and call_row[0]["kanban_stage"] == "done":
+        if call_row:
             # Mark this call's artifacts stale
             artifacts = db.table("artifacts").select("id").eq("call_id", call_id).execute().data
             artifact_ids = [a["id"] for a in artifacts]
@@ -102,12 +102,13 @@ async def save(call_id: str, topics: list[TopicUpdate]):
                 db.table("artifacts").update({"status": "stale"}).in_("id", artifact_ids).execute()
                 logger.info(f"⚠️ [Topics] Marked {len(artifact_ids)} artifacts stale: {call_id}")
 
-            # Roll back all later calls to call_topics
+            # Roll back later calls that are past call_topics
             project_id = call_row[0]["project_id"]
             created_at = call_row[0]["created_at"]
+            _STAGE_ORDER = ["transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"]
             later_calls = (
                 db.table("calls")
-                .select("id")
+                .select("id, kanban_stage")
                 .eq("project_id", project_id)
                 .gt("created_at", created_at)
                 .order("created_at")
@@ -115,8 +116,9 @@ async def save(call_id: str, topics: list[TopicUpdate]):
                 .data
             )
             for lc in later_calls:
-                rollback_to_stage(lc["id"], "call_topics")
-                logger.info(f"⚠️ [Topics] Rolled back later call {lc['id']} to call_topics after topic edit on {call_id}")
+                if _STAGE_ORDER.index(lc["kanban_stage"]) > _STAGE_ORDER.index("call_topics"):
+                    rollback_to_stage(lc["id"], "call_topics")
+                    logger.info(f"⚠️ [Topics] Rolled back later call {lc['id']} to call_topics after topic edit on {call_id}")
     except Exception as stale_err:
         logger.warning(f"⚠️ [Topics] Post-save cascade failed (non-fatal): {stale_err}")
 
