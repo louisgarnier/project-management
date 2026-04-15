@@ -38,6 +38,10 @@ def create_artifact_selections(call_id: str, payload: ArtifactSelectionsPayload)
     if not call_check.data:
         raise HTTPException(status_code=404, detail="Call not found")
 
+    # Delete any stale artifacts before creating fresh ones
+    client.table("artifacts").delete().eq("call_id", call_id).eq("status", "stale").execute()
+    db_logger.info(f"🗄️ [DB] Cleared stale artifacts for call: {call_id}")
+
     db_logger.info(f"🗄️ [DB] Creating {len(payload.selections)} artifact selections for call: {call_id}")
 
     type_ids = [s.artifact_type_id for s in payload.selections]
@@ -81,6 +85,7 @@ def list_artifacts(call_id: str):
         client.table("artifacts")
         .select("*")
         .eq("call_id", call_id)
+        .neq("status", "stale")
         .order("created_at")
         .execute()
     )
