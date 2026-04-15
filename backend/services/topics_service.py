@@ -271,13 +271,17 @@ async def extract_call_topics(call_id: str) -> list[dict]:
 
     project_id = call_row[0]["project_id"]
     stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="call_topics")
+    proj_rows = db.table("projects").select("default_llm, context").eq("id", project_id).execute().data
     if stored_llm is None:
-        proj_rows = db.table("projects").select("default_llm").eq("id", project_id).execute().data
         stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
     llm = stored_llm or "groq"
+    project_context = (proj_rows[0].get("context") or "").strip() if proj_rows else ""
 
+    base_instruction = stored_prompt or "Extract all key business topics from this call."
+    context_prefix = f"Project context:\n{project_context}\n\n" if project_context else ""
     prompt = (
-        (f"{stored_prompt}\n\n" if stored_prompt else "Extract all key business topics from this call.\n\n")
+        context_prefix
+        + f"{base_instruction}\n\n"
         + f"Return a JSON array where each element matches this exact schema:\n{_TOPIC_SCHEMA}\n\n"
         + f"Transcript:\n{transcript}"
     )
@@ -456,15 +460,20 @@ async def run_merge_preview(call_id: str) -> list[dict]:
 
     # Get LLM config
     stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="project_topics")
+    proj_rows = db.table("projects").select("default_llm, context").eq("id", project_id).execute().data
     if stored_llm is None:
-        proj_rows = db.table("projects").select("default_llm").eq("id", project_id).execute().data
         stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
     llm = stored_llm or "groq"
+    project_context = (proj_rows[0].get("context") or "").strip() if proj_rows else ""
 
-    merge_instructions = stored_prompt or (
+    base_merge_instructions = stored_prompt or (
         "You are merging an existing project topic record with one or more new call topics that match it. "
         "Produce an updated topic that synthesises the history with the latest call information. "
         "Keep the most important follow-up items (max 5). Update status, sentiment, and owner to reflect current state."
+    )
+    merge_instructions = (
+        f"Project context:\n{project_context}\n\n{base_merge_instructions}"
+        if project_context else base_merge_instructions
     )
 
     async def merge_one(group: dict) -> dict:

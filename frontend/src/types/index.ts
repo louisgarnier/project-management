@@ -8,6 +8,7 @@ export interface Project {
   name: string;
   description: string | null;
   default_llm: LLMProvider;
+  context: string | null;
   created_at: string;
 }
 

@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 
 from backend.database.supabase_client import get_client
 from backend.routers.artifact_types import seed_defaults
@@ -17,7 +17,8 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
-    default_llm: Literal["groq", "claude", "openai"]
+    default_llm: Optional[Literal["groq", "claude", "openai"]] = None
+    context: Optional[str] = None
 
 
 @router.get("")
@@ -54,10 +55,13 @@ def get_project(project_id: str):
 def update_project(project_id: str, payload: ProjectUpdate):
     client = get_client()
     db_logger.info(f"🗄️ [DB] Updating project: {project_id}")
+    update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=422, detail="No fields to update")
     try:
         result = (
             client.table("projects")
-            .update(payload.model_dump())
+            .update(update_data)
             .eq("id", project_id)
             .execute()
         )

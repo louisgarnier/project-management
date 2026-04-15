@@ -53,7 +53,7 @@ export const projectsAPI = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  update: (id: string, data: { default_llm: LLMProvider }) =>
+  update: (id: string, data: { default_llm?: LLMProvider; context?: string }) =>
     proxyFetch<Project>(`/api/projects/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),

@@ -157,6 +157,14 @@ async def stream_artifacts(call_id: str):
     transcript = call_result.data[0].get("transcript") or ""
     project_id = call_result.data[0].get("project_id", "")
 
+    # Load project context (best-effort)
+    project_context = ""
+    try:
+        proj_row = supabase.table("projects").select("context").eq("id", project_id).execute().data
+        project_context = (proj_row[0].get("context") or "").strip() if proj_row else ""
+    except Exception:
+        project_context = ""
+
     # Fetch topics for this call to inject as context (best-effort)
     call_topics = None
     try:
@@ -240,7 +248,11 @@ async def stream_artifacts(call_id: str):
                 full_context = transcript
                 if scope == "project" and project_topics_context:
                     full_context = f"{transcript}\n\n{project_topics_context}"
-                content = await generate_artifact(prompt_used, full_context, artifact["mode"], topics=call_topics)
+                effective_prompt = (
+                    f"Project context:\n{project_context}\n\n{prompt_used}"
+                    if project_context else prompt_used
+                )
+                content = await generate_artifact(effective_prompt, full_context, artifact["mode"], topics=call_topics)
                 supabase.table("artifacts").update(
                     {"status": "done", "content": content}
                 ).eq("id", artifact_id).execute()
