@@ -51,7 +51,7 @@ export default function BoardPage() {
 
   async function handleDelete(callId: string) {
     await callsAPI.delete(callId);
-    setCalls((prev) => prev.filter((c) => c.id !== callId));
+    await loadCalls();
   }
 
   return (
