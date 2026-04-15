@@ -298,7 +298,7 @@ export default function CallDetailPage() {
             </button>
           </div>
         </div>
-        <CallTopicsHistoricalView callId={callId} />
+        <CallTopicsHistoricalView callId={callId} call={call} />
         {renderRollbackModal()}
       </div>
     );

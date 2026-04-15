@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { TopicData } from "@/types";
+import type { Call, TopicData } from "@/types";
 
 type Props = {
   callId: string;
+  call?: Call;
 };
 
 const STATUS_BADGE: Record<string, React.CSSProperties> = {
@@ -19,7 +20,7 @@ const SENTIMENT_COLOR: Record<string, string> = {
   positive: "#216e4e", neutral: "#5e6c84", concern: "#ae2a19",
 };
 
-export default function CallTopicsHistoricalView({ callId }: Props) {
+export default function CallTopicsHistoricalView({ callId, call }: Props) {
   const [topics, setTopics] = useState<TopicData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +28,13 @@ export default function CallTopicsHistoricalView({ callId }: Props) {
   useEffect(() => {
     topicsAPI.listForCall(callId)
       .then((data) => {
-        setTopics(data);
+        if (data.length > 0) {
+          setTopics(data);
+        } else {
+          // Fallback: use pending_topics or extraction_cache from the call object
+          const fallback = call?.pending_topics ?? call?.extraction_cache ?? [];
+          setTopics(fallback);
+        }
         logger.info("[CallTopicsHistoricalView] Loaded", {
           component: "CallTopicsHistoricalView",
           data: { count: data.length },
