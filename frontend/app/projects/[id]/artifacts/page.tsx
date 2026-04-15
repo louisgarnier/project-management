@@ -90,7 +90,7 @@ export default function ArtifactsPage() {
     }
   }
 
-  async function handleUpdate(typeId: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null }) {
+  async function handleUpdate(typeId: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null; is_default?: boolean }) {
     const updated = await artifactTypesAPI.update(projectId, typeId, data);
     setTypes((prev) => prev.map((t) => (t.id === typeId ? updated : t)));
   }
@@ -200,6 +200,7 @@ export default function ArtifactsPage() {
                       onDelete={() => {}}
                       onUpdate={handleUpdate}
                       hideDelete
+                      hideDefaultToggle
                     />
                   ))}
                 </div>

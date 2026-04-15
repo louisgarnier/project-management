@@ -18,11 +18,12 @@ type Props = {
   type: ArtifactType;
   projectDefaultLlm: LLMProvider;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null; context_scope?: ContextScope }) => Promise<void>;
+  onUpdate: (id: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null; context_scope?: ContextScope; is_default?: boolean }) => Promise<void>;
   hideDelete?: boolean;
+  hideDefaultToggle?: boolean;
 };
 
-export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, onUpdate, hideDelete }: Props) {
+export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, onUpdate, hideDelete, hideDefaultToggle }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(type.name);
@@ -62,16 +63,20 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
       {/* Header row */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span
-            className="text-[9px] font-bold px-[5px] py-[1px] rounded uppercase tracking-[.04em] flex-shrink-0"
-            style={
-              type.is_default
-                ? { background: "#e9f0ff", color: "#0052cc" }
-                : { background: "#f3f0ff", color: "#5243aa" }
-            }
-          >
-            {type.is_default ? "Default" : "Artifacts"}
-          </span>
+          {!hideDefaultToggle && (
+            <button
+              title={type.is_default ? "Included in new projects — click to remove" : "Not included in new projects — click to add"}
+              onClick={() => onUpdate(type.id, { is_default: !type.is_default })}
+              className="flex-shrink-0 flex items-center gap-1 text-[9px] font-bold px-[5px] py-[1px] rounded uppercase tracking-[.04em] transition-colors"
+              style={
+                type.is_default
+                  ? { background: "#e9f0ff", color: "#0052cc", border: "1px solid #b3c6e8" }
+                  : { background: "#f4f5f7", color: "#97a0af", border: "1px solid #dfe1e6" }
+              }
+            >
+              {type.is_default ? "✓ Default" : "+ Default"}
+            </button>
+          )}
           {editing ? (
             <input
               value={name}

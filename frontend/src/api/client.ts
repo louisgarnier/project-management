@@ -191,7 +191,7 @@ export const artifactTypesAPI = {
   update: (
     projectId: string,
     typeId: string,
-    data: { name?: string; prompt?: string; llm?: LLMProvider | null; context_scope?: ContextScope }
+    data: { name?: string; prompt?: string; llm?: LLMProvider | null; context_scope?: ContextScope; is_default?: boolean }
   ) =>
     proxyFetch<ArtifactType>(`/api/projects/${projectId}/artifact-types/${typeId}`, {
       method: "PATCH",

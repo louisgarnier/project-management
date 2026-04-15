@@ -110,13 +110,44 @@ DEFAULT_PROJECT_TOPICS_PROMPT = {
 
 
 def seed_defaults(project_id: str) -> None:
-    """Insert 6 default artifact types + 2 workflow prompts for a newly created project."""
+    """Insert artifact types + 2 workflow prompts for a newly created project.
+
+    Artifact types are sourced from the global pool: all artifact_types with
+    is_default=True and category='artifacts' across all projects, deduplicated
+    by name (most recently created wins). Falls back to hardcoded DEFAULT_ARTIFACT_TYPES
+    if no defaults exist yet (first project ever).
+    """
     client = get_client()
-    artifact_rows = [{"project_id": project_id, "category": "artifacts", **t} for t in DEFAULT_ARTIFACT_TYPES]
+
+    # Build artifact rows from global defaults pool
+    existing_defaults = (
+        client.table("artifact_types")
+        .select("name, prompt, llm, context_scope")
+        .eq("is_default", True)
+        .eq("category", "artifacts")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    seen_names: set[str] = set()
+    deduped: list[dict] = []
+    for row in existing_defaults:
+        key = row["name"].lower().strip()
+        if key not in seen_names:
+            seen_names.add(key)
+            deduped.append(row)
+
+    if deduped:
+        artifact_rows = [{"project_id": project_id, "category": "artifacts", "is_default": True, **r} for r in deduped]
+    else:
+        # First project ever — seed from hardcoded defaults
+        artifact_rows = [{"project_id": project_id, "category": "artifacts", **t} for t in DEFAULT_ARTIFACT_TYPES]
+
     client.table("artifact_types").insert(artifact_rows).execute()
     client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_CALL_TOPICS_PROMPT}).execute()
     client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_PROJECT_TOPICS_PROMPT}).execute()
-    db_logger.info(f"✅ [DB] Seeded 6 artifact types + 2 workflow prompts for project: {project_id}")
+    db_logger.info(f"✅ [DB] Seeded {len(artifact_rows)} artifact types + 2 workflow prompts for project: {project_id}")
 
 
 class ArtifactTypeCreate(BaseModel):
@@ -131,6 +162,7 @@ class ArtifactTypeUpdate(BaseModel):
     prompt: str | None = Field(default=None, min_length=1)
     llm: Literal["groq", "deepseek", "claude", "openai"] | None = Field(default=None)
     context_scope: Literal["call", "project"] | None = Field(default=None)
+    is_default: bool | None = Field(default=None)
 
 
 class ArtifactTypeImport(BaseModel):
