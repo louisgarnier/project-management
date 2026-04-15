@@ -6,7 +6,7 @@ from backend.services.topics_service import (
     list_project_topics, list_call_topics, extract_call_topics, aggregate_topics,
     get_pending_topics, save_match_groups, run_merge_preview, validate_project_updates,
     run_extraction_background, run_merge_background, list_topics_timeline,
-    list_topics_prior_to_call,
+    list_topics_prior_to_call, rollback_to_stage,
     TopicUpdate,
 )
 from backend.utils.logger import get_logger
@@ -88,18 +88,37 @@ async def save(call_id: str, topics: list[TopicUpdate]):
         logger.exception(f"❌ [Topics] Save failed: {e}")
         raise HTTPException(status_code=500, detail="Topic save failed")
 
-    # When saving topics on a done call, mark artifacts as stale (non-blocking)
+    # When saving topics on a done call:
+    # 1. Mark this call's artifacts stale
+    # 2. Roll back all later calls to call_topics (their project matching/updates are now stale)
     try:
         db = get_client()
-        call_row = db.table("calls").select("kanban_stage").eq("id", call_id).execute().data
+        call_row = db.table("calls").select("kanban_stage, project_id, created_at").eq("id", call_id).execute().data
         if call_row and call_row[0]["kanban_stage"] == "done":
+            # Mark this call's artifacts stale
             artifacts = db.table("artifacts").select("id").eq("call_id", call_id).execute().data
             artifact_ids = [a["id"] for a in artifacts]
             if artifact_ids:
                 db.table("artifacts").update({"status": "stale"}).in_("id", artifact_ids).execute()
-                logger.info(f"⚠️ [Topics] Marked {len(artifact_ids)} artifacts stale after topic save: {call_id}")
+                logger.info(f"⚠️ [Topics] Marked {len(artifact_ids)} artifacts stale: {call_id}")
+
+            # Roll back all later calls to call_topics
+            project_id = call_row[0]["project_id"]
+            created_at = call_row[0]["created_at"]
+            later_calls = (
+                db.table("calls")
+                .select("id")
+                .eq("project_id", project_id)
+                .gt("created_at", created_at)
+                .order("created_at")
+                .execute()
+                .data
+            )
+            for lc in later_calls:
+                rollback_to_stage(lc["id"], "call_topics")
+                logger.info(f"⚠️ [Topics] Rolled back later call {lc['id']} to call_topics after topic edit on {call_id}")
     except Exception as stale_err:
-        logger.warning(f"⚠️ [Topics] Could not mark artifacts stale (non-fatal): {stale_err}")
+        logger.warning(f"⚠️ [Topics] Post-save cascade failed (non-fatal): {stale_err}")
 
     return result
 
