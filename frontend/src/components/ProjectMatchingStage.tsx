@@ -56,7 +56,7 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
 
   useEffect(() => {
     Promise.all([
-      topicsAPI.listForProject(projectId),
+      topicsAPI.priorToCall(projectId, callId),
       topicsAPI.getPending(callId),
       topicsAPI.getMatchGroups(callId),
     ]).then(([proj, pending, savedGroups]) => {

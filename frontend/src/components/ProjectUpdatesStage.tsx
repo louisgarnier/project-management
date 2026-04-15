@@ -192,7 +192,7 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
     Promise.all([
       topicsAPI.getMatchGroups(callId),
       topicsAPI.getPending(callId),
-      topicsAPI.listForProject(projectId),
+      topicsAPI.priorToCall(projectId, callId),
     ]).then(([groups, pending, projectTopics]) => {
       const pendingByName = new Map(pending.map((t: TopicData) => [t.name.toLowerCase().trim(), t]));
       const projectById = new Map(projectTopics.map((t: TopicData) => [t.topic_id ?? "", t]));

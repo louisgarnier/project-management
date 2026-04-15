@@ -59,7 +59,33 @@ def delete_call(call_id: str):
     client = get_client()
     db_logger.info(f"🗄️ [DB] Deleting call: {call_id}")
 
-    # 1. Record which topics had updates for this call before cascade-delete removes them
+    # 0. Get project_id and created_at before deleting
+    call_row = client.table("calls").select("project_id, created_at").eq("id", call_id).execute().data
+    if not call_row:
+        raise HTTPException(status_code=404, detail="Call not found")
+    project_id = call_row[0]["project_id"]
+    created_at = call_row[0]["created_at"]
+
+    # 1a. Find all following calls (same project, created after this one) and roll them back
+    #     to call_topics so their transcripts/extracted topics are preserved but all
+    #     project-level data (matching, updates, artifacts) is cleared.
+    following_calls = (
+        client.table("calls")
+        .select("id")
+        .eq("project_id", project_id)
+        .gt("created_at", created_at)
+        .order("created_at")
+        .execute()
+        .data
+    )
+    for fc in following_calls:
+        try:
+            rollback_to_stage(fc["id"], "call_topics")
+            db_logger.info(f"🗄️ [DB] Cascade-rolled back following call to call_topics: {fc['id']}")
+        except Exception as e:
+            db_logger.warning(f"⚠️ [DB] Could not cascade-rollback call {fc['id']}: {e}")
+
+    # 1b. Record which topics had updates for this call before cascade-delete removes them
     updates_before = (
         client.table("topic_updates")
         .select("topic_id")
