@@ -911,23 +911,11 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         _clear_merge_fields()
 
     elif target_stage == "call_topics":
-        # Keep extraction_cache/pending_topics — that IS the call_topics content.
-        # Clear everything after: match_groups, topic_updates, merge, artifacts.
-        _delete_topic_updates()
+        # Keep topic_updates — these are the confirmed call topics and must remain visible.
+        # Clear everything after: match_groups, merge, artifacts.
         _mark_artifacts_stale()
         _delete_match_groups()
         _clear_merge_fields()
-        # aggregate_topics clears extraction_cache when advancing to project_matching.
-        # Restore it from pending_topics so the topics are visible on return.
-        call_data = db.table("calls").select("extraction_cache, pending_topics").eq("id", call_id).execute().data
-        if call_data:
-            row = call_data[0]
-            if not row.get("extraction_cache") and row.get("pending_topics"):
-                db.table("calls").update({
-                    "extraction_cache": row["pending_topics"],
-                    "extraction_status": "done",
-                }).eq("id", call_id).execute()
-                logger.info(f"🗄️ [Rollback] Restored extraction_cache from pending_topics for call {call_id}")
 
     elif target_stage == "transcript":
         # Keep transcript — that IS the transcript content.
