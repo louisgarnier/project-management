@@ -1125,17 +1125,23 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
         db = get_client()
 
     COMPLETED_STAGES = ("call_topics", "project_matching", "project_updates", "artifacts", "done")
-    all_calls = (
+    raw_calls = (
         db.table("calls")
-        .select("id, title, call_number, kanban_stage")
+        .select("id, title, kanban_stage, created_at")
         .eq("project_id", project_id)
         .in_("kanban_stage", list(COMPLETED_STAGES))
-        .order("call_number")
+        .order("created_at")
         .execute()
         .data
     )
-    if not all_calls:
+    if not raw_calls:
         return {"calls": [], "topics": []}
+
+    # call_number is not a DB column — assign it from chronological position
+    all_calls = [
+        {**c, "call_number": i + 1}
+        for i, c in enumerate(raw_calls)
+    ]
 
     call_ids = [c["id"] for c in all_calls]
     call_order = {c["id"]: i for i, c in enumerate(all_calls)}
