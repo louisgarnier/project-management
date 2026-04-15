@@ -62,7 +62,7 @@ export default function ProjectMatchingHistoricalView({ callId, projectId }: Pro
       setMatchGroups(groups);
       logger.info("[ProjectMatchingHistoricalView] Loaded match data", {
         component: "ProjectMatchingHistoricalView",
-        data: { projectTopics: proj.length, callTopics: pending.length, groups: groups.length },
+        data: { projectTopics: proj.length, callTopics: callTopicsData.length, groups: groups.length },
       });
     }).catch((err) => {
       logger.error("[ProjectMatchingHistoricalView] Failed to load", { component: "ProjectMatchingHistoricalView", data: err });
