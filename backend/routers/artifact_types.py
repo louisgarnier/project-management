@@ -76,15 +76,17 @@ DEFAULT_ARTIFACT_TYPES: list[dict] = [
 DEFAULT_CALL_TOPICS_PROMPT = {
     "name": "Call Topics Extraction",
     "prompt": (
-        "You are an expert at extracting business topics from client call transcripts.\n\n"
-        "Extract all key business topics discussed. For each topic return a JSON object matching:\n"
-        '{"name":"string","summary":"string","follow_up_items":["string"],'
-        '"decisions":["string"],"status":"open|in_progress|resolved",'
-        '"owner":"Us|Client|Both","sentiment":"positive|neutral|concern"}\n\n'
-        "Focus on: decisions made, open questions, action items, relationship dynamics, "
-        "technical blockers.\n"
-        'Be specific — "Pricing" not "Discussion", '
-        '"API Integration Timeline" not "Technical".'
+        "You are an expert at analysing business call transcripts. Extract every distinct topic discussed — "
+        "be exhaustive, do not merge separate topics into one.\n\n"
+        "For each topic:\n"
+        "- name: short label (3–6 words)\n"
+        "- summary: 1–2 sentence recap of what was said\n"
+        "- follow_up_items: concrete next steps or open questions (empty array if none)\n"
+        "- decisions: anything explicitly agreed or decided (empty array if none)\n"
+        "- status: open (unresolved), in_progress (being worked on), resolved (closed/agreed)\n"
+        "- owner: Us (our team owns it), Client (client owns it), Both (shared)\n"
+        "- sentiment: positive (good news/progress), neutral (informational), concern (risk/problem/blocker)\n\n"
+        "Return ONLY a JSON array. No markdown, no explanation."
     ),
     "is_default": True,
     "category": "call_topics",
