@@ -132,7 +132,7 @@ export default function KanbanBoard({ calls, onNewCall, onDeleteCall }: Props) {
               </span>
               <button
                 onClick={() => {
-                  if (confirm(`Delete "${call.title}"? This will also delete its transcript, artifacts, and files.`)) {
+                  if (confirm(`Delete "${call.title}"? This call will be permanently deleted. Any later calls in this project will be rolled back to their Call Topics stage — their transcripts and extracted topics are preserved, but project matching, updates, and artifacts will need to be redone.`)) {
                     onDeleteCall(call.id);
                   }
                 }}
