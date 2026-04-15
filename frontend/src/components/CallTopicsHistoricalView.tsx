@@ -25,7 +25,7 @@ export default function CallTopicsHistoricalView({ callId }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    topicsAPI.getPending(callId)
+    topicsAPI.listForCall(callId)
       .then((data) => {
         setTopics(data);
         logger.info("[CallTopicsHistoricalView] Loaded", {
