@@ -1175,14 +1175,20 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
             updates_index[tid] = {}
         updates_index[tid][cid] = u
 
-    latest_rows = (
-        db.table("topics")
-        .select("id, status, owner, sentiment")
-        .in_("id", topic_ids)
+    # status/owner/sentiment live on topic_updates (not topics — dropped in migration 002)
+    latest_updates = (
+        db.table("topic_updates")
+        .select("topic_id, status, owner, sentiment, created_at")
+        .in_("topic_id", topic_ids)
+        .order("created_at", desc=True)
         .execute()
         .data
     ) if topic_ids else []
-    latest_state = {r["id"]: r for r in latest_rows}
+    latest_state: dict = {}
+    for u in latest_updates:
+        tid = u["topic_id"]
+        if tid not in latest_state:  # first = most recent
+            latest_state[tid] = u
 
     result_topics = []
     for t in topics:
