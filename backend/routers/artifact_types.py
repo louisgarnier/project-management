@@ -231,6 +231,15 @@ def update_artifact_type(project_id: str, type_id: str, payload: ArtifactTypeUpd
     except Exception as e:
         db_logger.error(f"❌ [DB] Failed to update artifact type {type_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    # If is_default is being toggled, cascade to all artifact types with the same name
+    # so the default state is global (consistent across all projects)
+    if "is_default" in update and result.data:
+        artifact_name = result.data[0].get("name", "")
+        if artifact_name:
+            client.table("artifact_types").update({"is_default": update["is_default"]}).ilike("name", artifact_name).eq("category", "artifacts").neq("id", type_id).execute()
+            db_logger.info(f"🗄️ [DB] Cascaded is_default={update['is_default']} to all '{artifact_name}' artifact types")
+
     db_logger.info(f"✅ [DB] Updated artifact type: {type_id}")
     return result.data[0]
 
