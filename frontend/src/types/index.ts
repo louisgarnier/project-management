@@ -141,7 +141,7 @@ export interface CallFile {
 // ── EPIC-8: Topics Timeline ───────────────────────────────────────────────
 
 export interface TimelineCell {
-  type: "new" | "followed_up" | "not_discussed";
+  type: "new" | "followed_up" | "not_discussed" | "pending";
   summary?: string;
   follow_up_items?: string[];
   decisions?: string[];

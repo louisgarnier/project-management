@@ -44,6 +44,30 @@ function Cell({ cell }: { cell: TimelineCell | undefined }) {
     );
   }
 
+  if (cell.type === "pending") {
+    return (
+      <td style={{ width: 180, minWidth: 180, borderRight: "1px solid #f0f1f3",
+        verticalAlign: "top", padding: "6px 8px" }}>
+        <div style={{
+          border: "1.5px dashed #c0c8d8",
+          borderRadius: 5,
+          padding: "7px 9px",
+          background: "#fafbfc",
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#97a0af",
+            textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>
+            Extracted
+          </div>
+          {cell.summary && (
+            <div style={{ fontSize: 11, color: "#5e6c84", lineHeight: 1.4 }}>
+              {cell.summary}
+            </div>
+          )}
+        </div>
+      </td>
+    );
+  }
+
   const isNew = cell.type === "new";
   const isResolved = cell.status === "resolved";
 
