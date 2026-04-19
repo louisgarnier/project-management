@@ -1137,7 +1137,7 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
           "first_raised_call_id",
           "call_updates": {
             "<call_id>": {
-              "type": "new" | "followed_up" | "not_discussed",
+              "type": "new" | "followed_up" | "not_discussed" | "pending",
               "summary": str,
               "follow_up_items": [...],
               "decisions": [...],
@@ -1153,6 +1153,7 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
       - call before first_raised_call → absent (key not present)
       - call has a topic_update row  → "new" (first call) or "followed_up"
       - call >= first_raised and no row → "not_discussed"
+      - call has no topic_updates and has extraction_cache/pending_topics → "pending" (synthetic row)
     """
     if db is None:
         db = get_client()

@@ -574,7 +574,8 @@ class TestTopicsTimeline(unittest.TestCase):
 
     @patch("backend.services.topics_service.get_client")
     def test_timeline_calls_exist_no_topics(self, mock_gc):
-        """When calls exist but project has no topics, returns calls list with empty topics."""
+        """When calls exist but project has no topics and no extraction_cache,
+        returns calls list with empty topics."""
         from backend.services.topics_service import list_topics_timeline
         db = MagicMock()
 
@@ -585,12 +586,18 @@ class TestTopicsTimeline(unittest.TestCase):
         def table_side_effect(name):
             m = MagicMock()
             if name == "calls":
+                # First query: list calls for project
                 m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+                # Second query: fetch pending_topics/extraction_cache for calls without updates
+                m.select.return_value.in_.return_value.execute.return_value.data = [
+                    {"id": "c1", "pending_topics": None, "extraction_cache": None}
+                ]
             elif name == "topics":
                 m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
                 m.select.return_value.in_.return_value.execute.return_value.data = []
             elif name == "topic_updates":
                 m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = []
+                m.select.return_value.in_.return_value.order.return_value.execute.return_value.data = []
             return m
         db.table.side_effect = table_side_effect
 
