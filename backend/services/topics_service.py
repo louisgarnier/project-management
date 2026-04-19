@@ -1189,8 +1189,8 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
     )
     if not topics:
         topic_ids = []
-
-    topic_ids = [t["id"] for t in topics]
+    else:
+        topic_ids = [t["id"] for t in topics]
 
     updates = (
         db.table("topic_updates")

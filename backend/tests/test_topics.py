@@ -669,3 +669,28 @@ class TestTopicsTimeline(unittest.TestCase):
         summaries = {t["name"]: t["call_updates"]["c1"]["summary"] for t in result["topics"]}
         self.assertEqual(summaries["Pricing"], "Client prefers monthly billing.")
         self.assertEqual(summaries["Timeline"], "Q3 deadline confirmed.")
+
+        # call_updates must have exactly one key (no not_discussed for other calls)
+        for topic in result["topics"]:
+            self.assertEqual(len(topic["call_updates"]), 1, "pending row must have exactly one call_updates entry")
+
+        # Verify field mapping for Pricing topic
+        pricing = next(t for t in result["topics"] if t["name"] == "Pricing")
+        self.assertEqual(pricing["first_raised_call_id"], "c1")
+        self.assertEqual(pricing["status"], "open")
+        self.assertEqual(pricing["owner"], "Client")
+        self.assertEqual(pricing["sentiment"], "concern")
+        pricing_cell = pricing["call_updates"]["c1"]
+        self.assertEqual(pricing_cell["type"], "pending")
+        self.assertEqual(pricing_cell["owner"], "Client")
+        self.assertEqual(pricing_cell["sentiment"], "concern")
+        self.assertEqual(pricing_cell["follow_up_items"], ["Send breakdown"])
+        self.assertEqual(pricing_cell["decisions"], [])
+
+        # Verify field mapping for Timeline topic
+        timeline = next(t for t in result["topics"] if t["name"] == "Timeline")
+        self.assertEqual(timeline["first_raised_call_id"], "c1")
+        timeline_cell = timeline["call_updates"]["c1"]
+        self.assertEqual(timeline_cell["type"], "pending")
+        self.assertEqual(timeline_cell["decisions"], ["Q3 deadline"])
+        self.assertEqual(timeline_cell["follow_up_items"], [])
