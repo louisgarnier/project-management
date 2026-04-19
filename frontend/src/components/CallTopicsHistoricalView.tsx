@@ -91,7 +91,7 @@ export default function CallTopicsHistoricalView({ callId, call }: Props) {
           </div>
         ) : (
           topics.map((t, i) => (
-            <div key={t.name ?? i} style={{
+            <div key={(t as { topic_id?: string }).topic_id ?? i} style={{
               borderBottom: "1px solid #f0f1f3",
               paddingLeft: 20, paddingRight: 20, paddingTop: 10, paddingBottom: 10,
               borderLeft: "3px solid transparent", background: "white",

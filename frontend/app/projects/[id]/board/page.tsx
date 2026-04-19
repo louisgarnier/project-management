@@ -18,6 +18,7 @@ export default function BoardPage() {
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [activeTab, setActiveTab] = useState<"kanban" | "topics">("kanban");
+  const [topicsRefreshKey, setTopicsRefreshKey] = useState(0);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -44,6 +45,16 @@ export default function BoardPage() {
     loadCalls();
   }, [loadCalls]);
 
+  // Refresh both calls and topics when the user returns to this tab from a call detail page
+  useEffect(() => {
+    function handleFocus() {
+      loadCalls();
+      setTopicsRefreshKey((k) => k + 1);
+    }
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [loadCalls]);
+
   async function handleCreate(title: string) {
     await callsAPI.create(projectId, { title });
     await loadCalls();
@@ -52,6 +63,7 @@ export default function BoardPage() {
   async function handleDelete(callId: string) {
     await callsAPI.delete(callId);
     await loadCalls();
+    setTopicsRefreshKey((k) => k + 1);
   }
 
   return (
@@ -87,7 +99,7 @@ export default function BoardPage() {
 
       {/* Content */}
       {activeTab === "topics" ? (
-        <TopicsTimeline projectId={projectId} />
+        <TopicsTimeline projectId={projectId} refreshKey={topicsRefreshKey} />
       ) : loading ? (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-[13px] text-[#5e6c84]">Loading…</p>

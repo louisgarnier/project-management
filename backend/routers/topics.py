@@ -116,9 +116,8 @@ async def save(call_id: str, topics: list[TopicUpdate]):
                 .data
             )
             for lc in later_calls:
-                if _STAGE_ORDER.index(lc["kanban_stage"]) > _STAGE_ORDER.index("call_topics"):
-                    rollback_to_stage(lc["id"], "call_topics")
-                    logger.info(f"⚠️ [Topics] Rolled back later call {lc['id']} to call_topics after topic edit on {call_id}")
+                rollback_to_stage(lc["id"], "call_topics")
+                logger.info(f"⚠️ [Topics] Rolled back later call {lc['id']} to call_topics after topic edit on {call_id}")
     except Exception as stale_err:
         logger.warning(f"⚠️ [Topics] Post-save cascade failed (non-fatal): {stale_err}")
 

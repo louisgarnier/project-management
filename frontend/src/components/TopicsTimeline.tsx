@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { topicsAPI } from "@/api/client";
 import type { TopicsTimelineData, TimelineCell, TopicStatus, TopicSentiment } from "@/types";
 
-type Props = { projectId: string };
+type Props = { projectId: string; refreshKey?: number };
 
 // ── Style constants ───────────────────────────────────────────────────────
 
@@ -123,7 +123,7 @@ function Cell({ cell }: { cell: TimelineCell | undefined }) {
 
 // ── Main component ────────────────────────────────────────────────────────
 
-export default function TopicsTimeline({ projectId }: Props) {
+export default function TopicsTimeline({ projectId, refreshKey }: Props) {
   const [data, setData] = useState<TopicsTimelineData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +141,7 @@ export default function TopicsTimeline({ projectId }: Props) {
     }
   }, [projectId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
   if (loading) return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>

@@ -592,3 +592,75 @@ class TestTopicsTimeline(unittest.TestCase):
         result = list_topics_timeline("proj-1", db)
         self.assertEqual(len(result["calls"]), 1)
         self.assertEqual(result["topics"], [])
+
+    @patch("backend.services.topics_service.get_client")
+    def test_timeline_includes_pending_rows_for_calls_without_topic_updates(self, mock_gc):
+        """Calls at call_topics stage with extraction_cache but no topic_updates
+        appear in the timeline as pending rows with type='pending'."""
+        from backend.services.topics_service import list_topics_timeline
+        db = MagicMock()
+
+        calls = [
+            {"id": "c1", "title": "Kickoff", "call_number": 1, "kanban_stage": "call_topics"},
+        ]
+        extraction_cache = [
+            {
+                "name": "Pricing",
+                "summary": "Client prefers monthly billing.",
+                "follow_up_items": ["Send breakdown"],
+                "decisions": [],
+                "status": "open",
+                "owner": "Client",
+                "sentiment": "concern",
+            },
+            {
+                "name": "Timeline",
+                "summary": "Q3 deadline confirmed.",
+                "follow_up_items": [],
+                "decisions": ["Q3 deadline"],
+                "status": "open",
+                "owner": "Us",
+                "sentiment": "neutral",
+            },
+        ]
+
+        def table_side_effect(name):
+            m = MagicMock()
+            if name == "calls":
+                # First query: list calls for project (with .in_ for kanban stages + .order)
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+                # Second query: fetch pending_topics/extraction_cache for calls without updates
+                m.select.return_value.in_.return_value.execute.return_value.data = [
+                    {"id": "c1", "pending_topics": None, "extraction_cache": extraction_cache}
+                ]
+            elif name == "topics":
+                # No committed topics
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+                m.select.return_value.in_.return_value.execute.return_value.data = []
+            elif name == "topic_updates":
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = []
+                m.select.return_value.in_.return_value.order.return_value.execute.return_value.data = []
+            return m
+        db.table.side_effect = table_side_effect
+
+        result = list_topics_timeline("proj-1", db)
+
+        # Should have 2 pending topic rows
+        self.assertEqual(len(result["topics"]), 2)
+
+        # All topic_ids should start with "pending:"
+        for topic in result["topics"]:
+            self.assertTrue(
+                topic["topic_id"].startswith("pending:"),
+                f"Expected topic_id to start with 'pending:', got {topic['topic_id']}"
+            )
+
+        # Each should have a call_updates entry for c1 with type="pending"
+        for topic in result["topics"]:
+            self.assertIn("c1", topic["call_updates"])
+            self.assertEqual(topic["call_updates"]["c1"]["type"], "pending")
+
+        # Summaries should be preserved from extraction_cache
+        summaries = {t["name"]: t["call_updates"]["c1"]["summary"] for t in result["topics"]}
+        self.assertEqual(summaries["Pricing"], "Client prefers monthly billing.")
+        self.assertEqual(summaries["Timeline"], "Q3 deadline confirmed.")

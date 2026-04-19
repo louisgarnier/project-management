@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api", tags=["calls"])
 
-STAGE_ORDER = ["transcript", "call_topics", "project_topics", "artifacts", "done"]
+STAGE_ORDER = ["transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"]
 
 
 class CallCreate(BaseModel):
@@ -201,7 +201,7 @@ def reset_transcript(call_id: str):
         raise HTTPException(status_code=404, detail="Call not found")
 
     current_stage = result.data[0]["kanban_stage"]
-    if current_stage not in ("artifacts", "project_topics", "transcript"):
+    if current_stage not in ("artifacts", "project_matching", "project_updates", "call_topics", "transcript"):
         raise HTTPException(
             status_code=409,
             detail=f"Transcript reset is only allowed from the artifacts or transcript stage (current: {current_stage})",
@@ -365,10 +365,8 @@ def rollback_call(call_id: str, payload: RollbackPayload):
             .execute()
             .data
         )
-        _STAGE_ORDER = ["transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"]
         for lc in later_calls:
-            if _STAGE_ORDER.index(lc["kanban_stage"]) > _STAGE_ORDER.index("call_topics"):
-                rollback_to_stage(lc["id"], "call_topics")
-                db_logger.info(f"🔄 [DB] Cascade-rolled back later call {lc['id']} to call_topics")
+            rollback_to_stage(lc["id"], "call_topics")
+            db_logger.info(f"🔄 [DB] Cascade-rolled back later call {lc['id']} to call_topics")
 
     return result
