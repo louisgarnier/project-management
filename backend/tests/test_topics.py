@@ -408,21 +408,26 @@ class TestAggregateTopics(unittest.TestCase):
         db = MagicMock()
         mock_gc.return_value = db
 
-        # call row — project_id lookup
-        db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            {"project_id": "proj-1"}
-        ]
+        def table_side_effect(table_name):
+            m = MagicMock()
+            if table_name == "calls":
+                m.select.return_value.eq.return_value.execute.return_value.data = [{"project_id": "proj-1"}]
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+                m.update.return_value.eq.return_value.execute.return_value.data = [{}]
+            elif table_name == "topic_updates":
+                m.select.return_value.eq.return_value.execute.return_value.data = []
+                m.delete.return_value.eq.return_value.execute.return_value.data = []
+            else:
+                m.select.return_value.eq.return_value.execute.return_value.data = []
+            return m
+        db.table.side_effect = table_side_effect
 
-        # _get_previous_topics: topics table returns empty
-        # done calls count: empty
-        # We use patch for _get_previous_topics and _get_topics_prompt to avoid complex chains
         async def fake_save(call_id, topics):
             return {"saved": len(topics)}
         mock_save.side_effect = fake_save
 
-        with patch("backend.services.topics_service._get_previous_topics", return_value=[]):
+        with patch("backend.services.topics_service.list_topics_prior_to_call", return_value=[]):
             with patch("backend.services.topics_service._get_topics_prompt", return_value=(None, "groq")):
-                # Make done-calls query return empty
                 call_topics = [{"name": "Budget", "summary": "Q2 budget", "follow_up_items": [],
                                 "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral"}]
                 result = self._run(aggregate_topics("call-1", call_topics))
@@ -459,7 +464,7 @@ class TestAggregateTopics(unittest.TestCase):
             {"name": "Timeline", "summary": "New topic", "follow_up_items": [],
              "decisions": [], "status": "open", "owner": "Client", "sentiment": "concern"},
         ]
-        with patch("backend.services.topics_service._get_previous_topics", return_value=[prev_topic]):
+        with patch("backend.services.topics_service.list_topics_prior_to_call", return_value=[prev_topic]):
             with patch("backend.services.topics_service._get_topics_prompt", return_value=(None, "groq")):
                 result = self._run(aggregate_topics("call-1", call_topics))
 
