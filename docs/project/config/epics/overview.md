@@ -12,6 +12,7 @@
 | EPIC-6 | Topics Stage | [ ] | 2 |
 | EPIC-7 | Two-Step Topic Extraction + New Stages | [ ] | 6 |
 | EPIC-8 | Topics Timeline Grid | [ ] | 2 |
+| EPIC-9 | M:N Topic Merge + Not-Discussed Verification | [ ] Next | 7 |
 
 ---
 

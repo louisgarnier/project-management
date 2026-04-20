@@ -1,8 +1,21 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Story:** EPIC-7 complete — all 6 stories done
-- **Next:** EPIC-8 (to be defined)
+- **Epic:** EPIC-9 — M:N Topic Merge + Not-Discussed Verification
+- **Story:** 9.1 — DB Migration: M:N Merge + Verification Schema
+- **Status:** `pending`
+- **Spec:** `docs/project/config/2026-04-20-epic-9-mn-merge-and-verification-design.md`
+
+### EPIC-9 Stories
+| # | Story | Status | Depends on |
+|---|---|---|---|
+| 9.1 | DB Migration: M:N Merge + Verification Schema | pending | — |
+| 9.2 | Transcript Excerpt Capture in Extraction | pending | 9.1 |
+| 9.3 | M:N ProjectMatchingStage UI | pending | 9.1 |
+| 9.4 | M:N Merge Pipeline + RAG Synthesis Backend | pending | 9.1, 9.2 |
+| 9.5 | Not-Discussed Verification Backend + UI | pending | 9.1 |
+| 9.6 | Timeline: Merged Cell Type + Archive Filter | pending | 9.4 |
+| 9.7 | Rollback Updates + Integration Testing | pending | 9.4, 9.5, 9.6 |
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
