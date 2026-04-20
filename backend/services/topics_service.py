@@ -483,6 +483,45 @@ async def run_merge_preview(call_id: str) -> list[dict]:
     previous = _get_previous_topics(project_id, db)
     prev_by_id = {t["topic_id"]: t for t in previous}
 
+    def _load_transcript_excerpts(topic_id: str) -> list[dict]:
+        """Load all transcript excerpts for a topic, ordered by call date.
+        Returns [{call_title, summary, transcript_excerpt}, ...]"""
+        rows = (
+            db.table("topic_updates")
+            .select("call_id, summary, transcript_excerpt")
+            .eq("topic_id", topic_id)
+            .order("created_at")
+            .execute()
+            .data
+        )
+        result = []
+        for r in rows:
+            if not r.get("transcript_excerpt") and not r.get("summary"):
+                continue
+            # Resolve call title for context
+            call_info = db.table("calls").select("title").eq("id", r["call_id"]).execute().data
+            call_title = call_info[0]["title"] if call_info else r["call_id"]
+            result.append({
+                "call": call_title,
+                "summary": r.get("summary", ""),
+                "transcript_excerpt": r.get("transcript_excerpt"),
+            })
+        return result
+
+    def _build_excerpt_context(topic_name: str, topic_id: str) -> str:
+        """Build a RAG-style context block with all historical excerpts for a topic."""
+        excerpts = _load_transcript_excerpts(topic_id)
+        if not excerpts:
+            return f'== Topic: "{topic_name}" ==\n(No historical excerpts available)\n'
+        lines = [f'== Topic: "{topic_name}" ==']
+        for e in excerpts:
+            lines.append(f'\n--- {e["call"]} ---')
+            if e.get("transcript_excerpt"):
+                lines.append(f'Transcript: {e["transcript_excerpt"]}')
+            if e.get("summary"):
+                lines.append(f'Summary: {e["summary"]}')
+        return "\n".join(lines)
+
     # Get LLM config
     stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="project_topics")
     proj_rows = db.table("projects").select("default_llm, context").eq("id", project_id).execute().data
@@ -520,12 +559,32 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 return []
             if len(call_matches) == 1:
                 return [{**call_matches[0], "topic_id": None}]
-            # Multiple call topics grouped as new → return each as separate new entry
-            # (M:N merge with LLM-proposed name will be added in Story 9.4)
-            return [{**m, "topic_id": None} for m in call_matches]
+            # Multiple call topics grouped as new → LLM merge into one with proposed name
+            try:
+                call_excerpts = "\n\n".join(
+                    f'Topic: "{m.get("name", "")}"\n'
+                    f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
+                    f'Summary: {m.get("summary", "")}'
+                    for m in call_matches
+                )
+                prompt = (
+                    f"{merge_instructions}\n\n"
+                    f"Multiple call topics need to be merged into ONE topic.\n"
+                    f"They were extracted separately but cover the same subject.\n"
+                    f"Propose a concise name that captures the combined scope.\n\n"
+                    f"Call topics to merge:\n{call_excerpts}\n\n"
+                    f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
+                )
+                merged = await _call_llm(prompt, llm)
+                if isinstance(merged, list):
+                    merged = merged[0] if merged else {}
+                return [{**merged, "topic_id": None}]
+            except Exception as e:
+                logger.error(f"❌ [Topics] New-topic merge failed: {e} — returning first topic")
+                return [{**call_matches[0], "topic_id": None}]
 
         if len(ptids) == 1:
-            # Standard 1:1 match — update existing topic
+            # Standard 1:1 match — update existing topic with RAG context
             ptid = ptids[0]
             existing = prev_by_id.get(ptid)
             if not existing:
@@ -535,12 +594,23 @@ async def run_merge_preview(call_id: str) -> list[dict]:
             if not call_matches:
                 return [{**existing, "topic_id": ptid}]
 
-            # Run LLM merge
+            # Build RAG context from historical transcript excerpts
+            excerpt_context = _build_excerpt_context(existing.get("name", ""), ptid)
+            call_excerpts = "\n\n".join(
+                f'New from this call: "{m.get("name", "")}"\n'
+                f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
+                f'Summary: {m.get("summary", "")}'
+                for m in call_matches
+            )
+
             try:
                 prompt = (
                     f"{merge_instructions}\n\n"
-                    f"Existing project topic:\n{json.dumps(existing, indent=2)}\n\n"
-                    f"New call topic(s) matching this:\n{json.dumps(call_matches, indent=2)}\n\n"
+                    f"Historical discussion (grounded in actual transcripts):\n{excerpt_context}\n\n"
+                    f"Current state:\n{json.dumps(existing, indent=2)}\n\n"
+                    f"New call topic(s) matching this:\n{call_excerpts}\n\n"
+                    f"Synthesize into an updated topic. Ground your summary in the transcript excerpts, "
+                    f"not just prior summaries.\n\n"
                     f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
                 )
                 merged = await _call_llm(prompt, llm)
@@ -552,20 +622,34 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 return [{**existing, "topic_id": ptid}]
 
         # M:N merge — multiple existing topics + call topics → one new topic
-        # (Full RAG synthesis with transcript excerpts will be added in Story 9.4)
         existing_topics = [prev_by_id[pid] for pid in ptids if pid in prev_by_id]
         all_inputs = existing_topics + call_matches
         if not all_inputs:
-            logger.warning(f"⚠️ [Topics] M:N group has no resolvable topics — skipping")
+            logger.warning("⚠️ [Topics] M:N group has no resolvable topics — skipping")
             return []
+
+        # Build RAG context for each source topic
+        excerpt_sections = "\n\n".join(
+            _build_excerpt_context(prev_by_id[pid].get("name", ""), pid)
+            for pid in ptids if pid in prev_by_id
+        )
+        call_excerpts = "\n\n".join(
+            f'New from this call: "{m.get("name", "")}"\n'
+            f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
+            f'Summary: {m.get("summary", "")}'
+            for m in call_matches
+        )
 
         try:
             prompt = (
                 f"{merge_instructions}\n\n"
                 f"You are merging multiple existing project topics into ONE new topic.\n"
                 f"Propose a concise name that captures the combined scope.\n\n"
-                f"Existing project topics:\n{json.dumps(existing_topics, indent=2)}\n\n"
-                f"New call topic(s):\n{json.dumps(call_matches, indent=2)}\n\n"
+                f"Historical discussions (grounded in actual transcripts):\n{excerpt_sections}\n\n"
+                f"Current state of existing topics:\n{json.dumps(existing_topics, indent=2)}\n\n"
+                f"New call topic(s):\n{call_excerpts}\n\n"
+                f"Synthesize everything into a single merged topic. Ground your summary in the "
+                f"transcript excerpts, not just prior summaries.\n\n"
                 f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
             )
             merged = await _call_llm(prompt, llm)

@@ -233,6 +233,13 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                   )}
                   {isMatched && (
                     <div style={{ fontSize: 10, color: groupColor(groupIndex(group!)).text, fontWeight: 600, marginTop: 4 }}>
+                      {group!.project_topic_ids.length > 1 && (
+                        <span>⊕ {group!.project_topic_ids
+                          .filter((pid) => pid !== (t.topic_id ?? ""))
+                          .map((pid) => projectTopics.find((p) => p.topic_id === pid)?.name)
+                          .filter(Boolean)
+                          .join(", ")} + </span>
+                      )}
                       ↔ {group!.call_topic_names.join(", ")}
                     </div>
                   )}
@@ -249,7 +256,7 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
           <button
             onClick={handleLink}
             disabled={selectedLeft.size === 0 || selectedRight.size === 0}
-            title="Link selected topics"
+            title={selectedLeft.size > 1 ? "Merge selected topics" : "Link selected topics"}
             style={{
               writingMode: "vertical-rl", textOrientation: "mixed",
               fontSize: 11, fontWeight: 700,
@@ -260,7 +267,7 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
               letterSpacing: ".04em", fontFamily: "inherit",
             }}
           >
-            Link ↔
+            {selectedLeft.size > 1 ? "Merge ↔" : "Link ↔"}
           </button>
           <button
             onClick={handleMarkNew}
