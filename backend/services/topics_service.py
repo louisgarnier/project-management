@@ -1185,6 +1185,46 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         except Exception as e:
             logger.warning(f"⚠️ [Rollback] Could not clear verification fields (non-fatal): {e}")
 
+    def _un_merge_topics() -> None:
+        """Reverse M:N merge: un-archive source topics, delete merged-into topics created at this call."""
+        # Find topics that were created by the merge in this call (first_raised_call_id = call_id)
+        merged_targets = (
+            db.table("topics")
+            .select("id")
+            .eq("first_raised_call_id", call_id)
+            .execute()
+            .data
+        )
+        if not merged_targets:
+            return
+
+        target_ids = [t["id"] for t in merged_targets]
+
+        # Find all archived topics that point to these targets
+        for tid in target_ids:
+            source_topics = (
+                db.table("topics")
+                .select("id")
+                .eq("merged_into_topic_id", tid)
+                .eq("archived", True)
+                .execute()
+                .data
+            )
+            for src in source_topics:
+                payload = json.dumps({"archived": False, "merged_into_topic_id": None})
+                db.postgrest.session.patch(
+                    f"/topics?id=eq.{src['id']}",
+                    content=payload,
+                    headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+                )
+                logger.info(f"🗄️ [Rollback] Un-archived source topic {src['id']} (was merged into {tid})")
+
+        # Delete topic_updates for merged targets, then delete the target topics themselves
+        for tid in target_ids:
+            db.table("topic_updates").delete().eq("topic_id", tid).execute()
+            db.table("topics").delete().eq("id", tid).execute()
+            logger.info(f"🗄️ [Rollback] Deleted merged-into topic {tid} and its updates")
+
     def _clear_transcript_fields() -> None:
         """Clear transcript and transcript_source via raw HTTP (None-safe)."""
         payload = json.dumps({
@@ -1245,14 +1285,18 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         # Keep merge_cache/merge_status — that IS the project_updates content.
         # Clear only what comes after: topic_updates (re-created on next save), artifacts.
         # Restore pending_topics first (needed if merge_cache is null, so merge preview can re-run).
+        # Un-merge BEFORE deleting topic_updates (needs to find merged-into topics).
+        _un_merge_topics()
         _rebuild_pending_topics()
         _delete_topic_updates()
         _mark_artifacts_stale()
+        _clear_verification_fields()
 
     elif target_stage == "project_matching":
         # Keep match_groups — that IS the project_matching content.
         # Restore pending_topics first (Call 1 auto-advance never sets it).
         # Clear everything after: topic_updates, merge, verification, artifacts.
+        _un_merge_topics()
         _rebuild_pending_topics()
         _delete_topic_updates()
         _mark_artifacts_stale()
@@ -1307,6 +1351,7 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         )
 
         # Delete everything downstream: topic_updates (created at project_updates), match_groups, merge, verification.
+        _un_merge_topics()
         _delete_topic_updates()
         _delete_match_groups()
         _clear_merge_fields()
@@ -1316,6 +1361,7 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
     elif target_stage == "transcript":
         # Keep transcript — that IS the transcript content.
         # Clear everything after: extraction, match_groups, topic_updates, merge, verification, artifacts.
+        _un_merge_topics()
         _delete_topic_updates()
         _mark_artifacts_stale()
         _delete_match_groups()
