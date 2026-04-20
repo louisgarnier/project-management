@@ -286,7 +286,7 @@ export const topicsAPI = {
     }),
 
   getMatchGroups: (callId: string) =>
-    proxyFetch<{ project_topic_id: string | null; project_topic_name: string | null; call_topic_names: string[] }[]>(
+    proxyFetch<{ project_topic_ids: string[]; project_topic_names: string[]; call_topic_names: string[] }[]>(
       `/api/calls/${callId}/topics/match-groups`
     ),
 

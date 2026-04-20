@@ -197,21 +197,23 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
       const pendingByName = new Map(pending.map((t: TopicData) => [t.name.toLowerCase().trim(), t]));
       const projectById = new Map(projectTopics.map((t: TopicData) => [t.topic_id ?? "", t]));
       const matchedProjectIds = new Set(
-        groups.map((g: { project_topic_id: string | null; call_topic_names: string[] }) => g.project_topic_id).filter(Boolean) as string[]
+        groups.flatMap((g: { project_topic_ids: string[]; call_topic_names: string[] }) => g.project_topic_ids)
       );
 
       const result: TopicData[] = [];
 
-      for (const g of groups as { project_topic_id: string | null; call_topic_names: string[] }[]) {
-        if (g.project_topic_id === null) {
+      for (const g of groups as { project_topic_ids: string[]; call_topic_names: string[] }[]) {
+        if (g.project_topic_ids.length === 0) {
           for (const name of g.call_topic_names) {
             const ct = pendingByName.get(name.toLowerCase().trim());
             if (ct) result.push({ ...ct, topic_id: undefined });
           }
         } else {
-          const existing = projectById.get(g.project_topic_id);
-          if (existing) {
-            result.push({ ...existing, pending_merge: true });
+          for (const pid of g.project_topic_ids) {
+            const existing = projectById.get(pid);
+            if (existing) {
+              result.push({ ...existing, pending_merge: true });
+            }
           }
         }
       }

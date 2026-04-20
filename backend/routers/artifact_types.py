@@ -110,6 +110,20 @@ DEFAULT_PROJECT_TOPICS_PROMPT = {
     "category": "project_topics",
 }
 
+DEFAULT_NOT_DISCUSSED_CHECK_PROMPT = {
+    "name": "Not-Discussed Verification",
+    "prompt": (
+        "You are checking whether a project topic was actually discussed in a call transcript.\n"
+        "Given the topic name, its latest summary, and the full call transcript, determine:\n"
+        "1. Was this topic mentioned or discussed in the call? (yes/no)\n"
+        "2. If yes, provide the relevant transcript excerpt.\n\n"
+        'Return JSON: {"discussed": true/false, "transcript_excerpt": "..." or null, '
+        '"reasoning": "one sentence explanation"}'
+    ),
+    "is_default": True,
+    "category": "not_discussed_check",
+}
+
 
 def seed_defaults(project_id: str) -> None:
     """Insert artifact types + 2 workflow prompts for a newly created project.
@@ -149,7 +163,8 @@ def seed_defaults(project_id: str) -> None:
     client.table("artifact_types").insert(artifact_rows).execute()
     client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_CALL_TOPICS_PROMPT}).execute()
     client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_PROJECT_TOPICS_PROMPT}).execute()
-    db_logger.info(f"✅ [DB] Seeded {len(artifact_rows)} artifact types + 2 workflow prompts for project: {project_id}")
+    client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_NOT_DISCUSSED_CHECK_PROMPT}).execute()
+    db_logger.info(f"✅ [DB] Seeded {len(artifact_rows)} artifact types + 3 workflow prompts for project: {project_id}")
 
 
 class ArtifactTypeCreate(BaseModel):

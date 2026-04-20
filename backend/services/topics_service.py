@@ -44,6 +44,7 @@ class TopicIn(BaseModel):
     status: Literal["open", "in_progress", "resolved"]
     owner: Literal["Us", "Client", "Both"]
     sentiment: Literal["positive", "neutral", "concern"]
+    transcript_excerpt: Optional[str] = None
 
     @field_validator("status", mode="before")
     @classmethod
@@ -426,7 +427,7 @@ async def save_match_groups(call_id: str, groups: list[dict]) -> dict:
     """
     Persist match groups and advance to project_updates.
 
-    groups: [{"project_topic_id": "uuid" | None, "call_topic_names": ["name1", ...]}]
+    groups: [{"project_topic_ids": ["uuid", ...], "call_topic_names": ["name1", ...]}]
     """
     db = get_client()
 
@@ -436,7 +437,7 @@ async def save_match_groups(call_id: str, groups: list[dict]) -> dict:
     for g in groups:
         db.table("topic_match_groups").insert({
             "call_id": call_id,
-            "project_topic_id": g.get("project_topic_id"),
+            "project_topic_ids": g.get("project_topic_ids", []),
             "call_topic_names": [n.lower().strip() for n in g.get("call_topic_names", [])],
         }).execute()
 
@@ -448,8 +449,8 @@ async def save_match_groups(call_id: str, groups: list[dict]) -> dict:
 async def run_merge_preview(call_id: str) -> list[dict]:
     """
     For each match group:
-    - matched (project_topic_id set): run LLM to merge existing topic + call topics → updated recap
-    - new (project_topic_id None): return call topics as-is, topic_id=None
+    - matched (project_topic_ids has entries): run LLM to merge existing topic + call topics → updated recap
+    - new (project_topic_ids empty): return call topics as-is, topic_id=None
 
     Returns a list of topic dicts ready for ProjectUpdatesStage review.
     Each item has all TopicData fields plus topic_id (existing UUID or None).
@@ -464,7 +465,7 @@ async def run_merge_preview(call_id: str) -> list[dict]:
 
     groups = (
         db.table("topic_match_groups")
-        .select("project_topic_id, call_topic_names")
+        .select("project_topic_ids, call_topic_names")
         .eq("call_id", call_id)
         .execute()
         .data
@@ -498,55 +499,87 @@ async def run_merge_preview(call_id: str) -> list[dict]:
     async def merge_one(group: dict) -> list[dict]:
         """Return a list of topic dicts for one match group.
 
-        New-topic groups (project_topic_id=None) may contain multiple call topics
-        when the user grouped several right-side topics together before clicking
-        "New →". Each call topic becomes its own new project topic so no data is
-        lost. (Before this fix only the first was returned, causing the rest to
-        silently disappear after the merge ran.)
+        Handles three group types:
+        - Empty project_topic_ids (new topics): single call topic → as-is; multiple → LLM merge into one
+        - Single project_topic_ids (1:1 match): LLM merge existing + call topics → updated existing
+        - Multiple project_topic_ids (M:N merge): LLM merge all → one new topic, sources get archived
         """
-        ptid = group.get("project_topic_id")
+        ptids = group.get("project_topic_ids") or []
         call_names = group.get("call_topic_names", [])
         call_matches = [pending_by_name[n.lower().strip()] for n in call_names if n.lower().strip() in pending_by_name]
 
-        if ptid is None:
-            # New topic(s) — return every matched call topic as a separate new entry
+        if not ptids:
+            # New topic(s) from call
             if not call_matches:
-                logger.warning(f"⚠️ [Topics] match group has project_topic_id=None but no matching call topics — skipping")
+                logger.warning("⚠️ [Topics] match group has empty project_topic_ids but no matching call topics — skipping")
                 return []
+            if len(call_matches) == 1:
+                return [{**call_matches[0], "topic_id": None}]
+            # Multiple call topics grouped as new → return each as separate new entry
+            # (M:N merge with LLM-proposed name will be added in Story 9.4)
             return [{**m, "topic_id": None} for m in call_matches]
 
-        existing = prev_by_id.get(ptid)
-        if not existing:
-            # Existing topic not found — treat as new
-            base = call_matches[0] if call_matches else {}
-            return [{**base, "topic_id": ptid}]
+        if len(ptids) == 1:
+            # Standard 1:1 match — update existing topic
+            ptid = ptids[0]
+            existing = prev_by_id.get(ptid)
+            if not existing:
+                base = call_matches[0] if call_matches else {}
+                return [{**base, "topic_id": ptid}]
 
-        if not call_matches:
-            # No call topics matched — return existing unchanged (not discussed)
-            return [{**existing, "topic_id": ptid}]
+            if not call_matches:
+                return [{**existing, "topic_id": ptid}]
 
-        # Run LLM merge
+            # Run LLM merge
+            try:
+                prompt = (
+                    f"{merge_instructions}\n\n"
+                    f"Existing project topic:\n{json.dumps(existing, indent=2)}\n\n"
+                    f"New call topic(s) matching this:\n{json.dumps(call_matches, indent=2)}\n\n"
+                    f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
+                )
+                merged = await _call_llm(prompt, llm)
+                if isinstance(merged, list):
+                    merged = merged[0] if merged else {}
+                return [{**merged, "topic_id": ptid}]
+            except Exception as e:
+                logger.error(f"❌ [Topics] LLM merge failed for topic {ptid}: {e} — returning existing unchanged")
+                return [{**existing, "topic_id": ptid}]
+
+        # M:N merge — multiple existing topics + call topics → one new topic
+        # (Full RAG synthesis with transcript excerpts will be added in Story 9.4)
+        existing_topics = [prev_by_id[pid] for pid in ptids if pid in prev_by_id]
+        all_inputs = existing_topics + call_matches
+        if not all_inputs:
+            logger.warning(f"⚠️ [Topics] M:N group has no resolvable topics — skipping")
+            return []
+
         try:
             prompt = (
                 f"{merge_instructions}\n\n"
-                f"Existing project topic:\n{json.dumps(existing, indent=2)}\n\n"
-                f"New call topic(s) matching this:\n{json.dumps(call_matches, indent=2)}\n\n"
+                f"You are merging multiple existing project topics into ONE new topic.\n"
+                f"Propose a concise name that captures the combined scope.\n\n"
+                f"Existing project topics:\n{json.dumps(existing_topics, indent=2)}\n\n"
+                f"New call topic(s):\n{json.dumps(call_matches, indent=2)}\n\n"
                 f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
             )
             merged = await _call_llm(prompt, llm)
             if isinstance(merged, list):
                 merged = merged[0] if merged else {}
-            return [{**merged, "topic_id": ptid}]
+            return [{**merged, "topic_id": None, "_source_topic_ids": ptids}]
         except Exception as e:
-            logger.error(f"❌ [Topics] LLM merge failed for topic {ptid}: {e} — returning existing unchanged")
-            return [{**existing, "topic_id": ptid}]
+            logger.error(f"❌ [Topics] M:N merge failed: {e} — returning first existing unchanged")
+            return [{**existing_topics[0], "topic_id": None, "_source_topic_ids": ptids}]
 
     per_group = await asyncio.gather(*[merge_one(g) for g in groups])
-    # Flatten: each merge_one returns a list (1 item for matched groups, N items for new groups)
+    # Flatten: each merge_one returns a list (1 item for matched/M:N groups, N for new groups)
     results = [item for sublist in per_group for item in sublist]
 
     # Collect all project_topic_ids that are in match groups
-    matched_project_ids = {g.get("project_topic_id") for g in groups if g.get("project_topic_id")}
+    matched_project_ids: set[str] = set()
+    for g in groups:
+        for pid in (g.get("project_topic_ids") or []):
+            matched_project_ids.add(pid)
 
     # Build not-discussed entries for project topics NOT in any match group
     not_discussed = []
@@ -607,15 +640,44 @@ async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
 
     # Skip not_discussed topics — they have no topic_update for this call
     topics_to_save = [t for t in topics if not t.get("not_discussed")]
-    topic_updates = [
-        TopicUpdate(**{
-            **t,
-            "topic_id": t.get("topic_id"),
-            "disposition": None,
-        })
-        for t in topics_to_save
-    ]
+
+    # Strip internal fields before building TopicUpdate models
+    clean_fields = {"_source_topic_ids", "not_discussed", "pending_merge", "calls_open",
+                    "verification_status", "topic_id", "disposition"}
+    topic_updates = []
+    for t in topics_to_save:
+        model_data = {k: v for k, v in t.items() if k not in clean_fields}
+        model_data["topic_id"] = t.get("topic_id")
+        model_data["disposition"] = None
+        topic_updates.append(TopicUpdate(**model_data))
+
     await save_topics(call_id, topic_updates)
+
+    # Handle M:N merge archival: archive source topics and set merged_into_topic_id
+    call_row = db.table("calls").select("project_id").eq("id", call_id).execute().data
+    project_id = call_row[0]["project_id"] if call_row else None
+    for t in topics_to_save:
+        source_ids = t.get("_source_topic_ids")
+        if source_ids and len(source_ids) > 1 and project_id:
+            # Find the newly created topic (the one save_topics just inserted for this entry)
+            # It's the topic with first_raised_call_id = call_id and matching name
+            new_topic_rows = (
+                db.table("topics")
+                .select("id")
+                .eq("project_id", project_id)
+                .eq("first_raised_call_id", call_id)
+                .eq("name", t.get("name", ""))
+                .execute()
+                .data
+            )
+            if new_topic_rows:
+                new_topic_id = new_topic_rows[0]["id"]
+                for source_id in source_ids:
+                    db.table("topics").update({
+                        "archived": True,
+                        "merged_into_topic_id": new_topic_id,
+                    }).eq("id", source_id).execute()
+                    logger.info(f"🗄️ [Merge] Archived topic {source_id} → merged into {new_topic_id}")
 
     # Advance to artifacts — match groups and pending_topics are kept as permanent records
     db.table("calls").update({
@@ -674,7 +736,7 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
                 current_open = current[0]["calls_open"] if current else 0
                 db.table("topics").update({"calls_open": current_open + 1}).eq("id", topic_id).execute()
 
-        db.table("topic_updates").insert({
+        update_row = {
             "topic_id": topic_id,
             "call_id": call_id,
             "summary": t.summary,
@@ -683,7 +745,10 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
             "status": t.status,
             "owner": t.owner,
             "sentiment": t.sentiment,
-        }).execute()
+        }
+        if t.transcript_excerpt:
+            update_row["transcript_excerpt"] = t.transcript_excerpt
+        db.table("topic_updates").insert(update_row).execute()
         logger.info(f"🗄️ [DB] Inserted topic_update for topic: {topic_id}")
         saved += 1
 

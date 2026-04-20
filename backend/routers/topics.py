@@ -166,7 +166,7 @@ async def get_pending(call_id: str):
 
 
 class MatchGroupPayload(PydanticBaseModel):
-    project_topic_id: Optional[str] = None
+    project_topic_ids: list[str] = []
     call_topic_names: list[str]
 
 
@@ -192,7 +192,7 @@ async def get_match_groups(call_id: str):
 
     groups = (
         db.table("topic_match_groups")
-        .select("project_topic_id, call_topic_names")
+        .select("project_topic_ids, call_topic_names")
         .eq("call_id", call_id)
         .execute()
         .data
@@ -200,14 +200,15 @@ async def get_match_groups(call_id: str):
 
     result = []
     for g in groups:
-        ptid = g.get("project_topic_id")
-        name = None
-        if ptid:
+        ptids = g.get("project_topic_ids") or []
+        names = []
+        for ptid in ptids:
             row = db.table("topics").select("name").eq("id", ptid).execute().data
-            name = row[0]["name"] if row else None
+            if row:
+                names.append(row[0]["name"])
         result.append({
-            "project_topic_id": ptid,
-            "project_topic_name": name,
+            "project_topic_ids": ptids,
+            "project_topic_names": names,
             "call_topic_names": g.get("call_topic_names", []),
         })
 

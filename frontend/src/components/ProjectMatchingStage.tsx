@@ -66,8 +66,8 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
       // Backend lowercases call_topic_names on save, so remap to original case from pending.
       if (savedGroups.length > 0) {
         const nameMap = new Map((pending as TopicData[]).map((t) => [t.name.toLowerCase().trim(), t.name]));
-        setGroups(savedGroups.map((g: { project_topic_id: string | null; call_topic_names: string[] }) => ({
-          project_topic_id: g.project_topic_id,
+        setGroups(savedGroups.map((g: { project_topic_ids: string[]; call_topic_names: string[] }) => ({
+          project_topic_ids: g.project_topic_ids || [],
           call_topic_names: g.call_topic_names.map((n) => nameMap.get(n.toLowerCase().trim()) ?? n),
         })));
       }
@@ -75,7 +75,7 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
   }, [callId, projectId]);
 
   // Which project topic IDs have been matched
-  const matchedProjectIds = new Set(groups.map((g) => g.project_topic_id).filter(Boolean) as string[]);
+  const matchedProjectIds = new Set(groups.flatMap((g) => g.project_topic_ids));
   // Which call topic names have been matched or marked new
   const accountedCallNames = new Set(groups.flatMap((g) => g.call_topic_names));
 
@@ -99,10 +99,9 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
 
   function handleLink() {
     if (selectedRight.size === 0 || selectedLeft.size === 0) return;
-    const projectTopicId = [...selectedLeft][0]; // 1:N — one project topic
     setGroups((prev) => [
       ...prev,
-      { project_topic_id: projectTopicId, call_topic_names: [...selectedRight] },
+      { project_topic_ids: [...selectedLeft], call_topic_names: [...selectedRight] },
     ]);
     setSelectedLeft(new Set());
     setSelectedRight(new Set());
@@ -112,10 +111,10 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
     if (selectedRight.size === 0) return;
     setGroups((prev) => [
       ...prev,
-      { project_topic_id: null, call_topic_names: [...selectedRight] },
+      { project_topic_ids: [], call_topic_names: [...selectedRight] },
     ]);
     setSelectedRight(new Set());
-    setSelectedLeft(new Set());   // clear left so it doesn't appear stuck-selected
+    setSelectedLeft(new Set());
   }
 
   function removeGroup(idx: number) {
@@ -142,7 +141,7 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
   }
 
   function getProjectTopicGroup(id: string): MatchGroup | undefined {
-    return groups.find((g) => g.project_topic_id === id);
+    return groups.find((g) => g.project_topic_ids.includes(id));
   }
 
   function getCallTopicGroup(name: string): MatchGroup | undefined {
@@ -317,7 +316,7 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                         background: groupColor(groupIndex(group)).bg,
                         color: groupColor(groupIndex(group)).text,
                         border: `1px solid ${groupColor(groupIndex(group)).border}` }}>
-                        {group.project_topic_id ? "Matched" : "New Topic"}
+                        {group.project_topic_ids.length > 0 ? "Matched" : "New Topic"}
                       </span>
                     )}
                     {isAccounted && group && (
@@ -334,9 +333,9 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                   {t.summary && (
                     <div style={{ fontSize: 11, color: "#5e6c84", lineHeight: 1.4 }}>{t.summary}</div>
                   )}
-                  {isAccounted && group?.project_topic_id && (
+                  {isAccounted && group && group.project_topic_ids.length > 0 && (
                     <div style={{ fontSize: 10, color: groupColor(groupIndex(group!)).text, fontWeight: 600, marginTop: 4 }}>
-                      ↔ {projectTopics.find((p) => p.topic_id === group!.project_topic_id)?.name}
+                      ↔ {group!.project_topic_ids.map((pid) => projectTopics.find((p) => p.topic_id === pid)?.name).filter(Boolean).join(", ")}
                     </div>
                   )}
                 </div>

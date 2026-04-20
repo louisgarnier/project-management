@@ -11,8 +11,8 @@ type Props = {
 };
 
 type SavedMatchGroup = {
-  project_topic_id: string | null;
-  project_topic_name: string | null;
+  project_topic_ids: string[];
+  project_topic_names: string[];
   call_topic_names: string[];
 };
 
@@ -71,7 +71,7 @@ export default function ProjectMatchingHistoricalView({ callId, projectId }: Pro
   }, [callId, projectId]);
 
   function getGroupForProjectTopic(topicId: string): { group: SavedMatchGroup; idx: number } | undefined {
-    const idx = matchGroups.findIndex((g) => g.project_topic_id === topicId);
+    const idx = matchGroups.findIndex((g) => g.project_topic_ids.includes(topicId));
     if (idx === -1) return undefined;
     return { group: matchGroups[idx], idx };
   }
@@ -221,7 +221,7 @@ export default function ProjectMatchingHistoricalView({ callId, projectId }: Pro
             {callTopics.map((t) => {
               const matched = getGroupForCallTopic(t.name);
               const color = matched ? groupColor(matched.idx) : null;
-              const isNew = matched && matched.group.project_topic_id === null;
+              const isNew = matched && matched.group.project_topic_ids.length === 0;
               return (
                 <div
                   key={t.name}
@@ -248,9 +248,9 @@ export default function ProjectMatchingHistoricalView({ callId, projectId }: Pro
                   {t.summary && (
                     <div style={{ fontSize: 11, color: "#5e6c84", lineHeight: 1.4 }}>{t.summary}</div>
                   )}
-                  {matched && !isNew && matched.group.project_topic_name && (
+                  {matched && !isNew && matched.group.project_topic_names.length > 0 && (
                     <div style={{ fontSize: 10, color: color!.text, fontWeight: 600, marginTop: 4 }}>
-                      ↔ {matched.group.project_topic_name}
+                      ↔ {matched.group.project_topic_names.join(", ")}
                     </div>
                   )}
                 </div>

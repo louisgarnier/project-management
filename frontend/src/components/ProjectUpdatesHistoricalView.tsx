@@ -105,7 +105,8 @@ export default function ProjectUpdatesHistoricalView({ callId, projectId }: Prop
       const updatedBucket: TopicData[] = [];
 
       for (const g of groups) {
-        if (g.project_topic_id === null) {
+        const ptids = (g as { project_topic_ids?: string[] }).project_topic_ids ?? [];
+        if (ptids.length === 0) {
           for (const name of g.call_topic_names) {
             const lower = name.toLowerCase().trim();
             newCallTopicNames.add(lower);
@@ -113,10 +114,11 @@ export default function ProjectUpdatesHistoricalView({ callId, projectId }: Prop
             if (ct) newBucket.push({ ...ct, topic_id: undefined });
           }
         } else {
-          matchedProjectIds.add(g.project_topic_id);
-          // Use call-specific data (from topic_updates for this call) not current project state
-          const ct = callTopicsByProjectId.get(g.project_topic_id);
-          if (ct) updatedBucket.push(ct);
+          for (const pid of ptids) {
+            matchedProjectIds.add(pid);
+            const ct = callTopicsByProjectId.get(pid);
+            if (ct) updatedBucket.push(ct);
+          }
         }
       }
 

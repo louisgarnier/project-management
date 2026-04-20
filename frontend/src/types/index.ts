@@ -15,7 +15,7 @@ export interface Project {
 export type KanbanStage = "transcript" | "call_topics" | "project_matching" | "project_updates" | "artifacts" | "done";
 
 export type MatchGroup = {
-  project_topic_id: string | null;   // null = new project topic
+  project_topic_ids: string[];        // empty = new project topic, 1+ = linked/merge
   call_topic_names: string[];         // names from pending call topics
 };
 
@@ -33,6 +33,8 @@ export interface Call {
   pending_topics: TopicData[] | null;
   merge_cache: TopicData[] | null;
   merge_status: "idle" | "processing" | "done" | "failed";
+  verification_cache: Record<string, { discussed: boolean; transcript_excerpt: string | null; reasoning: string }> | null;
+  verification_status: "idle" | "processing" | "done" | "failed";
   created_at: string;
 }
 
@@ -87,6 +89,8 @@ export interface TopicData {
   calls_open?: number;
   not_discussed?: boolean;
   pending_merge?: boolean;
+  verification_status?: "pending" | "confirmed" | "flagged";
+  _source_topic_ids?: string[];
 }
 
 /** Response from POST /extract */
@@ -141,13 +145,15 @@ export interface CallFile {
 // ── EPIC-8: Topics Timeline ───────────────────────────────────────────────
 
 export interface TimelineCell {
-  type: "new" | "followed_up" | "not_discussed" | "pending";
+  type: "new" | "followed_up" | "not_discussed" | "pending" | "merged";
   summary?: string;
   follow_up_items?: string[];
   decisions?: string[];
   status?: string;
   owner?: string;
   sentiment?: string;
+  merged_into_name?: string;
+  merged_into_topic_id?: string;
 }
 
 export interface TimelineTopic {
@@ -157,6 +163,8 @@ export interface TimelineTopic {
   owner: string;
   sentiment: TopicSentiment;
   first_raised_call_id: string | null;
+  merged_into_topic_id?: string | null;
+  merged_into_name?: string | null;
   call_updates: Record<string, TimelineCell>;
 }
 
