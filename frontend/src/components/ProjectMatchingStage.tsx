@@ -115,6 +115,7 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
       { project_topic_id: null, call_topic_names: [...selectedRight] },
     ]);
     setSelectedRight(new Set());
+    setSelectedLeft(new Set());   // clear left so it doesn't appear stuck-selected
   }
 
   function removeGroup(idx: number) {

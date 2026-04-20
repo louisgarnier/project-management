@@ -495,28 +495,35 @@ async def run_merge_preview(call_id: str) -> list[dict]:
         if project_context else base_merge_instructions
     )
 
-    async def merge_one(group: dict) -> dict:
+    async def merge_one(group: dict) -> list[dict]:
+        """Return a list of topic dicts for one match group.
+
+        New-topic groups (project_topic_id=None) may contain multiple call topics
+        when the user grouped several right-side topics together before clicking
+        "New →". Each call topic becomes its own new project topic so no data is
+        lost. (Before this fix only the first was returned, causing the rest to
+        silently disappear after the merge ran.)
+        """
         ptid = group.get("project_topic_id")
         call_names = group.get("call_topic_names", [])
         call_matches = [pending_by_name[n.lower().strip()] for n in call_names if n.lower().strip() in pending_by_name]
 
         if ptid is None:
-            # New topic — return first call topic as-is (or merged if multiple)
+            # New topic(s) — return every matched call topic as a separate new entry
             if not call_matches:
                 logger.warning(f"⚠️ [Topics] match group has project_topic_id=None but no matching call topics — skipping")
-                return {}
-            base = call_matches[0]
-            return {**base, "topic_id": None}
+                return []
+            return [{**m, "topic_id": None} for m in call_matches]
 
         existing = prev_by_id.get(ptid)
         if not existing:
             # Existing topic not found — treat as new
             base = call_matches[0] if call_matches else {}
-            return {**base, "topic_id": ptid}
+            return [{**base, "topic_id": ptid}]
 
         if not call_matches:
             # No call topics matched — return existing unchanged (not discussed)
-            return {**existing, "topic_id": ptid}
+            return [{**existing, "topic_id": ptid}]
 
         # Run LLM merge
         try:
@@ -529,12 +536,14 @@ async def run_merge_preview(call_id: str) -> list[dict]:
             merged = await _call_llm(prompt, llm)
             if isinstance(merged, list):
                 merged = merged[0] if merged else {}
-            return {**merged, "topic_id": ptid}
+            return [{**merged, "topic_id": ptid}]
         except Exception as e:
             logger.error(f"❌ [Topics] LLM merge failed for topic {ptid}: {e} — returning existing unchanged")
-            return {**existing, "topic_id": ptid}
+            return [{**existing, "topic_id": ptid}]
 
-    results = await asyncio.gather(*[merge_one(g) for g in groups])
+    per_group = await asyncio.gather(*[merge_one(g) for g in groups])
+    # Flatten: each merge_one returns a list (1 item for matched groups, N items for new groups)
+    results = [item for sublist in per_group for item in sublist]
 
     # Collect all project_topic_ids that are in match groups
     matched_project_ids = {g.get("project_topic_id") for g in groups if g.get("project_topic_id")}
