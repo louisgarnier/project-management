@@ -298,9 +298,11 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
   }
 
   function handlePromote(topic: TopicData) {
-    // Move from not_discussed to updated (pending_merge) so user can run merge
+    // Move from not_discussed straight to editable Updated Topics section.
+    // The topic already has a topic_id, so it goes to updatedTopics (not pending_merge).
+    // Removing not_discussed + pending_merge ensures it lands in the right filter bucket.
     setTopics(prev => prev.map(t =>
-      t === topic ? { ...t, not_discussed: false, pending_merge: true } : t
+      t === topic ? { ...t, not_discussed: false, pending_merge: false } : t
     ));
   }
 
