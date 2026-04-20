@@ -4,6 +4,8 @@ Every merge prompt, verification prompt, and evidence-API consumer uses this mod
 as the single source of truth for per-topic history across M:N merges.
 """
 
+from backend.utils.logger import db_logger as logger
+
 
 def get_topic_lineage(topic_id: str, db) -> list[dict]:
     """BFS starting at topic_id, walking topics.merged_into_topic_id backwards.
@@ -120,6 +122,15 @@ def build_lineage_evidence_block(topic_name: str, topic_id: str, db) -> str:
     rows = get_lineage_topic_updates(topic_id, db)
     if not rows:
         return f'== Topic: "{topic_name}" ==\n(No historical excerpts available)\n'
+
+    ancestor_sources = {
+        r["source_topic_id"] for r in rows if r["source_topic_id"] != topic_id
+    }
+    if ancestor_sources:
+        logger.info(
+            f"🧬 [Lineage] Evidence for topic {topic_id} ({topic_name}) "
+            f"includes {len(ancestor_sources)} ancestor(s): {sorted(ancestor_sources)}"
+        )
 
     lines = [f'== Topic: "{topic_name}" — Per-Call Evidence ==']
     for r in rows:
