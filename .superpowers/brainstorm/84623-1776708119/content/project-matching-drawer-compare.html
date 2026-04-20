@@ -1,0 +1,312 @@
+<div class="mockup">
+  <div class="mockup-header">
+    <h2>Project Matching — Evidence drawer comparison</h2>
+    <div class="subtitle">Click the buttons below to toggle between the two drawer behaviors. Then click "Show evidence for…" on any row to see it in action.</div>
+  </div>
+
+  <div class="mockup-body">
+
+    <div class="options" style="margin-bottom:16px">
+      <div class="option" data-choice="a" onclick="selectMode(this, 'a')">
+        <strong>(a) Full-overlay drawer</strong>
+        <div style="font-size:12px;color:#5e6c84;margin-top:4px">Drawer covers the matching grid. Close to return.</div>
+      </div>
+      <div class="option" data-choice="b" onclick="selectMode(this, 'b')">
+        <strong>(b) Side-by-side drawer</strong>
+        <div style="font-size:12px;color:#5e6c84;margin-top:4px">Drawer appears to the right. Matching grid stays visible & interactive.</div>
+      </div>
+    </div>
+
+    <!-- Stage container -->
+    <div id="stage" style="position:relative;border:1px solid #dfe1e6;border-radius:6px;background:#fff;min-height:560px;overflow:hidden">
+
+      <!-- Project Matching grid -->
+      <div id="match-grid" style="padding:16px;transition:all 0.2s">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <strong style="color:#172b4d">Project Matching — Call 3: "Review session"</strong>
+          <div>
+            <button class="mock-button" style="background:#fff;color:#172b4d;border:1px solid #dfe1e6;margin-right:8px">Auto-match</button>
+            <button class="mock-button">Run merge →</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <!-- LEFT: existing project topics -->
+          <div>
+            <div class="label" style="margin-bottom:8px">Existing Project Topics (3)</div>
+
+            <div class="card" style="margin-bottom:8px;border-left:3px solid #0052cc">
+              <div style="display:flex;justify-content:space-between;align-items:start">
+                <div>
+                  <strong>API design approach</strong>
+                  <div style="font-size:11px;color:#5e6c84;margin-top:2px">open · 2 calls · 3 follow-ups</div>
+                </div>
+                <span style="font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px;background:#dfe7ff;color:#0747a6">matched</span>
+              </div>
+              <div style="margin-top:8px">
+                <a href="#" onclick="showDrawer('API design approach','followed_up'); return false" style="font-size:12px;color:#0052cc">Show evidence for this match →</a>
+              </div>
+            </div>
+
+            <div class="card" style="margin-bottom:8px;border-left:3px solid #5e6c84">
+              <div style="display:flex;justify-content:space-between;align-items:start">
+                <div>
+                  <strong>Database migration strategy</strong>
+                  <div style="font-size:11px;color:#5e6c84;margin-top:2px">in_progress · 2 calls</div>
+                </div>
+                <span style="font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px;background:#fff7d6;color:#926212">not discussed</span>
+              </div>
+              <div style="margin-top:8px">
+                <a href="#" onclick="showDrawer('Database migration strategy','not_discussed'); return false" style="font-size:12px;color:#0052cc">Show evidence for this decision →</a>
+              </div>
+            </div>
+
+            <div class="card" style="margin-bottom:8px;border-left:3px solid #5e6c84">
+              <div style="display:flex;justify-content:space-between;align-items:start">
+                <div>
+                  <strong>Client onboarding flow</strong>
+                  <div style="font-size:11px;color:#5e6c84;margin-top:2px">open · 1 call</div>
+                </div>
+                <span style="font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px;background:#dfe7ff;color:#0747a6">matched</span>
+              </div>
+              <div style="margin-top:8px">
+                <a href="#" onclick="showDrawer('Client onboarding flow','followed_up'); return false" style="font-size:12px;color:#0052cc">Show evidence for this match →</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: call topics -->
+          <div>
+            <div class="label" style="margin-bottom:8px">Call Topics from Call 3 (3)</div>
+
+            <div class="card" style="margin-bottom:8px;border-left:3px solid #0052cc">
+              <div style="display:flex;justify-content:space-between;align-items:start">
+                <div>
+                  <strong>REST vs GraphQL</strong>
+                  <div style="font-size:11px;color:#5e6c84;margin-top:2px">open · Us · neutral</div>
+                </div>
+                <span style="font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px;background:#dfe7ff;color:#0747a6">→ API design</span>
+              </div>
+            </div>
+
+            <div class="card" style="margin-bottom:8px;border-left:3px solid #0052cc">
+              <div style="display:flex;justify-content:space-between;align-items:start">
+                <div>
+                  <strong>Onboarding UX flow</strong>
+                  <div style="font-size:11px;color:#5e6c84;margin-top:2px">in_progress · Both · positive</div>
+                </div>
+                <span style="font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px;background:#dfe7ff;color:#0747a6">→ Client onboarding</span>
+              </div>
+            </div>
+
+            <div class="card" style="margin-bottom:8px;border-left:3px solid #00875a">
+              <div style="display:flex;justify-content:space-between;align-items:start">
+                <div>
+                  <strong>Billing tier structure</strong>
+                  <div style="font-size:11px;color:#5e6c84;margin-top:2px">open · Us · neutral</div>
+                </div>
+                <span style="font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px;background:#daf5e4;color:#00623e">new</span>
+              </div>
+              <div style="margin-top:8px">
+                <a href="#" onclick="showDrawer('Billing tier structure','new'); return false" style="font-size:12px;color:#0052cc">Show evidence for this new topic →</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drawer -->
+      <div id="drawer" style="display:none;position:absolute;top:0;right:0;width:560px;height:100%;background:#fff;border-left:2px solid #dfe1e6;box-shadow:-8px 0 20px rgba(0,0,0,0.08);padding:16px;overflow:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <strong id="drawer-title" style="color:#172b4d">Evidence</strong>
+          <button onclick="closeDrawer()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#5e6c84">✕</button>
+        </div>
+
+        <div id="drawer-body">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <!-- Full-overlay backdrop (mode a only) -->
+      <div id="backdrop" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(23,43,77,0.4);z-index:1"></div>
+    </div>
+
+    <div style="margin-top:16px;padding:12px;background:#f4f5f7;border-radius:4px;font-size:13px;color:#5e6c84">
+      <strong style="color:#172b4d">Currently showing:</strong> <span id="mode-label">— pick a mode above</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  let mode = null;
+
+  function selectMode(el, m) {
+    document.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    mode = m;
+    document.getElementById('mode-label').textContent = m === 'a'
+      ? '(a) Full-overlay — drawer hides the matching grid'
+      : '(b) Side-by-side — matching grid stays visible & clickable';
+    closeDrawer();
+  }
+
+  function showDrawer(topicName, kind) {
+    if (!mode) {
+      alert('Pick mode (a) or (b) first, then click "Show evidence"');
+      return;
+    }
+
+    const drawer = document.getElementById('drawer');
+    const grid = document.getElementById('match-grid');
+    const backdrop = document.getElementById('backdrop');
+
+    drawer.style.display = 'block';
+
+    if (mode === 'a') {
+      // Full overlay: drawer fills the stage, backdrop dims the grid
+      drawer.style.width = '100%';
+      drawer.style.right = '0';
+      drawer.style.top = '0';
+      drawer.style.height = '100%';
+      drawer.style.boxShadow = 'none';
+      backdrop.style.display = 'block';
+      grid.style.filter = 'none';
+    } else {
+      // Side-by-side: drawer takes 560px, grid stays interactive but narrower
+      drawer.style.width = '560px';
+      drawer.style.right = '0';
+      drawer.style.top = '0';
+      drawer.style.height = '100%';
+      drawer.style.boxShadow = '-8px 0 20px rgba(0,0,0,0.08)';
+      backdrop.style.display = 'none';
+      // In real app, the grid would reflow into 1 column when drawer is open
+      grid.style.paddingRight = '576px';
+    }
+
+    document.getElementById('drawer-title').textContent = `Evidence — ${topicName}`;
+    document.getElementById('drawer-body').innerHTML = renderEvidence(topicName, kind);
+  }
+
+  function closeDrawer() {
+    document.getElementById('drawer').style.display = 'none';
+    document.getElementById('backdrop').style.display = 'none';
+    document.getElementById('match-grid').style.paddingRight = '16px';
+    document.getElementById('match-grid').style.filter = 'none';
+  }
+
+  function renderEvidence(name, kind) {
+    // Mock content showing what the real drawer would show — left = history, right = current call
+    if (kind === 'followed_up' && name === 'API design approach') {
+      return `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px">
+          <div>
+            <div class="label">← Existing topic history</div>
+            <div class="card" style="padding:10px;margin-bottom:8px;background:#fafbfc">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#5e6c84">Call 1 · Kickoff</div>
+              <div style="margin-top:6px;font-style:italic;color:#172b4d">"…we need to decide between REST and GraphQL for the public API. Team leans REST for familiarity."</div>
+              <div style="margin-top:6px"><strong>Summary:</strong> Initial discussion of API paradigm.</div>
+              <div><strong>Follow-ups:</strong> Spike GraphQL prototype</div>
+            </div>
+            <div class="card" style="padding:10px;margin-bottom:8px;background:#fafbfc">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#5e6c84">Call 2 · Review</div>
+              <div style="margin-top:6px;font-style:italic;color:#172b4d">"…the GraphQL spike was useful but complexity isn't justified for our scale."</div>
+              <div style="margin-top:6px"><strong>Summary:</strong> Spike concluded; leaning REST.</div>
+              <div><strong>Decisions:</strong> Defer GraphQL to v2</div>
+            </div>
+          </div>
+          <div>
+            <div class="label">→ Current call extraction</div>
+            <div class="card" style="padding:10px;background:#fafbfc;border-left:3px solid #0052cc">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#5e6c84">Call 3 · "REST vs GraphQL"</div>
+              <div style="margin-top:6px;font-style:italic;color:#172b4d">"…confirmed REST for MVP. We'll revisit GraphQL if client volume demands."</div>
+              <div style="margin-top:6px"><strong>Summary:</strong> Final confirmation of REST approach.</div>
+              <div><strong>Decisions:</strong> REST for MVP</div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding:10px;background:#e3fcef;border-radius:4px;font-size:12px;color:#00623e">
+          <strong>Why this is matched:</strong> same subject across 3 calls (REST vs GraphQL), evolving from discussion → decision.
+        </div>
+      `;
+    }
+    if (kind === 'not_discussed') {
+      return `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px">
+          <div>
+            <div class="label">← Existing topic history</div>
+            <div class="card" style="padding:10px;margin-bottom:8px;background:#fafbfc">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#5e6c84">Call 1 · Kickoff</div>
+              <div style="margin-top:6px;font-style:italic;color:#172b4d">"…migration from Postgres 14 to 16 scheduled for Q2."</div>
+              <div style="margin-top:6px"><strong>Summary:</strong> Migration scoped.</div>
+            </div>
+            <div class="card" style="padding:10px;margin-bottom:8px;background:#fafbfc">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#5e6c84">Call 2 · Review</div>
+              <div style="margin-top:6px;font-style:italic;color:#172b4d">"…pre-migration testing in progress on staging."</div>
+              <div style="margin-top:6px"><strong>Summary:</strong> Staging test underway.</div>
+            </div>
+          </div>
+          <div>
+            <div class="label">→ Current call extraction</div>
+            <div style="padding:20px;text-align:center;color:#5e6c84;font-style:italic;border:1px dashed #dfe1e6;border-radius:4px">
+              (Not extracted from Call 3 — no mention in transcript)
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding:10px;background:#fff7d6;border-radius:4px;font-size:12px;color:#926212">
+          <strong>Why marked not-discussed:</strong> topic appears in project history but LLM found no matching call topic in Call 3.
+        </div>
+      `;
+    }
+    if (kind === 'new') {
+      return `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px">
+          <div>
+            <div class="label">← Existing topic history</div>
+            <div style="padding:20px;text-align:center;color:#5e6c84;font-style:italic;border:1px dashed #dfe1e6;border-radius:4px">
+              (No existing project topic matches — this is new)
+            </div>
+          </div>
+          <div>
+            <div class="label">→ Current call extraction</div>
+            <div class="card" style="padding:10px;background:#fafbfc;border-left:3px solid #00875a">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#5e6c84">Call 3 · "Billing tier structure"</div>
+              <div style="margin-top:6px;font-style:italic;color:#172b4d">"…three tiers proposed: Free, Pro at $29, Team at $99. Discussion around included quotas."</div>
+              <div style="margin-top:6px"><strong>Summary:</strong> Three-tier pricing proposal.</div>
+              <div><strong>Follow-ups:</strong> Confirm quotas with finance</div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding:10px;background:#daf5e4;border-radius:4px;font-size:12px;color:#00623e">
+          <strong>Why new:</strong> no project topic matches the subject "billing tier structure".
+        </div>
+      `;
+    }
+    if (kind === 'followed_up' && name === 'Client onboarding flow') {
+      return `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px">
+          <div>
+            <div class="label">← Existing topic history</div>
+            <div class="card" style="padding:10px;margin-bottom:8px;background:#fafbfc">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#5e6c84">Call 2 · Review</div>
+              <div style="margin-top:6px;font-style:italic;color:#172b4d">"…onboarding needs a guided-tour approach, not just doc links."</div>
+              <div style="margin-top:6px"><strong>Summary:</strong> Guided tour requested.</div>
+            </div>
+          </div>
+          <div>
+            <div class="label">→ Current call extraction</div>
+            <div class="card" style="padding:10px;background:#fafbfc;border-left:3px solid #0052cc">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#5e6c84">Call 3 · "Onboarding UX flow"</div>
+              <div style="margin-top:6px;font-style:italic;color:#172b4d">"…we mocked up a 4-step guided tour. Client loved it, wants to test with 5 pilot users."</div>
+              <div style="margin-top:6px"><strong>Summary:</strong> Guided tour mocked and approved.</div>
+              <div><strong>Decisions:</strong> 5 pilot users selected</div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding:10px;background:#e3fcef;border-radius:4px;font-size:12px;color:#00623e">
+          <strong>Why matched:</strong> same subject (onboarding flow), Call 3 advances Call 2's follow-up.
+        </div>
+      `;
+    }
+    return '';
+  }
+</script>

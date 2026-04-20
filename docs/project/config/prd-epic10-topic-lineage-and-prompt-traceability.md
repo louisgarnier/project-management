@@ -62,6 +62,12 @@ As a developer maintaining this pipeline, I want a single audit document that li
 **US-10.6 — Prompts scale with call count**
 As a user approaching 10+ calls on a project, I want every prompt (extraction, match, merge, verification, artifacts) to have the historical context it needs to produce high-quality output at Call 10, not just Call 1.
 
+**US-10.7 — Understand why a topic was extracted**
+As a user viewing the Call Topics stage, I want to click any extracted topic and see the verbatim transcript excerpt that caused the LLM to extract it, plus the summary/follow-ups/decisions it generated — so I can confirm the extraction grounded in real content.
+
+**US-10.8 — Understand the reasoning behind every match decision**
+As a user reviewing the Project Matching stage, I want to click any match decision (followed-up / new / not-discussed) and see side-by-side: the existing project topic's full historical evidence (every prior call's excerpt + summary) on the left, and the current call's extraction on the right — so I can read both sides and understand the classification without needing persisted LLM reasoning. This gives me a clear historical trace of how we got to this state for any topic.
+
 ---
 
 ## Functional Requirements
@@ -77,15 +83,22 @@ The existing `_load_transcript_excerpts` helper in `topics_service.py` is replac
 ### FR-10.2 Evidence API
 `GET /api/topics/{topic_id}/evidence` returns an ancestor-aware chronological per-call array containing, for each call that touched the topic or any ancestor: transcript_excerpt, merged_summary, follow_up_items, decisions, status, raw_extract (from `pending_topics`), match_group (from `topic_match_groups`), not_discussed_verification (from `calls.verification_cache`), source_topic_id/name, and call metadata (title, date).
 
-### FR-10.3 Evidence panel UI
-A new React component `TopicEvidencePanel` renders the evidence API response as:
-- A lineage chip at the top showing "Merged from: Topic A, Topic B" for merge-result topics.
-- One color-coded card per call, in chronological order.
-- Each card expands to show: transcript excerpt (verbatim), merged summary, follow-ups, decisions, and (collapsed by default) raw pre-merge extract, match group, not-discussed verification details.
+### FR-10.3 Evidence drawer UI (full-overlay, multi-stage)
+A reusable React component `TopicEvidenceDrawer` opens as a full-overlay modal-style drawer (approved via mockup 2026-04-20). Supports three modes:
 
-The panel is mounted on:
-- Project Updates stage, expandable under each Updated Topic card.
-- Topics Timeline, as a side drawer triggered by clicking any cell.
+**`mode="lineage"`** — full ancestor-aware per-call trail. Content: lineage chip at top for merge-result topics + one color-coded card per call (chronological). Each card expands to show transcript excerpt (verbatim), merged summary, follow-ups, decisions, and (collapsed by default) raw pre-merge extract, match group, not-discussed verification details.
+
+**`mode="call_topic"`** — single-panel view of a pending call topic's raw extraction data (transcript_excerpt + summary + follow-ups + decisions + status/owner/sentiment). No network call; uses existing pending_topics data.
+
+**`mode="matching"`** — two-column side-by-side layout. Left column reuses `mode="lineage"` for the existing topic. Right column shows the current call's pending_topic data. Footer strip explains the classification based on the visible data (not persisted LLM reasoning).
+
+The drawer is mounted on every Kanban stage where evidence aids user understanding:
+- **Call Topics stage** → `mode="call_topic"`
+- **Project Matching stage** → `mode="matching"`
+- **Project Updates stage** → `mode="lineage"` (richest view — validates that the merge preserved everything)
+- **Topics Timeline** → `mode="lineage"`
+
+Close via X button, Esc key, or click outside.
 
 ### FR-10.4 Merge-result labeling
 Timeline cells on merge-result topics render as `+ new (merged)` in a distinct color (purple), with a tooltip listing source topic names. Detection: `topics WHERE merged_into_topic_id = this_topic.id` returns rows ⇒ `has_sources = true`.
@@ -106,9 +119,11 @@ Each recommended fix from the audit is implemented in a discrete commit in Story
 ## Acceptance Criteria
 
 - [ ] A Call-10 merge on a topic first raised in Call 1 and M:N-merged in Call 3 produces a prompt whose text contains Call 1's transcript_excerpt. (Test: `tests/test_topic_lineage.py::test_ancestor_excerpt_in_merge_prompt`.)
-- [ ] Clicking a Topics Timeline cell opens the evidence panel; the panel shows one card per call that touched the topic or any ancestor.
-- [ ] The evidence panel for an M:N-merge-result topic shows a lineage chip listing both source topic names.
+- [ ] Clicking a Topics Timeline cell opens the evidence drawer in `mode="lineage"`; the drawer shows one card per call that touched the topic or any ancestor.
+- [ ] The evidence drawer for an M:N-merge-result topic shows a lineage chip listing both source topic names.
 - [ ] A Timeline cell for a merge-result topic visually differs from a fresh topic cell; hover reveals source topic names.
+- [ ] On the Call Topics stage, clicking any extracted topic opens the drawer in `mode="call_topic"` with its transcript excerpt + summary + follow-ups + decisions visible.
+- [ ] On the Project Matching stage, clicking "Show evidence" on any row opens the drawer in `mode="matching"` with correct left/right content per classification kind and the footer strip explanation.
 - [ ] `epic-10-prompts-audit.md` exists, committed, references every prompt by file and line, and has a completed "recommendation" column for each row.
 - [ ] Every recommendation in the audit is marked "implemented" (with commit reference) or "deferred" (with rationale) by the end of Story 10.6.
 - [ ] All Epic 9 tests still pass. No regression on existing 1:1 merges, single-call extraction, or Timeline rendering.

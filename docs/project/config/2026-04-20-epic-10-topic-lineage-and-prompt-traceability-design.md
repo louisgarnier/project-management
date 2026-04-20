@@ -1,8 +1,8 @@
-# EPIC-10: Topic Lineage + Prompt Traceability
+# EPIC-10: Topic Lineage + Full-Stage Traceability + Prompt Quality
 
-> **Goal:** Guarantee full topic lineage traceability across any number of calls (1, 3, 10, 20+), and ensure every LLM prompt in the pipeline sees the complete historical evidence it needs to produce high-quality output — not just the current call's snapshot.
+> **Goal:** Guarantee full topic lineage traceability across any number of calls (1, 3, 10, 20+), surface evidence at EVERY Kanban stage (Call Topics, Project Matching, Project Updates, Topics Timeline), and ensure every LLM prompt in the pipeline sees the complete historical evidence it needs to produce high-quality output — not just the current call's snapshot.
 
-**Architecture:** Extends Epic 9's M:N merge + verification foundation. Introduces a single lineage helper (`get_topic_lineage`) that walks `merged_into_topic_id` recursively to collect every ancestor topic's `topic_updates`. This helper becomes the canonical source of per-topic history for every merge prompt, verification prompt, artifact prompt, and the new evidence API that powers the UI. No data duplication — archived ancestors remain archived; the helper stitches their history together on read. Adds a per-topic evidence panel on the Project Updates stage and the Topics timeline, color-coded by call. Distinguishes merge-result topics from fresh topics in the timeline. Audits and fixes every prompt's access to historical context.
+**Architecture:** Extends Epic 9's M:N merge + verification foundation. Introduces a single lineage helper (`get_topic_lineage`) that walks `merged_into_topic_id` recursively to collect every ancestor topic's `topic_updates`. This helper becomes the canonical source of per-topic history for every merge prompt, verification prompt, artifact prompt, and the new evidence API that powers the UI. No data duplication — archived ancestors remain archived; the helper stitches their history together on read. A single reusable **full-overlay evidence drawer** component surfaces the underlying data at every stage of the Kanban — Call Topics, Project Matching, Project Updates, and Topics Timeline — with stage-appropriate layouts (single-panel for Call Topics, side-by-side for Project Matching, full lineage for Project Updates + Timeline). Distinguishes merge-result topics from fresh topics in the timeline. Audits and fixes every prompt's access to historical context.
 
 **Tech Stack:** Python/FastAPI (backend), Next.js/React (frontend), Supabase (Postgres), existing LLM service.
 
@@ -123,25 +123,48 @@ type TopicEvidence = {
 
 One entry per call that interacted with the topic or any ancestor, ordered by call date. Silent calls (topic not discussed, not verified) are not included — the consumer can cross-reference call list to render gaps.
 
-### 4.3 Frontend: Topic Evidence Panel
+### 4.3 Frontend: Topic Evidence Drawer (full-overlay, multi-stage)
 
-**New component: `frontend/src/components/TopicEvidencePanel.tsx`**
+**New component: `frontend/src/components/TopicEvidenceDrawer.tsx`**
 
-Props: `{ topicId: string }`. Fetches `/api/topics/{id}/evidence` and renders:
+Approved via mockup (2026-04-20): **full-overlay drawer** — opens as a modal-style overlay that dims the underlying Kanban stage and fills the workspace. Close returns to the stage exactly where the user was. This pattern applies at every mount point; the internal layout varies per stage.
 
-- **Header**: topic name + lineage chip ("Merged from: Topic A, Topic B" if `lineage.length > 1`)
-- **Per-call cards**, one per `calls[]` entry, color-coded by call index (cycle through palette):
-  - Card header: call title + date + source topic name (if different from current, show provenance)
-  - Transcript excerpt (verbatim, italic, quoted style)
-  - Merged summary (state after this call)
-  - Follow-ups (bulleted)
-  - Decisions (bulleted)
-  - Collapsed by default: raw pre-merge extract, match group, not-discussed verification details
-- Sticky lineage timeline at top showing the chain of merges
+Props:
+```typescript
+type EvidenceDrawerProps = {
+  open: boolean;
+  onClose: () => void;
+  mode: "call_topic" | "matching" | "lineage";
+  // call_topic mode: pending_topic data
+  pendingTopic?: { name: string; summary: string; follow_up_items: string[]; decisions: string[]; transcript_excerpt: string | null };
+  // matching mode: existing topic lineage on left, current call extraction on right
+  matching?: { existingTopicId: string | null; pendingTopicName: string | null; kind: "followed_up" | "new" | "not_discussed" };
+  // lineage mode: full ancestor-aware trail for any topic
+  topicId?: string;
+};
+```
+
+**Stage-specific content layouts:**
+
+- **`mode="call_topic"`** (Call Topics stage) — single panel showing the extracted topic's `transcript_excerpt`, summary, follow-ups, decisions. Data source: `calls.pending_topics`.
+- **`mode="matching"`** (Project Matching stage) — two-column layout:
+  - Left: existing topic's full lineage evidence (reuses `mode="lineage"` content for `existingTopicId`)
+  - Right: current call's extraction for `pendingTopicName` (pending_topic data)
+  - For `kind="new"`: left shows empty state "No existing project topic matches"
+  - For `kind="not_discussed"`: right shows empty state "Not extracted from this call"
+  - Footer strip explains the classification ("Matched because same subject across N calls" / "Marked new because no project topic matches the subject" / "Not discussed because LLM found no call topic on this subject")
+- **`mode="lineage"`** (Project Updates stage + Topics Timeline) — rich color-coded per-call chronology:
+  - Header: topic name + lineage chip ("Merged from: Topic A, Topic B" if `lineage.length > 1`)
+  - One card per `calls[]` entry, color-coded by call index (8-color pastel palette cycled)
+  - Card header: call title · call date · provenance badge if `source_topic_id !== topic_id` ("from archived topic: {name}")
+  - Card body (always visible): transcript excerpt (verbatim, italic), merged summary ("After this call:"), follow-ups, decisions, status badge
+  - Card expandable sections (collapsed by default): raw pre-merge extract, match group, not-discussed verification details
 
 **Mount points:**
-1. Project Updates stage — expandable under each Updated Topic card
-2. Topics Timeline — click any cell → opens panel as side drawer or modal
+1. **Call Topics stage** — click any extracted topic card → drawer opens in `mode="call_topic"`
+2. **Project Matching stage** — "Show evidence" link on each row (matched / new / not-discussed) → drawer opens in `mode="matching"`
+3. **Project Updates stage** — "View evidence" link on each updated topic → drawer opens in `mode="lineage"` (full ancestor trail, richest view — this is where the user validates "did the merge preserve everything?")
+4. **Topics Timeline** — click any timeline cell → drawer opens in `mode="lineage"` for that topic
 
 ### 4.4 Merge-Result Labeling
 
@@ -217,11 +240,11 @@ Each fix is a discrete task in Story 10.6 and only shipped if the audit confirms
 - Token-budget envelope per prompt at Call 1, 5, 10, 20
 - Deliverable committed before Phase 3 starts
 
-### Phase 3 — Evidence API + panel (Stories 10.3, 10.4)
-**Outcome:** User can click any topic (Project Updates or Timeline) and see the complete per-call evidence trail, color-coded.
+### Phase 3 — Evidence API + lineage drawer (Stories 10.3, 10.4)
+**Outcome:** User can click any topic on Project Updates or Timeline and see the complete per-call evidence trail, color-coded, ancestor-aware.
 
 - Story 10.3: `GET /api/topics/{id}/evidence` endpoint powered by lineage helper
-- Story 10.4: `TopicEvidencePanel` component + mount on Project Updates stage + mount on Timeline cell-click
+- Story 10.4: `TopicEvidenceDrawer` component in `mode="lineage"` + mount on Project Updates stage + mount on Timeline cell-click. Full-overlay drawer (approved 2026-04-20 via mockup).
 - Color palette: 8 distinct colors cycled by call index, stable per session
 - Expandable raw extract / match group / verification sections per card
 - Lineage chip at top if topic was merged
@@ -231,9 +254,16 @@ Each fix is a discrete task in Story 10.6 and only shipped if the audit confirms
 
 - Backend: timeline endpoint returns `has_sources` and `source_names[]` on each topic
 - Frontend: cell renderer in `TopicsTimeline.tsx` branches on `has_sources`
-- Evidence panel header also shows "Merged from: …"
+- Evidence drawer header also shows "Merged from: …"
 
-### Phase 5 — Prompt fixes from audit (Story 10.6)
+### Phase 5 — Stage-level evidence surfacing (Stories 10.7, 10.8)
+**Outcome:** Same full-overlay drawer (different mode) surfaces underlying data at the Call Topics and Project Matching stages, completing the Kanban-wide traceability story.
+
+- Story 10.7: `TopicEvidenceDrawer` in `mode="call_topic"` — click any extracted call topic → drawer shows pending_topic data (transcript_excerpt + summary + follow-ups + decisions). No new backend work; uses existing `pending_topics`.
+- Story 10.8: `TopicEvidenceDrawer` in `mode="matching"` — click "Show evidence" on any match row (followed-up / new / not-discussed) → drawer shows left = existing topic lineage, right = current call extraction. Backend: extend matches response to embed pending_topic data for right pane (no new endpoint).
+- Footer strip on `mode="matching"` explains classification based on the data shown (not persisted LLM reasoning).
+
+### Phase 6 — Prompt fixes from audit (Story 10.6)
 **Outcome:** Each prompt's recommended fix from Phase 2 is implemented or explicitly deferred with rationale.
 
 - One commit per prompt fix

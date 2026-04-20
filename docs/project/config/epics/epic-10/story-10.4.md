@@ -1,4 +1,4 @@
-# Story 10.4 — Evidence Panel UI (Color-Coded Per-Call Trail)
+# Story 10.4 — Evidence Drawer UI — Lineage Mode (Color-Coded Per-Call Trail)
 
 **Epic:** EPIC-10 — Topic Lineage + Prompt Traceability
 **Status:** `pending`
@@ -8,7 +8,7 @@
 ---
 
 ## Goal
-Build a reusable `TopicEvidencePanel` React component that displays the complete per-call evidence trail for a topic, color-coded by call, and mount it on both the Project Updates stage and the Topics Timeline.
+Build the reusable `TopicEvidenceDrawer` React component in its `mode="lineage"` configuration — a full-overlay drawer (approved via mockup 2026-04-20) that displays the complete per-call evidence trail for a topic, color-coded by call — and mount it on the Project Updates stage + the Topics Timeline. The same component is extended in Stories 10.7 (`mode="call_topic"`) and 10.8 (`mode="matching"`) to cover the remaining Kanban stages.
 
 ## UI Requirements (must pass visual mockup approval before any code)
 
@@ -36,8 +36,8 @@ Build a reusable `TopicEvidencePanel` React component that displays the complete
 - If `calls[]` is empty: "No evidence available for this topic."
 
 ## Acceptance Criteria
-- [ ] New component `frontend/src/components/TopicEvidencePanel.tsx` consumes `GET /api/topics/{id}/evidence` via `api/client.ts`
-- [ ] Rendered as a side drawer (right side, ~600px wide) — does not block the underlying Kanban/Timeline
+- [ ] New component `frontend/src/components/TopicEvidenceDrawer.tsx` consumes `GET /api/topics/{id}/evidence` via `api/client.ts`
+- [ ] Rendered as a full-overlay drawer (approved pattern 2026-04-20) that dims the underlying view; close returns to the previous state
 - [ ] Per-call cards color-coded via 8-color palette cycled by call index
 - [ ] Lineage chip visible only for merge-result topics
 - [ ] Provenance badge visible on ancestor-source cards
@@ -53,7 +53,7 @@ Build a reusable `TopicEvidencePanel` React component that displays the complete
 - [ ] **Visual mockup first** — invoke `ui-mockup:ui-mockup` skill, render interactive HTML, get user approval
 - [ ] Add `fetchTopicEvidence(topicId)` to `frontend/src/api/client.ts`
 - [ ] Add TypeScript types mirroring the backend response (`TopicEvidence`, `EvidenceCall`, `LineageNode`, etc.) in `frontend/src/types/index.ts`
-- [ ] Implement `TopicEvidencePanel.tsx` as a controlled side drawer (open/close via props)
+- [ ] Implement `TopicEvidenceDrawer.tsx` as a controlled full-overlay drawer (open/close via props, `mode` prop accepting `"lineage" | "call_topic" | "matching"`; this story ships `"lineage"` only)
 - [ ] Implement color-palette helper (`getCallColor(callIndex)`) — 8 pastel swatches
 - [ ] Implement per-card expandable sections (raw extract, match group, verification)
 - [ ] Integrate into `ProjectUpdatesStage.tsx`: add "View evidence" link per updated topic; manage drawer open state

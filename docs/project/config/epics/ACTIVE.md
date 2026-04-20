@@ -13,9 +13,11 @@
 | 10.1 | Lineage Helper + Merge-Prompt Fix | pending | — |
 | 10.2 | Prompts Audit (Read-Only Documentation) | pending | 10.1 |
 | 10.3 | Topic Evidence API | pending | 10.1 |
-| 10.4 | Evidence Panel UI (Color-Coded Per-Call Trail) | pending | 10.3 |
+| 10.4 | Evidence Drawer UI — Lineage Mode | pending | 10.3 |
 | 10.5 | "+ new (merged)" Label on Timeline Cells | pending | 10.3 |
 | 10.6 | Implement Prompt Fixes From Audit | pending | 10.2 |
+| 10.7 | Call Topics Stage: Evidence Drawer | pending | 10.4 |
+| 10.8 | Project Matching Stage: Side-by-Side Evidence Drawer | pending | 10.3, 10.4 |
 
 ### EPIC-9 Stories (Done)
 | # | Story | Status |

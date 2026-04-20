@@ -13,7 +13,7 @@
 | EPIC-7 | Two-Step Topic Extraction + New Stages | [ ] | 6 |
 | EPIC-8 | Topics Timeline Grid | [ ] | 2 |
 | EPIC-9 | M:N Topic Merge + Not-Discussed Verification | [x] Done | 7 |
-| EPIC-10 | Topic Lineage + Prompt Traceability | [ ] Next | 6 |
+| EPIC-10 | Topic Lineage + Full-Stage Traceability + Prompt Quality | [ ] Next | 8 |
 
 ---
 
