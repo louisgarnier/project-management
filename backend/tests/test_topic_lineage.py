@@ -134,3 +134,101 @@ def test_lineage_cycle_guard_terminates():
     result = get_topic_lineage("a", db)
     ids = {r["id"] for r in result}
     assert ids == {"a", "b"}
+
+
+from backend.services.topic_lineage import get_lineage_topic_updates
+
+
+def _make_db_with_updates(topics_by_id, sources_by_parent, updates_by_topic_id, calls_by_id):
+    """Extend the topics-only mock to also respond to topic_updates and calls queries."""
+    db = _make_db(topics_by_id, sources_by_parent)
+
+    original_side = db.table.side_effect
+
+    def table_side(name):
+        if name == "topic_updates":
+            t = MagicMock()
+            select = MagicMock()
+            t.select.return_value = select
+
+            def in_side(col, values):
+                assert col == "topic_id"
+                result = MagicMock()
+                order = MagicMock()
+                result.order.return_value = order
+                rows = []
+                for tid in values:
+                    rows.extend(updates_by_topic_id.get(tid, []))
+                rows = sorted(rows, key=lambda r: r["created_at"])
+                order.execute.return_value.data = rows
+                return result
+
+            select.in_.side_effect = in_side
+            return t
+
+        if name == "calls":
+            t = MagicMock()
+            select = MagicMock()
+            t.select.return_value = select
+
+            def eq_side(col, val):
+                assert col == "id"
+                result = MagicMock()
+                result.execute.return_value.data = (
+                    [calls_by_id[val]] if val in calls_by_id else []
+                )
+                return result
+
+            select.eq.side_effect = eq_side
+            return t
+
+        return original_side(name)
+
+    db.table.side_effect = table_side
+    return db
+
+
+def test_lineage_updates_ordered_chronologically_and_enriched():
+    """Updates from ancestor topic_a and merged topic_c should come back in
+    call-time order, each row tagged with source_topic_id/name and call_title.
+    """
+    db = _make_db_with_updates(
+        topics_by_id={
+            "c": {"id": "c", "name": "API strategy", "archived": False,
+                  "merged_into_topic_id": None},
+            "a": {"id": "a", "name": "REST API",     "archived": True,
+                  "merged_into_topic_id": "c"},
+        },
+        sources_by_parent={
+            "c": [{"id": "a", "name": "REST API", "archived": True,
+                   "merged_into_topic_id": "c"}],
+        },
+        updates_by_topic_id={
+            "a": [
+                {"topic_id": "a", "call_id": "call-1", "summary": "REST raised",
+                 "transcript_excerpt": "we picked REST", "follow_up_items": [],
+                 "decisions": [], "created_at": "2026-04-01T10:00:00Z"},
+            ],
+            "c": [
+                {"topic_id": "c", "call_id": "call-2", "summary": "merged",
+                 "transcript_excerpt": "merged API discussion", "follow_up_items": [],
+                 "decisions": [], "created_at": "2026-04-08T10:00:00Z"},
+                {"topic_id": "c", "call_id": "call-3", "summary": "confirmed REST",
+                 "transcript_excerpt": "final REST decision", "follow_up_items": [],
+                 "decisions": [], "created_at": "2026-04-15T10:00:00Z"},
+            ],
+        },
+        calls_by_id={
+            "call-1": {"id": "call-1", "title": "Kickoff"},
+            "call-2": {"id": "call-2", "title": "Review"},
+            "call-3": {"id": "call-3", "title": "Decision"},
+        },
+    )
+
+    result = get_lineage_topic_updates("c", db)
+
+    assert [r["call_title"] for r in result] == ["Kickoff", "Review", "Decision"]
+    assert [r["source_topic_id"] for r in result] == ["a", "c", "c"]
+    assert [r["source_topic_name"] for r in result] == ["REST API", "API strategy", "API strategy"]
+    # Original fields preserved
+    assert result[0]["transcript_excerpt"] == "we picked REST"
