@@ -271,16 +271,16 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
           </button>
           <button
             onClick={handleMarkNew}
-            disabled={selectedRight.size === 0}
-            title="Mark as new project topic"
+            disabled={selectedRight.size === 0 || selectedLeft.size > 0}
+            title={selectedLeft.size > 0 ? "Deselect left topics first, or use Link/Merge" : "Mark as new project topic"}
             style={{
               writingMode: "vertical-rl", textOrientation: "mixed",
               fontSize: 11, fontWeight: 600,
               background: "white",
-              color: selectedRight.size > 0 ? "#172b4d" : "#97a0af",
-              border: `1px solid ${selectedRight.size > 0 ? "#97a0af" : "#dfe1e6"}`,
+              color: selectedRight.size > 0 && selectedLeft.size === 0 ? "#172b4d" : "#97a0af",
+              border: `1px solid ${selectedRight.size > 0 && selectedLeft.size === 0 ? "#97a0af" : "#dfe1e6"}`,
               padding: "12px 8px", borderRadius: 6,
-              cursor: selectedRight.size > 0 ? "pointer" : "default",
+              cursor: selectedRight.size > 0 && selectedLeft.size === 0 ? "pointer" : "default",
               fontFamily: "inherit",
             }}
           >
