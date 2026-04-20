@@ -141,3 +141,34 @@ def build_lineage_evidence_block(topic_name: str, topic_id: str, db) -> str:
             for d in decisions:
                 lines.append(f"  - {d}")
     return "\n".join(lines)
+
+
+def get_lineage_match_groups(topic_id: str, db) -> list[dict]:
+    """Return topic_match_groups whose project_topic_ids intersects the lineage.
+
+    Enriched with call_title. Ordered by created_at ascending.
+    """
+    lineage = get_topic_lineage(topic_id, db)
+    lineage_id_set = {n["id"] for n in lineage}
+
+    all_groups = (
+        db.table("topic_match_groups")
+        .select("call_id, project_topic_ids, call_topic_names, created_at")
+        .execute()
+        .data
+    )
+
+    matched = [
+        g for g in all_groups
+        if any(pid in lineage_id_set for pid in (g.get("project_topic_ids") or []))
+    ]
+    matched.sort(key=lambda g: g.get("created_at", ""))
+
+    title_cache: dict[str, str] = {}
+    for g in matched:
+        cid = g["call_id"]
+        if cid not in title_cache:
+            rows = db.table("calls").select("title").eq("id", cid).execute().data
+            title_cache[cid] = rows[0]["title"] if rows else cid
+        g["call_title"] = title_cache[cid]
+    return matched

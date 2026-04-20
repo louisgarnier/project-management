@@ -298,3 +298,81 @@ def test_evidence_block_returns_fallback_when_no_history():
 
     block = build_lineage_evidence_block("New topic", "x", db)
     assert block == '== Topic: "New topic" ==\n(No historical excerpts available)\n'
+
+
+from backend.services.topic_lineage import get_lineage_match_groups
+
+
+def _make_db_with_match_groups(topics_by_id, sources_by_parent,
+                                groups_by_call, calls_by_id):
+    """Mock DB that serves topic_match_groups as well as topics + calls."""
+    db = _make_db(topics_by_id, sources_by_parent)
+    original_side = db.table.side_effect
+
+    def table_side(name):
+        if name == "topic_match_groups":
+            t = MagicMock()
+            select = MagicMock()
+            t.select.return_value = select
+            # All groups returned; filtering is done in the helper
+            all_groups = [g for groups in groups_by_call.values() for g in groups]
+            select.execute.return_value.data = all_groups
+            return t
+        if name == "calls":
+            t = MagicMock()
+            select = MagicMock()
+            t.select.return_value = select
+
+            def eq_side(col, val):
+                result = MagicMock()
+                result.execute.return_value.data = (
+                    [calls_by_id[val]] if val in calls_by_id else []
+                )
+                return result
+
+            select.eq.side_effect = eq_side
+            return t
+        return original_side(name)
+
+    db.table.side_effect = table_side
+    return db
+
+
+def test_lineage_match_groups_returns_groups_touching_any_ancestor():
+    """A match group in Call 2 that references archived source 'a' must be
+    returned when querying lineage of the merged topic 'c'.
+    """
+    db = _make_db_with_match_groups(
+        topics_by_id={
+            "c": {"id": "c", "name": "API", "archived": False,
+                  "merged_into_topic_id": None},
+            "a": {"id": "a", "name": "REST", "archived": True,
+                  "merged_into_topic_id": "c"},
+        },
+        sources_by_parent={
+            "c": [{"id": "a", "name": "REST", "archived": True,
+                   "merged_into_topic_id": "c"}],
+        },
+        groups_by_call={
+            "call-1": [{"call_id": "call-1", "project_topic_ids": ["a"],
+                        "call_topic_names": ["REST decision"],
+                        "created_at": "2026-04-01T10:00:00Z"}],
+            "call-2": [{"call_id": "call-2", "project_topic_ids": ["c"],
+                        "call_topic_names": ["API follow-up"],
+                        "created_at": "2026-04-08T10:00:00Z"}],
+            "call-3": [{"call_id": "call-3",
+                        "project_topic_ids": ["unrelated-id"],
+                        "call_topic_names": ["something else"],
+                        "created_at": "2026-04-15T10:00:00Z"}],
+        },
+        calls_by_id={
+            "call-1": {"id": "call-1", "title": "Kickoff"},
+            "call-2": {"id": "call-2", "title": "Review"},
+            "call-3": {"id": "call-3", "title": "Other"},
+        },
+    )
+
+    result = get_lineage_match_groups("c", db)
+
+    assert [g["call_title"] for g in result] == ["Kickoff", "Review"]
+    assert [g["project_topic_ids"] for g in result] == [["a"], ["c"]]
