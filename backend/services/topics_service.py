@@ -700,6 +700,114 @@ async def run_merge_background(call_id: str) -> None:
         logger.exception(f"❌ [Topics] Background merge failed: {e}")
 
 
+async def verify_not_discussed_topics(call_id: str) -> dict:
+    """
+    Check each not-discussed topic against the call transcript using the
+    not_discussed_check workflow prompt. Returns a dict keyed by topic_id
+    with {discussed: bool, transcript_excerpt: str|None, reasoning: str}.
+    """
+    db = get_client()
+
+    call_row = (
+        db.table("calls")
+        .select("project_id, transcript")
+        .eq("id", call_id)
+        .execute()
+        .data
+    )
+    if not call_row:
+        raise ValueError(f"Call {call_id} not found")
+    project_id = call_row[0]["project_id"]
+    transcript = call_row[0].get("transcript") or ""
+    if not transcript:
+        logger.warning(f"⚠️ [Verification] No transcript for call {call_id}")
+        return {}
+
+    # Load match groups to identify which project topics are NOT discussed
+    groups = (
+        db.table("topic_match_groups")
+        .select("project_topic_ids")
+        .eq("call_id", call_id)
+        .execute()
+        .data
+    )
+    matched_ids: set[str] = set()
+    for g in groups:
+        for pid in (g.get("project_topic_ids") or []):
+            matched_ids.add(pid)
+
+    previous = _get_previous_topics(project_id, db)
+    not_discussed = [t for t in previous if t["topic_id"] not in matched_ids]
+
+    if not not_discussed:
+        logger.info(f"✅ [Verification] No not-discussed topics for call {call_id}")
+        return {}
+
+    # Get the not_discussed_check prompt and LLM
+    stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="not_discussed_check")
+    proj_rows = db.table("projects").select("default_llm").eq("id", project_id).execute().data
+    llm = stored_llm or (proj_rows[0]["default_llm"] if proj_rows else "groq")
+    check_instructions = stored_prompt or (
+        "You are checking whether a project topic was actually discussed in a call transcript.\n"
+        "Given the topic name, its latest summary, and the full call transcript, determine:\n"
+        "1. Was this topic mentioned or discussed in the call? (yes/no)\n"
+        "2. If yes, provide the relevant transcript excerpt.\n\n"
+        'Return JSON: {"discussed": true/false, "transcript_excerpt": "..." or null, '
+        '"reasoning": "one sentence explanation"}'
+    )
+
+    results: dict[str, dict] = {}
+
+    for topic in not_discussed:
+        topic_id = topic["topic_id"]
+        try:
+            prompt = (
+                f"{check_instructions}\n\n"
+                f"Topic name: {topic['name']}\n"
+                f"Topic summary: {topic.get('summary', '(no summary)')}\n\n"
+                f"Call transcript:\n{transcript}"
+            )
+            raw = await call_llm_raw(_EXTRACT_SYSTEM, prompt, llm)
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            parsed = json.loads(raw.strip())
+            results[topic_id] = {
+                "discussed": bool(parsed.get("discussed", False)),
+                "transcript_excerpt": parsed.get("transcript_excerpt"),
+                "reasoning": parsed.get("reasoning", ""),
+            }
+            logger.info(
+                f"🔍 [Verification] {topic['name']}: discussed={results[topic_id]['discussed']}"
+            )
+        except Exception as e:
+            logger.error(f"❌ [Verification] Failed for topic {topic['name']}: {e}")
+            results[topic_id] = {
+                "discussed": False,
+                "transcript_excerpt": None,
+                "reasoning": f"Verification failed: {e}",
+            }
+
+    return results
+
+
+async def run_verification_background(call_id: str) -> None:
+    """Run verify_not_discussed_topics in background, saving to verification_cache."""
+    db = get_client()
+    try:
+        result = await verify_not_discussed_topics(call_id)
+        db.table("calls").update({
+            "verification_cache": result,
+            "verification_status": "done",
+        }).eq("id", call_id).execute()
+        logger.info(f"✅ [Verification] Background verification complete for call {call_id}")
+    except Exception as e:
+        db.table("calls").update({"verification_status": "failed"}).eq("id", call_id).execute()
+        logger.exception(f"❌ [Verification] Background verification failed: {e}")
+
+
 async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
     """
     Save merged/reviewed topics and advance to artifacts.
@@ -1064,6 +1172,19 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         except Exception as e:
             logger.warning(f"⚠️ [Rollback] Could not clear merge fields (non-fatal): {e}")
 
+    def _clear_verification_fields() -> None:
+        """Reset verification_cache and verification_status to idle."""
+        try:
+            payload = json.dumps({"verification_cache": None, "verification_status": "idle"})
+            db.postgrest.session.patch(
+                f"/calls?id=eq.{call_id}",
+                content=payload,
+                headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+            )
+            logger.info(f"🗄️ [Rollback] Cleared verification fields for call {call_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ [Rollback] Could not clear verification fields (non-fatal): {e}")
+
     def _clear_transcript_fields() -> None:
         """Clear transcript and transcript_source via raw HTTP (None-safe)."""
         payload = json.dumps({
@@ -1131,11 +1252,12 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
     elif target_stage == "project_matching":
         # Keep match_groups — that IS the project_matching content.
         # Restore pending_topics first (Call 1 auto-advance never sets it).
-        # Clear everything after: topic_updates, merge, artifacts.
+        # Clear everything after: topic_updates, merge, verification, artifacts.
         _rebuild_pending_topics()
         _delete_topic_updates()
         _mark_artifacts_stale()
         _clear_merge_fields()
+        _clear_verification_fields()
 
     elif target_stage == "call_topics":
         # Restore extraction_cache FIRST — topic_updates may be the only source (Call 1 auto-advance
@@ -1184,20 +1306,22 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
             headers={"Content-Type": "application/json", "Prefer": "return=representation"},
         )
 
-        # Delete everything downstream: topic_updates (created at project_updates), match_groups, merge.
+        # Delete everything downstream: topic_updates (created at project_updates), match_groups, merge, verification.
         _delete_topic_updates()
         _delete_match_groups()
         _clear_merge_fields()
+        _clear_verification_fields()
         _mark_artifacts_stale()
 
     elif target_stage == "transcript":
         # Keep transcript — that IS the transcript content.
-        # Clear everything after: extraction, match_groups, topic_updates, merge, artifacts.
+        # Clear everything after: extraction, match_groups, topic_updates, merge, verification, artifacts.
         _delete_topic_updates()
         _mark_artifacts_stale()
         _delete_match_groups()
         _clear_extraction_fields()
         _clear_merge_fields()
+        _clear_verification_fields()
 
     else:
         raise ValueError(f"Unknown target_stage: {target_stage}")

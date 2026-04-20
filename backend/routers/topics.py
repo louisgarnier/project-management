@@ -5,7 +5,8 @@ from backend.services.topics_service import (
     save_topics, validate_call, generate_brief,
     list_project_topics, list_call_topics, extract_call_topics, aggregate_topics,
     get_pending_topics, save_match_groups, run_merge_preview, validate_project_updates,
-    run_extraction_background, run_merge_background, list_topics_timeline,
+    run_extraction_background, run_merge_background, run_verification_background,
+    list_topics_timeline,
     list_topics_prior_to_call, rollback_to_stage,
     TopicUpdate,
 )
@@ -171,11 +172,16 @@ class MatchGroupPayload(PydanticBaseModel):
 
 
 @router.post("/calls/{call_id}/topics/save-matches", status_code=200)
-async def save_matches(call_id: str, groups: list[MatchGroupPayload]):
+async def save_matches(call_id: str, groups: list[MatchGroupPayload], background_tasks: BackgroundTasks):
     """Save manual match groups and advance to project_updates."""
     logger.info(f"📥 [Topics] Save matches: call={call_id}, groups={len(groups)}")
     try:
         result = await save_match_groups(call_id, [g.model_dump() for g in groups])
+        # Trigger not-discussed verification in background
+        db = get_client()
+        db.table("calls").update({"verification_status": "processing", "verification_cache": None}).eq("id", call_id).execute()
+        background_tasks.add_task(run_verification_background, call_id)
+        logger.info(f"✅ [Topics] Triggered background verification for call {call_id}")
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -236,6 +242,27 @@ async def merge_preview(call_id: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_merge_background, call_id)
 
     logger.info(f"✅ [Topics] Background merge started: call={call_id}")
+    return {"status": "processing"}
+
+
+@router.post("/calls/{call_id}/topics/verify-not-discussed")
+async def verify_not_discussed(call_id: str, background_tasks: BackgroundTasks):
+    """Trigger not-discussed verification in background."""
+    logger.info(f"📥 [Topics] Verify not-discussed: call={call_id}")
+    db = get_client()
+
+    call_row = db.table("calls").select("verification_status").eq("id", call_id).execute().data
+    if not call_row:
+        raise HTTPException(status_code=404, detail=f"Call {call_id} not found")
+
+    status = call_row[0].get("verification_status", "idle")
+    if status == "processing":
+        logger.info(f"⚠️ [Topics] Verification already in progress: call={call_id}")
+        return {"status": "processing"}
+
+    db.table("calls").update({"verification_status": "processing", "verification_cache": None}).eq("id", call_id).execute()
+    background_tasks.add_task(run_verification_background, call_id)
+    logger.info(f"✅ [Topics] Background verification started: call={call_id}")
     return {"status": "processing"}
 
 

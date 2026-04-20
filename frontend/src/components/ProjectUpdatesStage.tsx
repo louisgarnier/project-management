@@ -174,6 +174,8 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
   const [merged, setMerged] = useState(alreadyMerged);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(() => call.verification_status === "processing");
+  const [verificationCache, setVerificationCache] = useState<Call["verification_cache"]>(call.verification_cache);
 
   // Track whether we've applied the cache to avoid overwriting user edits
   const mergeApplied = useRef(alreadyMerged);
@@ -246,14 +248,26 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [call.merge_status, call.merge_cache]);
 
-  // Poll every 3s while merging
+  // Watch for verification completion
   useEffect(() => {
-    if (!merging || !onPollCall) return;
+    if (call.verification_status === "done" && call.verification_cache) {
+      setVerificationCache(call.verification_cache);
+      setVerifying(false);
+    }
+    if (call.verification_status === "failed" && verifying) {
+      setVerifying(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [call.verification_status, call.verification_cache]);
+
+  // Poll every 3s while merging or verifying
+  useEffect(() => {
+    if ((!merging && !verifying) || !onPollCall) return;
     const interval = setInterval(async () => {
       await onPollCall();
     }, 3000);
     return () => clearInterval(interval);
-  }, [merging, onPollCall]);
+  }, [merging, verifying, onPollCall]);
 
   async function handleRunMerge() {
     setStarting(true);
@@ -281,6 +295,13 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
     } finally {
       setValidating(false);
     }
+  }
+
+  function handlePromote(topic: TopicData) {
+    // Move from not_discussed to updated (pending_merge) so user can run merge
+    setTopics(prev => prev.map(t =>
+      t === topic ? { ...t, not_discussed: false, pending_merge: true } : t
+    ));
   }
 
   const newTopics = topics.filter(t => !t.not_discussed && !t.topic_id);
@@ -440,36 +461,75 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#97a0af",
                 letterSpacing: ".05em" }}>
                 Not discussed in this call&nbsp;&nbsp;({notDiscussed.length} topic{notDiscussed.length !== 1 ? "s" : ""})
+                {verifying && <span style={{ fontWeight: 400, textTransform: "none", marginLeft: 8 }}>⏳ Verifying…</span>}
               </div>
               <div style={{ fontSize: 11, color: "#97a0af", marginTop: 2 }}>
                 These topics exist in the project but were not mentioned in this call. They carry over unchanged.
               </div>
             </div>
-            {notDiscussed.map((t, idx) => (
-              <div key={t.topic_id ?? t.name ?? idx}
-                style={{ opacity: 0.7, borderBottom: "1px solid #f0f1f3",
-                  paddingLeft: 20, paddingRight: 20, paddingTop: 10, paddingBottom: 10,
-                  borderLeft: "3px solid transparent", background: "white" }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <span style={{ color: "#97a0af", fontSize: 12 }}>•</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#172b4d" }}>{t.name}</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
-                    padding: "2px 6px", borderRadius: 3, whiteSpace: "nowrap", flexShrink: 0,
-                    ...(STATUS_BADGE[t.status ?? "open"] ?? STATUS_BADGE.open) }}>
-                    {(t.status ?? "open").replace("_", " ")}
-                  </span>
-                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-                    color: SENTIMENT_COLOR[t.sentiment ?? "neutral"] ?? "#5e6c84", marginLeft: "auto" }}>
-                    {t.sentiment}
-                  </span>
+            {notDiscussed.map((t, idx) => {
+              const v = verificationCache?.[t.topic_id ?? ""];
+              const isFlagged = v?.discussed === true;
+              const isConfirmed = v?.discussed === false;
+              return (
+                <div key={t.topic_id ?? t.name ?? idx}
+                  style={{
+                    opacity: isFlagged ? 1 : 0.7,
+                    borderBottom: "1px solid #f0f1f3",
+                    paddingLeft: 20, paddingRight: 20, paddingTop: 10, paddingBottom: 10,
+                    borderLeft: isFlagged ? "3px solid #ff991f" : "3px solid transparent",
+                    background: isFlagged ? "#fffae6" : "white",
+                  }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                    <span style={{ color: "#97a0af", fontSize: 12 }}>•</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#172b4d" }}>{t.name}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
+                      padding: "2px 6px", borderRadius: 3, whiteSpace: "nowrap", flexShrink: 0,
+                      ...(STATUS_BADGE[t.status ?? "open"] ?? STATUS_BADGE.open) }}>
+                      {(t.status ?? "open").replace("_", " ")}
+                    </span>
+                    {isFlagged && (
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+                        background: "#fff4e6", color: "#974f0c", border: "1px solid #ff991f", whiteSpace: "nowrap", flexShrink: 0 }}>
+                        ⚠ Discussed in call
+                      </span>
+                    )}
+                    {isConfirmed && (
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+                        background: "#e3fcef", color: "#006644", whiteSpace: "nowrap", flexShrink: 0 }}>
+                        ✓ Confirmed
+                      </span>
+                    )}
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase",
+                      color: SENTIMENT_COLOR[t.sentiment ?? "neutral"] ?? "#5e6c84", marginLeft: "auto" }}>
+                      {t.sentiment}
+                    </span>
+                  </div>
+                  {t.summary && (
+                    <p style={{ fontSize: 12, color: "#5e6c84", margin: "3px 0 0 18px", lineHeight: 1.5 }}>
+                      {t.summary}
+                    </p>
+                  )}
+                  {isFlagged && v?.reasoning && (
+                    <p style={{ fontSize: 11, color: "#974f0c", margin: "4px 0 0 18px", lineHeight: 1.4, fontStyle: "italic" }}>
+                      {v.reasoning}
+                    </p>
+                  )}
+                  {isFlagged && (
+                    <button
+                      onClick={() => handlePromote(t)}
+                      style={{
+                        marginTop: 6, marginLeft: 18, padding: "4px 12px", borderRadius: 4,
+                        border: "1px solid #ff991f", background: "#fff4e6", color: "#974f0c",
+                        fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >
+                      Promote to Updated →
+                    </button>
+                  )}
                 </div>
-                {t.summary && (
-                  <p style={{ fontSize: 12, color: "#5e6c84", margin: "3px 0 0 18px", lineHeight: 1.5 }}>
-                    {t.summary}
-                  </p>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
