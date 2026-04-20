@@ -12,7 +12,8 @@
 | EPIC-6 | Topics Stage | [ ] | 2 |
 | EPIC-7 | Two-Step Topic Extraction + New Stages | [ ] | 6 |
 | EPIC-8 | Topics Timeline Grid | [ ] | 2 |
-| EPIC-9 | M:N Topic Merge + Not-Discussed Verification | [ ] Next | 7 |
+| EPIC-9 | M:N Topic Merge + Not-Discussed Verification | [x] Done | 7 |
+| EPIC-10 | Topic Lineage + Prompt Traceability | [ ] Next | 6 |
 
 ---
 
@@ -27,6 +28,8 @@ EPIC-1 (Foundation + Logging)
                       └─ EPIC-6 (Topics Stage)
                            └─ EPIC-7 (Topic Dashboard)
                                 └─ EPIC-8 (Testing + Deployment)
+                                     └─ EPIC-9 (M:N Merge + Verification)
+                                          └─ EPIC-10 (Lineage + Prompt Traceability)
 ```
 
 **Rule:** No epic starts until all stories in the previous epic are `[x] Done`.
@@ -37,9 +40,9 @@ EPIC-1 (Foundation + Logging)
 ## 🚦 Status
 
 ```
-Working on : EPIC-5 — Artifacts Stage
+Working on : EPIC-10 — Topic Lineage + Prompt Traceability
 Blocked by : —
-Next up    : EPIC-5 / Story 5.1
+Next up    : EPIC-10 / Story 10.1
 ```
 
 ---

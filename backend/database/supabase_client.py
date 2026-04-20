@@ -1,11 +1,12 @@
 import os
 from functools import lru_cache
+from pathlib import Path
 
 from backend.utils.logger import db_logger
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 @lru_cache(maxsize=1)

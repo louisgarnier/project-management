@@ -50,11 +50,9 @@ This will:
 
 ### 2. Start Development Servers
 
-**Backend:**
+**Backend:** (run from repo root)
 ```bash
-cd backend
-source venv/bin/activate
-python3 -m uvicorn backend.api.main:app --reload --port 8000
+python3 -m uvicorn backend.main:app --reload --port 8000
 ```
 
 **Frontend:**

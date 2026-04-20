@@ -1,21 +1,32 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Epic:** EPIC-9 — M:N Topic Merge + Not-Discussed Verification
-- **Story:** 9.1 — DB Migration: M:N Merge + Verification Schema
+- **Epic:** EPIC-10 — Topic Lineage + Prompt Traceability
+- **Story:** 10.1 — Lineage Helper + Merge-Prompt Fix
 - **Status:** `pending`
-- **Spec:** `docs/project/config/2026-04-20-epic-9-mn-merge-and-verification-design.md`
+- **Spec:** `docs/project/config/2026-04-20-epic-10-topic-lineage-and-prompt-traceability-design.md`
+- **PRD:** `docs/project/config/prd-epic10-topic-lineage-and-prompt-traceability.md`
 
-### EPIC-9 Stories
+### EPIC-10 Stories
 | # | Story | Status | Depends on |
 |---|---|---|---|
-| 9.1 | DB Migration: M:N Merge + Verification Schema | pending | — |
-| 9.2 | Transcript Excerpt Capture in Extraction | pending | 9.1 |
-| 9.3 | M:N ProjectMatchingStage UI | pending | 9.1 |
-| 9.4 | M:N Merge Pipeline + RAG Synthesis Backend | pending | 9.1, 9.2 |
-| 9.5 | Not-Discussed Verification Backend + UI | pending | 9.1 |
-| 9.6 | Timeline: Merged Cell Type + Archive Filter | pending | 9.4 |
-| 9.7 | Rollback Updates + Integration Testing | pending | 9.4, 9.5, 9.6 |
+| 10.1 | Lineage Helper + Merge-Prompt Fix | pending | — |
+| 10.2 | Prompts Audit (Read-Only Documentation) | pending | 10.1 |
+| 10.3 | Topic Evidence API | pending | 10.1 |
+| 10.4 | Evidence Panel UI (Color-Coded Per-Call Trail) | pending | 10.3 |
+| 10.5 | "+ new (merged)" Label on Timeline Cells | pending | 10.3 |
+| 10.6 | Implement Prompt Fixes From Audit | pending | 10.2 |
+
+### EPIC-9 Stories (Done)
+| # | Story | Status |
+|---|---|---|
+| 9.1 | DB Migration: M:N Merge + Verification Schema | done |
+| 9.2 | Transcript Excerpt Capture in Extraction | done |
+| 9.3 | M:N ProjectMatchingStage UI | done |
+| 9.4 | M:N Merge Pipeline + RAG Synthesis Backend | done |
+| 9.5 | Not-Discussed Verification Backend + UI | done |
+| 9.6 | Timeline: Merged Cell Type + Archive Filter | done |
+| 9.7 | Rollback Updates + Integration Testing | done |
 
 ## Completed
 - [x] EPIC-1 / Story 1.1 — Repo Scaffold & Environment — 2026-04-09
