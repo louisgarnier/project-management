@@ -532,8 +532,16 @@ async def run_merge_preview(call_id: str) -> list[dict]:
 
     base_merge_instructions = stored_prompt or (
         "You are merging an existing project topic record with one or more new call topics that match it. "
-        "Produce an updated topic that synthesises the history with the latest call information. "
-        "Keep the most important follow-up items (max 5). Update status, sentiment, and owner to reflect current state."
+        "Produce an updated topic that synthesises the history with the latest call information.\n\n"
+        "CRITICAL RULES — follow these exactly:\n"
+        "1. NEVER drop follow-up items. Include ALL follow-ups from ALL sources (existing + new). "
+        "If both the existing topic and the call topic have follow-ups, UNION them — do not pick a subset.\n"
+        "2. NEVER drop decisions. Include ALL decisions from ALL sources.\n"
+        "3. The summary must cover ALL key points discussed — do not compress or omit details. "
+        "If the discussion touched on specific numbers, dates, names, or commitments, include them.\n"
+        "4. When in doubt, include more detail rather than less. Completeness beats brevity.\n"
+        "5. Update status, sentiment, and owner to reflect the CURRENT state after this call.\n"
+        "6. Preserve the exact wording of follow-up items and decisions unless they are truly duplicates."
     )
     merge_instructions = (
         f"Project context:\n{project_context}\n\n{base_merge_instructions}"
@@ -573,6 +581,8 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                     f"They were extracted separately but cover the same subject.\n"
                     f"Propose a concise name that captures the combined scope.\n\n"
                     f"Call topics to merge:\n{call_excerpts}\n\n"
+                    f"Remember: UNION all follow_up_items and decisions from every topic. "
+                    f"The summary must cover ALL key points from ALL topics being merged.\n\n"
                     f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
                 )
                 merged = await _call_llm(prompt, llm)
@@ -610,7 +620,10 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                     f"Current state:\n{json.dumps(existing, indent=2)}\n\n"
                     f"New call topic(s) matching this:\n{call_excerpts}\n\n"
                     f"Synthesize into an updated topic. Ground your summary in the transcript excerpts, "
-                    f"not just prior summaries.\n\n"
+                    f"not just prior summaries.\n"
+                    f"UNION all follow_up_items from both existing and new — never drop any.\n"
+                    f"UNION all decisions from both existing and new — never drop any.\n"
+                    f"The summary must include ALL key points from both historical and new discussion.\n\n"
                     f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
                 )
                 merged = await _call_llm(prompt, llm)
@@ -649,7 +662,10 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 f"Current state of existing topics:\n{json.dumps(existing_topics, indent=2)}\n\n"
                 f"New call topic(s):\n{call_excerpts}\n\n"
                 f"Synthesize everything into a single merged topic. Ground your summary in the "
-                f"transcript excerpts, not just prior summaries.\n\n"
+                f"transcript excerpts, not just prior summaries.\n"
+                f"UNION all follow_up_items from EVERY source topic — never drop any.\n"
+                f"UNION all decisions from EVERY source topic — never drop any.\n"
+                f"The summary must include ALL key points from ALL topics being merged.\n\n"
                 f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
             )
             merged = await _call_llm(prompt, llm)
@@ -679,19 +695,153 @@ async def run_merge_preview(call_id: str) -> list[dict]:
     return [r for r in results if r] + not_discussed
 
 
+async def _verify_merged_topics(call_id: str, merged_topics: list[dict]) -> list[dict]:
+    """
+    Post-merge verification pass: for each discussed topic, check the merged result
+    against the full transcript to ensure no follow-ups, decisions, or key details were lost.
+    Returns the verified/corrected topic list.
+    """
+    db = get_client()
+
+    call_row = (
+        db.table("calls")
+        .select("project_id, transcript")
+        .eq("id", call_id)
+        .execute()
+        .data
+    )
+    if not call_row:
+        return merged_topics
+    project_id = call_row[0]["project_id"]
+    transcript = call_row[0].get("transcript") or ""
+    if not transcript:
+        logger.info(f"⚠️ [MergeVerify] No transcript for call {call_id} — skipping verification")
+        return merged_topics
+
+    # Get the merge_verification prompt
+    stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="merge_verification")
+    proj_rows = db.table("projects").select("default_llm").eq("id", project_id).execute().data
+    llm = stored_llm or (proj_rows[0]["default_llm"] if proj_rows else "groq")
+    verify_instructions = stored_prompt or (
+        "You are a quality reviewer for project topic data. "
+        "Verify that the merged topic did NOT lose any important information. "
+        "Check: are ALL follow-up items preserved? ALL decisions? Does the summary cover all key points? "
+        "Return the corrected topic as JSON. Only ADD back what was lost, never remove anything."
+    )
+
+    # Collect all source follow-ups and decisions for each topic
+    # so the verification prompt can compare against them
+    groups = (
+        db.table("topic_match_groups")
+        .select("project_topic_ids, call_topic_names")
+        .eq("call_id", call_id)
+        .execute()
+        .data
+    )
+    pending_row = db.table("calls").select("pending_topics").eq("id", call_id).execute().data
+    pending: list[dict] = (pending_row[0].get("pending_topics") or []) if pending_row else []
+    pending_by_name = {t["name"].lower().strip(): t for t in pending}
+
+    previous = _get_previous_topics(project_id, db)
+    prev_by_id = {t["topic_id"]: t for t in previous}
+
+    # Build a map of source data per discussed topic for the verification prompt
+    # Match merged topics to their groups by topic_id or name
+    source_data_map: dict[int, dict] = {}
+    for idx, topic in enumerate(merged_topics):
+        if topic.get("not_discussed"):
+            continue
+        all_follow_ups: list[str] = []
+        all_decisions: list[str] = []
+
+        # Find the matching group
+        tid = topic.get("topic_id")
+        tname = (topic.get("name") or "").lower().strip()
+        matched_group = None
+        for g in groups:
+            ptids = g.get("project_topic_ids") or []
+            cnames = [n.lower().strip() for n in (g.get("call_topic_names") or [])]
+            if tid and tid in ptids:
+                matched_group = g
+                break
+            if any(n == tname for n in cnames):
+                matched_group = g
+                break
+
+        if matched_group:
+            # Collect from existing project topics
+            for pid in (matched_group.get("project_topic_ids") or []):
+                existing = prev_by_id.get(pid, {})
+                all_follow_ups.extend(existing.get("follow_up_items") or [])
+                all_decisions.extend(existing.get("decisions") or [])
+            # Collect from call topics
+            for cname in (matched_group.get("call_topic_names") or []):
+                ct = pending_by_name.get(cname.lower().strip(), {})
+                all_follow_ups.extend(ct.get("follow_up_items") or [])
+                all_decisions.extend(ct.get("decisions") or [])
+
+        source_data_map[idx] = {
+            "all_follow_ups": all_follow_ups,
+            "all_decisions": all_decisions,
+        }
+
+    verified = list(merged_topics)  # copy
+    for idx, topic in enumerate(merged_topics):
+        if topic.get("not_discussed"):
+            continue
+        source = source_data_map.get(idx)
+        if not source:
+            continue
+
+        source_follow_ups = source["all_follow_ups"]
+        source_decisions = source["all_decisions"]
+
+        try:
+            prompt = (
+                f"{verify_instructions}\n\n"
+                f"== Merged topic (to verify) ==\n{json.dumps(topic, indent=2)}\n\n"
+                f"== Source follow-up items (must ALL be present) ==\n"
+                f"{json.dumps(source_follow_ups, indent=2)}\n\n"
+                f"== Source decisions (must ALL be present) ==\n"
+                f"{json.dumps(source_decisions, indent=2)}\n\n"
+                f"== Relevant section of call transcript ==\n"
+                f"{transcript[:8000]}\n\n"
+                f"Return the corrected topic JSON (same schema). "
+                f"Add back any missing follow-ups, decisions, or key details. "
+                f"Never remove or shorten anything that was already correct.\n"
+                f"{_TOPIC_SCHEMA}"
+            )
+            corrected = await _call_llm(prompt, llm)
+            if isinstance(corrected, list):
+                corrected = corrected[0] if corrected else topic
+            # Preserve internal fields
+            corrected["topic_id"] = topic.get("topic_id")
+            if "_source_topic_ids" in topic:
+                corrected["_source_topic_ids"] = topic["_source_topic_ids"]
+            verified[idx] = corrected
+            logger.info(f"✅ [MergeVerify] Verified topic: {topic.get('name', '?')}")
+        except Exception as e:
+            logger.error(f"❌ [MergeVerify] Verification failed for '{topic.get('name', '?')}': {e} — keeping original")
+
+    return verified
+
+
 async def run_merge_background(call_id: str) -> None:
     """
-    Run run_merge_preview in the background, saving result to merge_cache.
+    Run run_merge_preview in the background, then verify each merged topic
+    against the transcript. Saves result to merge_cache.
     Called via FastAPI BackgroundTasks so the HTTP response returns immediately.
     """
     db = get_client()
     try:
         result = await run_merge_preview(call_id)
+        # Post-merge verification pass: check each topic against transcript
+        result = await _verify_merged_topics(call_id, result)
         db.table("calls").update({
             "merge_cache": result,
             "merge_status": "done",
         }).eq("id", call_id).execute()
-        logger.info(f"✅ [Topics] Background merge complete: {len(result)} topics saved for call {call_id}")
+        logger.info(f"✅ [Topics] Background merge+verify complete: {len(result)} topics saved for call {call_id}")
     except ValueError as e:
         db.table("calls").update({"merge_status": "failed"}).eq("id", call_id).execute()
         logger.warning(f"⚠️ [Topics] Background merge failed (ValueError): {e}")

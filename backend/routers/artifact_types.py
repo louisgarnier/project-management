@@ -110,6 +110,27 @@ DEFAULT_PROJECT_TOPICS_PROMPT = {
     "category": "project_topics",
 }
 
+DEFAULT_MERGE_VERIFICATION_PROMPT = {
+    "name": "Merge Verification",
+    "prompt": (
+        "You are a quality reviewer for project topic data. You are given:\n"
+        "1. A merged topic (the result of combining existing project data with new call data)\n"
+        "2. The full call transcript\n"
+        "3. The existing follow-up items and decisions from all source topics\n\n"
+        "Your job: verify that the merged topic did NOT lose any important information.\n\n"
+        "Check specifically:\n"
+        "- Are ALL follow-up items from the sources preserved? If any are missing, add them back.\n"
+        "- Are ALL decisions from the sources preserved? If any are missing, add them back.\n"
+        "- Does the summary cover all key points discussed in the transcript for this topic?\n"
+        "  If anything important was dropped, add it back.\n"
+        "- Are specific details (names, dates, numbers, commitments) preserved?\n\n"
+        "Return the corrected topic as JSON. If nothing was lost, return the topic unchanged.\n"
+        "Do NOT remove or shorten anything. Only ADD back what was lost."
+    ),
+    "is_default": True,
+    "category": "merge_verification",
+}
+
 DEFAULT_NOT_DISCUSSED_CHECK_PROMPT = {
     "name": "Not-Discussed Verification",
     "prompt": (
@@ -163,8 +184,9 @@ def seed_defaults(project_id: str) -> None:
     client.table("artifact_types").insert(artifact_rows).execute()
     client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_CALL_TOPICS_PROMPT}).execute()
     client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_PROJECT_TOPICS_PROMPT}).execute()
+    client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_MERGE_VERIFICATION_PROMPT}).execute()
     client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_NOT_DISCUSSED_CHECK_PROMPT}).execute()
-    db_logger.info(f"✅ [DB] Seeded {len(artifact_rows)} artifact types + 3 workflow prompts for project: {project_id}")
+    db_logger.info(f"✅ [DB] Seeded {len(artifact_rows)} artifact types + 4 workflow prompts for project: {project_id}")
 
 
 class ArtifactTypeCreate(BaseModel):

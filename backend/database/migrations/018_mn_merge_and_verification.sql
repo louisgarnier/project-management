@@ -58,4 +58,4 @@ BEGIN
 END $$;
 
 ALTER TABLE public.artifact_types ADD CONSTRAINT artifact_types_category_check
-  CHECK (category IN ('artifacts', 'topics', 'call_topics', 'project_topics', 'not_discussed_check'));
+  CHECK (category IN ('artifacts', 'topics', 'call_topics', 'project_topics', 'merge_verification', 'not_discussed_check'));
