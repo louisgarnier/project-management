@@ -107,6 +107,7 @@ import os
 
 from backend.database.supabase_client import get_client
 from backend.services.llm_service import call_llm_raw
+from backend.services.topic_lineage import build_lineage_evidence_block
 from backend.utils.logger import get_logger
 
 logger = get_logger("topics_service")
@@ -483,59 +484,6 @@ async def run_merge_preview(call_id: str) -> list[dict]:
     previous = _get_previous_topics(project_id, db)
     prev_by_id = {t["topic_id"]: t for t in previous}
 
-    def _load_transcript_excerpts(topic_id: str) -> list[dict]:
-        """Load all per-call evidence for a topic, ordered by call date.
-        Returns [{call, summary, transcript_excerpt, follow_up_items, decisions}, ...]"""
-        rows = (
-            db.table("topic_updates")
-            .select("call_id, summary, transcript_excerpt, follow_up_items, decisions")
-            .eq("topic_id", topic_id)
-            .order("created_at")
-            .execute()
-            .data
-        )
-        result = []
-        for r in rows:
-            if not r.get("transcript_excerpt") and not r.get("summary"):
-                continue
-            # Resolve call title for context
-            call_info = db.table("calls").select("title").eq("id", r["call_id"]).execute().data
-            call_title = call_info[0]["title"] if call_info else r["call_id"]
-            result.append({
-                "call": call_title,
-                "summary": r.get("summary", ""),
-                "transcript_excerpt": r.get("transcript_excerpt"),
-                "follow_up_items": r.get("follow_up_items") or [],
-                "decisions": r.get("decisions") or [],
-            })
-        return result
-
-    def _build_excerpt_context(topic_name: str, topic_id: str) -> str:
-        """Build a per-call evidence block with transcript, follow-ups, and decisions."""
-        excerpts = _load_transcript_excerpts(topic_id)
-        if not excerpts:
-            return f'== Topic: "{topic_name}" ==\n(No historical excerpts available)\n'
-        lines = [f'== Topic: "{topic_name}" — Per-Call Evidence ==']
-        for e in excerpts:
-            lines.append(f'\n--- {e["call"]} ---')
-            if e.get("transcript_excerpt"):
-                lines.append(f'Transcript: {e["transcript_excerpt"]}')
-            if e.get("summary"):
-                lines.append(f'Summary: {e["summary"]}')
-            if e.get("follow_up_items"):
-                items = e["follow_up_items"]
-                if isinstance(items, list) and items:
-                    lines.append("Follow-ups from this call:")
-                    for item in items:
-                        lines.append(f"  - {item}")
-            if e.get("decisions"):
-                decs = e["decisions"]
-                if isinstance(decs, list) and decs:
-                    lines.append("Decisions from this call:")
-                    for d in decs:
-                        lines.append(f"  - {d}")
-        return "\n".join(lines)
-
     # Get LLM config
     stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="project_topics")
     proj_rows = db.table("projects").select("default_llm, context").eq("id", project_id).execute().data
@@ -626,7 +574,7 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 return [{**existing, "topic_id": ptid}]
 
             # Build RAG context from historical transcript excerpts
-            excerpt_context = _build_excerpt_context(existing.get("name", ""), ptid)
+            excerpt_context = build_lineage_evidence_block(existing.get("name", ""), ptid, db)
             call_excerpts_parts = []
             for m in call_matches:
                 part = f'New from this call: "{m.get("name", "")}"\n'
@@ -671,7 +619,7 @@ async def run_merge_preview(call_id: str) -> list[dict]:
 
         # Build RAG context for each source topic
         excerpt_sections = "\n\n".join(
-            _build_excerpt_context(prev_by_id[pid].get("name", ""), pid)
+            build_lineage_evidence_block(prev_by_id[pid].get("name", ""), pid, db)
             for pid in ptids if pid in prev_by_id
         )
         call_excerpts_parts = []
