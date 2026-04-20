@@ -63,7 +63,9 @@ frontend/
         └── ArtifactsStage.tsx     → three-phase orchestrator (select → generating → reviewing); SSE via ReadableStream + line buffer; AbortController cleanup; skips to reviewing if artifacts exist (EPIC-5 / Story 5.4)
 
 backend/services/
-└── llm_service.py                 → generate_artifact(prompt_used, transcript, llm) → str; dispatches to Groq (llama-3.3-70b-versatile), Claude (claude-sonnet-4-6), OpenAI (gpt-4o); 3-retry backoff (EPIC-6)
+├── llm_service.py                 → generate_artifact(prompt_used, transcript, llm) → str; dispatches to Groq (llama-3.3-70b-versatile), Claude (claude-sonnet-4-6), OpenAI (gpt-4o); 3-retry backoff (EPIC-6)
+├── topics_service.py              → topic extraction + aggregation + merge pipeline; uses topic_lineage for per-topic evidence blocks in merge prompts (EPIC-7/9/10)
+└── topic_lineage.py               → walks merged_into_topic_id backwards to assemble ancestor-aware per-topic history. Exports get_topic_lineage, get_lineage_topic_updates, get_lineage_match_groups, build_lineage_evidence_block. Single source of truth for M:N merge history — consumed by merge prompts today and by the future evidence API (EPIC-10 / Story 10.1)
 
 transcription/
 ├── main.py                        → FastAPI local server: /health, /transcribe (EPIC-4 / Story 4.7)

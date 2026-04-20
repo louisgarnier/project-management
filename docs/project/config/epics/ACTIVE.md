@@ -1,8 +1,8 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Epic:** EPIC-10 — Topic Lineage + Prompt Traceability
-- **Story:** 10.1 — Lineage Helper + Merge-Prompt Fix
+- **Epic:** EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality
+- **Story:** 10.2 — Prompts Audit (Read-Only Documentation)
 - **Status:** `pending`
 - **Spec:** `docs/project/config/2026-04-20-epic-10-topic-lineage-and-prompt-traceability-design.md`
 - **PRD:** `docs/project/config/prd-epic10-topic-lineage-and-prompt-traceability.md`
@@ -10,7 +10,7 @@
 ### EPIC-10 Stories
 | # | Story | Status | Depends on |
 |---|---|---|---|
-| 10.1 | Lineage Helper + Merge-Prompt Fix | pending | — |
+| 10.1 | Lineage Helper + Merge-Prompt Fix | **done 2026-04-20** | — |
 | 10.2 | Prompts Audit (Read-Only Documentation) | pending | 10.1 |
 | 10.3 | Topic Evidence API | pending | 10.1 |
 | 10.4 | Evidence Drawer UI — Lineage Mode | pending | 10.3 |

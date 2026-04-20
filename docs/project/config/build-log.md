@@ -1,10 +1,27 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-7 — Two-Step Topic Extraction — COMPLETE**
-- Status: All 6 stories done
-- Key divergence from spec: Story 7.5 was split into two stages (project_matching + project_updates) instead of one project_topics stage
-- Next: EPIC-8 (to be defined)
+**EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality — IN PROGRESS**
+- Story 10.1 — lineage helper + merge-prompt fix — **done** (2026-04-20)
+- Next: Story 10.2 — prompts audit (read-only doc)
+
+---
+
+### 2026-04-20 — EPIC-10: Story 10.1 — Lineage Helper + Merge-Prompt Fix
+
+**New module: `backend/services/topic_lineage.py`** — walks `merged_into_topic_id` backwards to assemble ancestor-aware per-topic history. Four functions:
+- `get_topic_lineage(topic_id, db)` — BFS from topic, returns self + ancestors
+- `get_lineage_topic_updates(topic_id, db)` — returns every `topic_updates` row across the lineage, enriched with `source_topic_id`, `source_topic_name`, `call_title`, ordered by `created_at`
+- `get_lineage_match_groups(topic_id, db)` — returns `topic_match_groups` rows where `project_topic_ids` intersects the lineage
+- `build_lineage_evidence_block(topic_name, topic_id, db)` — renders the per-call evidence text block used by merge prompts, with a `(from archived topic: {name})` provenance line when evidence came from an archived ancestor
+
+**Wired into `backend/services/topics_service.py`:** the nested `_load_transcript_excerpts` and `_build_excerpt_context` in `run_merge_preview` are gone; both merge paths (1:1 and M:N) now call `build_lineage_evidence_block`. Merges at any call depth now see evidence from archived ancestor topics — fixes the M:N "merge blindness" bug identified during Epic 9 testing.
+
+**Observability:** `db_logger.info("🧬 [Lineage] Evidence for topic {id} ({name}) includes {N} ancestor(s): [...]")` fires when ancestor evidence contributed to a merge — check `logs/backend_*.log` during live merges.
+
+**Tests:** 9 tests in `backend/tests/test_topic_lineage.py` covering linear history, M:N fan-in, multi-level chain, cycle guard, chronology, provenance, fallback, match-group filtering, and end-to-end Call-3-sees-Call-1 integration. Zero regressions on the 28 existing `test_topics.py` tests.
+
+**Commits:** `026c736`, `4958152`, `f0cfcee`, `e460d87`, `e4f9a49`, `dbabdb1`, `3ec14cd`, `99022bc`.
 
 ---
 
