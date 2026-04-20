@@ -338,8 +338,12 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
       {!extracted ? (
         <div style={{ padding: 20 }}>
           {polling ? (
-            <div style={{ fontSize: 13, color: "#5e6c84" }}>
-              ⏳ Extracting in background… you can navigate away and come back.
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg className="animate-spin" style={{ width: 16, height: 16, color: "#ff8b00" }} viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              <span style={{ fontSize: 13, color: "#5e6c84" }}>Generating…</span>
             </div>
           ) : (
             <button
