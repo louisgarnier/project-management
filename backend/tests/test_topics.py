@@ -507,12 +507,21 @@ class TestTopicsTimeline(unittest.TestCase):
         ]
         latest = [{"id": "t1", "status": "open", "owner": "Us", "sentiment": "neutral"}]
 
+        topics_call_count = {"n": 0}
+
         def table_side_effect(name):
             m = MagicMock()
             if name == "calls":
                 m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
             elif name == "topics":
-                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = topics
+                # First call: active topics (archived=False), Second call: archived (archived=True)
+                topics_call_count["n"] += 1
+                if topics_call_count["n"] == 1:
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = topics
+                elif topics_call_count["n"] == 2:
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+                else:
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
                 m.select.return_value.in_.return_value.execute.return_value.data = latest
             elif name == "topic_updates":
                 m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = updates
@@ -554,12 +563,18 @@ class TestTopicsTimeline(unittest.TestCase):
         ]
         latest = [{"id": "t1", "status": "resolved", "owner": "Us", "sentiment": "positive"}]
 
+        topics_call_count = {"n": 0}
+
         def table_side_effect(name):
             m = MagicMock()
             if name == "calls":
                 m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
             elif name == "topics":
-                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = topics
+                topics_call_count["n"] += 1
+                if topics_call_count["n"] == 1:
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = topics
+                else:
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
                 m.select.return_value.in_.return_value.execute.return_value.data = latest
             elif name == "topic_updates":
                 m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = updates
