@@ -917,6 +917,41 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
             raise ValueError("Failed to clear fields via raw PATCH")
         logger.info(f"🗄️ [Rollback] Cleared transcript fields for call {call_id}")
 
+    def _rebuild_pending_topics() -> None:
+        """Rebuild pending_topics from topic_updates if it is not already set.
+
+        Call 1 auto-advance path never sets pending_topics (it jumps straight to artifacts).
+        Rolling back to project_matching or project_updates must restore it from topic_updates
+        BEFORE those updates are deleted, so the page has data to show.
+        """
+        call_data = db.table("calls").select("pending_topics, extraction_cache").eq("id", call_id).execute().data
+        if not call_data:
+            return
+        row = call_data[0]
+        if row.get("pending_topics"):
+            return  # already set — nothing to do (Call 2+ normal path)
+
+        # Try extraction_cache first, then rebuild from topic_updates
+        restore_data = row.get("extraction_cache")
+        if not restore_data:
+            updates = (
+                db.table("topic_updates")
+                .select("topic_id, summary, follow_up_items, decisions, status, owner, sentiment")
+                .eq("call_id", call_id)
+                .execute()
+                .data
+            )
+            if updates:
+                topic_ids = [u["topic_id"] for u in updates]
+                names_rows = db.table("topics").select("id, name").in_("id", topic_ids).execute().data
+                name_map = {r["id"]: r["name"] for r in names_rows}
+                restore_data = [{**u, "name": name_map.get(u["topic_id"], "Unknown")} for u in updates]
+                logger.info(f"🗄️ [Rollback] Rebuilt pending_topics from topic_updates for call {call_id} ({len(restore_data)} topics)")
+
+        if restore_data:
+            db.table("calls").update({"pending_topics": restore_data}).eq("id", call_id).execute()
+            logger.info(f"🗄️ [Rollback] Restored pending_topics for call {call_id}")
+
     # --- Execute cascade based on target_stage ---
 
     if target_stage == "artifacts":
@@ -925,12 +960,16 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
     elif target_stage == "project_updates":
         # Keep merge_cache/merge_status — that IS the project_updates content.
         # Clear only what comes after: topic_updates (re-created on next save), artifacts.
+        # Restore pending_topics first (needed if merge_cache is null, so merge preview can re-run).
+        _rebuild_pending_topics()
         _delete_topic_updates()
         _mark_artifacts_stale()
 
     elif target_stage == "project_matching":
         # Keep match_groups — that IS the project_matching content.
+        # Restore pending_topics first (Call 1 auto-advance never sets it).
         # Clear everything after: topic_updates, merge, artifacts.
+        _rebuild_pending_topics()
         _delete_topic_updates()
         _mark_artifacts_stale()
         _clear_merge_fields()
