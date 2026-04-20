@@ -376,3 +376,65 @@ def test_lineage_match_groups_returns_groups_touching_any_ancestor():
 
     assert [g["call_title"] for g in result] == ["Kickoff", "Review"]
     assert [g["project_topic_ids"] for g in result] == [["a"], ["c"]]
+
+
+def test_build_block_for_merged_topic_includes_call1_excerpt_from_archived_source():
+    """End-to-end: Call 1 raised topic 'a'. Call 2 M:N-merged a+b into c.
+    At Call 3, building the evidence block for 'c' must include Call 1's
+    transcript_excerpt (which lives on archived topic 'a'), tagged with the
+    archived-source provenance line.
+    """
+    db = _make_db_with_updates(
+        topics_by_id={
+            "c": {"id": "c", "name": "API strategy", "archived": False,
+                  "merged_into_topic_id": None},
+            "a": {"id": "a", "name": "REST API",     "archived": True,
+                  "merged_into_topic_id": "c"},
+            "b": {"id": "b", "name": "GraphQL API",  "archived": True,
+                  "merged_into_topic_id": "c"},
+        },
+        sources_by_parent={
+            "c": [
+                {"id": "a", "name": "REST API",    "archived": True, "merged_into_topic_id": "c"},
+                {"id": "b", "name": "GraphQL API", "archived": True, "merged_into_topic_id": "c"},
+            ],
+        },
+        updates_by_topic_id={
+            "a": [{"topic_id": "a", "call_id": "call-1",
+                   "summary": "REST raised",
+                   "transcript_excerpt": "TEAM PICKED REST IN CALL ONE",
+                   "follow_up_items": ["spike"], "decisions": [],
+                   "created_at": "2026-04-01T10:00:00Z"}],
+            "b": [{"topic_id": "b", "call_id": "call-1",
+                   "summary": "GraphQL considered",
+                   "transcript_excerpt": "GRAPHQL MENTIONED IN CALL ONE",
+                   "follow_up_items": [], "decisions": [],
+                   "created_at": "2026-04-01T10:30:00Z"}],
+            "c": [{"topic_id": "c", "call_id": "call-2",
+                   "summary": "Merged API",
+                   "transcript_excerpt": "CALL TWO CONSOLIDATION",
+                   "follow_up_items": [], "decisions": ["go REST"],
+                   "created_at": "2026-04-08T10:00:00Z"}],
+        },
+        calls_by_id={
+            "call-1": {"id": "call-1", "title": "Kickoff"},
+            "call-2": {"id": "call-2", "title": "Consolidation"},
+        },
+    )
+
+    block = build_lineage_evidence_block("API strategy", "c", db)
+
+    # Every call's excerpt appears
+    assert "TEAM PICKED REST IN CALL ONE" in block
+    assert "GRAPHQL MENTIONED IN CALL ONE" in block
+    assert "CALL TWO CONSOLIDATION" in block
+    # Provenance lines on ancestor rows
+    assert "from archived topic: REST API" in block
+    assert "from archived topic: GraphQL API" in block
+    # Merged-row (c) has no provenance line
+    lines = block.split("\n")
+    for i, ln in enumerate(lines):
+        if "Consolidation" in ln:
+            next_line = lines[i + 1] if i + 1 < len(lines) else ""
+            assert "from archived topic" not in next_line
+            break
