@@ -117,7 +117,8 @@ _EXTRACT_SYSTEM = (
 )
 
 _TOPIC_SCHEMA = (
-    '{"name":"string","summary":"string","follow_up_items":["string"],'
+    '{"name":"string","summary":"string","transcript_excerpt":"string — verbatim relevant section of the transcript",'
+    '"follow_up_items":["string"],'
     '"decisions":["string"],"status":"open|in_progress|resolved",'
     '"owner":"Us|Client|Both","sentiment":"positive|neutral|concern"}'
 )
@@ -181,6 +182,7 @@ def _normalize_topic(t: dict) -> dict:
     # Ensure required string fields are never None/missing
     out.setdefault("name", "")
     out.setdefault("summary", "")
+    out.setdefault("transcript_excerpt", None)
     out.setdefault("follow_up_items", [])
     out.setdefault("decisions", [])
     out.setdefault("status", "open")
@@ -284,6 +286,9 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         "For each topic:\n"
         "- name: short label (3–6 words)\n"
         "- summary: 1–2 sentence recap of what was said\n"
+        "- transcript_excerpt: the verbatim relevant section of the transcript where this topic was discussed. "
+        "Include enough context to understand the discussion (typically 2–8 sentences). "
+        "Copy the exact words from the transcript.\n"
         "- follow_up_items: concrete next steps or open questions (empty array if none)\n"
         "- decisions: anything explicitly agreed or decided (empty array if none)\n"
         "- status: open (unresolved), in_progress (being worked on), resolved (closed/agreed)\n"
