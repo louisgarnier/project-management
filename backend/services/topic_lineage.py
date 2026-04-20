@@ -97,3 +97,47 @@ def get_lineage_topic_updates(topic_id: str, db) -> list[dict]:
             "call_title": _call_title(r["call_id"]),
         })
     return enriched
+
+
+def build_lineage_evidence_block(topic_name: str, topic_id: str, db) -> str:
+    """Render per-call evidence as a text block for merge-prompt consumption.
+
+    Format:
+        == Topic: "{topic_name}" — Per-Call Evidence ==
+
+        --- {call_title} ---
+        (from archived topic: {source_topic_name})    # only when row came from ancestor
+        Transcript: {transcript_excerpt}
+        Summary: {summary}
+        Follow-ups from this call:
+          - {item}
+        Decisions from this call:
+          - {decision}
+
+    When there are no lineage rows, returns a single "(No historical excerpts
+    available)" line so prompts don't break.
+    """
+    rows = get_lineage_topic_updates(topic_id, db)
+    if not rows:
+        return f'== Topic: "{topic_name}" ==\n(No historical excerpts available)\n'
+
+    lines = [f'== Topic: "{topic_name}" — Per-Call Evidence ==']
+    for r in rows:
+        lines.append(f'\n--- {r["call_title"]} ---')
+        if r["source_topic_id"] != topic_id:
+            lines.append(f'(from archived topic: {r["source_topic_name"]})')
+        if r.get("transcript_excerpt"):
+            lines.append(f'Transcript: {r["transcript_excerpt"]}')
+        if r.get("summary"):
+            lines.append(f'Summary: {r["summary"]}')
+        follow_ups = r.get("follow_up_items") or []
+        if follow_ups:
+            lines.append("Follow-ups from this call:")
+            for item in follow_ups:
+                lines.append(f"  - {item}")
+        decisions = r.get("decisions") or []
+        if decisions:
+            lines.append("Decisions from this call:")
+            for d in decisions:
+                lines.append(f"  - {d}")
+    return "\n".join(lines)

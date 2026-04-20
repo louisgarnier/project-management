@@ -232,3 +232,69 @@ def test_lineage_updates_ordered_chronologically_and_enriched():
     assert [r["source_topic_name"] for r in result] == ["REST API", "API strategy", "API strategy"]
     # Original fields preserved
     assert result[0]["transcript_excerpt"] == "we picked REST"
+
+
+from backend.services.topic_lineage import build_lineage_evidence_block
+
+
+def test_evidence_block_includes_ancestor_provenance_line():
+    """When evidence comes from an archived ancestor, the block includes a
+    'from archived topic: {name}' provenance line so the LLM understands where
+    the excerpt came from.
+    """
+    db = _make_db_with_updates(
+        topics_by_id={
+            "c": {"id": "c", "name": "API strategy", "archived": False,
+                  "merged_into_topic_id": None},
+            "a": {"id": "a", "name": "REST API",     "archived": True,
+                  "merged_into_topic_id": "c"},
+        },
+        sources_by_parent={
+            "c": [{"id": "a", "name": "REST API", "archived": True,
+                   "merged_into_topic_id": "c"}],
+        },
+        updates_by_topic_id={
+            "a": [{"topic_id": "a", "call_id": "call-1", "summary": "REST raised",
+                   "transcript_excerpt": "we picked REST", "follow_up_items": ["spike"],
+                   "decisions": [], "created_at": "2026-04-01T10:00:00Z"}],
+            "c": [{"topic_id": "c", "call_id": "call-2", "summary": "Merged API",
+                   "transcript_excerpt": "consolidating endpoints", "follow_up_items": [],
+                   "decisions": ["go REST"], "created_at": "2026-04-08T10:00:00Z"}],
+        },
+        calls_by_id={
+            "call-1": {"id": "call-1", "title": "Kickoff"},
+            "call-2": {"id": "call-2", "title": "Review"},
+        },
+    )
+
+    block = build_lineage_evidence_block("API strategy", "c", db)
+
+    # Header present
+    assert 'API strategy' in block
+    # Call 1 section — from ancestor → provenance line present
+    assert 'Kickoff' in block
+    assert 'from archived topic: REST API' in block
+    assert 'we picked REST' in block
+    assert 'spike' in block  # follow-up preserved
+    # Call 2 section — from current topic → NO provenance line
+    assert 'Review' in block
+    assert 'consolidating endpoints' in block
+    assert 'go REST' in block
+    # Provenance only attached to ancestor row, not to self row
+    review_idx = block.index('Review')
+    post_review = block[review_idx:]
+    assert 'from archived topic' not in post_review
+
+
+def test_evidence_block_returns_fallback_when_no_history():
+    """Topic exists but no topic_updates rows → clean fallback line."""
+    db = _make_db_with_updates(
+        topics_by_id={"x": {"id": "x", "name": "New topic", "archived": False,
+                            "merged_into_topic_id": None}},
+        sources_by_parent={},
+        updates_by_topic_id={},
+        calls_by_id={},
+    )
+
+    block = build_lineage_evidence_block("New topic", "x", db)
+    assert block == '== Topic: "New topic" ==\n(No historical excerpts available)\n'
