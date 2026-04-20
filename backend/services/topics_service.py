@@ -484,11 +484,11 @@ async def run_merge_preview(call_id: str) -> list[dict]:
     prev_by_id = {t["topic_id"]: t for t in previous}
 
     def _load_transcript_excerpts(topic_id: str) -> list[dict]:
-        """Load all transcript excerpts for a topic, ordered by call date.
-        Returns [{call_title, summary, transcript_excerpt}, ...]"""
+        """Load all per-call evidence for a topic, ordered by call date.
+        Returns [{call, summary, transcript_excerpt, follow_up_items, decisions}, ...]"""
         rows = (
             db.table("topic_updates")
-            .select("call_id, summary, transcript_excerpt")
+            .select("call_id, summary, transcript_excerpt, follow_up_items, decisions")
             .eq("topic_id", topic_id)
             .order("created_at")
             .execute()
@@ -505,21 +505,35 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 "call": call_title,
                 "summary": r.get("summary", ""),
                 "transcript_excerpt": r.get("transcript_excerpt"),
+                "follow_up_items": r.get("follow_up_items") or [],
+                "decisions": r.get("decisions") or [],
             })
         return result
 
     def _build_excerpt_context(topic_name: str, topic_id: str) -> str:
-        """Build a RAG-style context block with all historical excerpts for a topic."""
+        """Build a per-call evidence block with transcript, follow-ups, and decisions."""
         excerpts = _load_transcript_excerpts(topic_id)
         if not excerpts:
             return f'== Topic: "{topic_name}" ==\n(No historical excerpts available)\n'
-        lines = [f'== Topic: "{topic_name}" ==']
+        lines = [f'== Topic: "{topic_name}" — Per-Call Evidence ==']
         for e in excerpts:
             lines.append(f'\n--- {e["call"]} ---')
             if e.get("transcript_excerpt"):
                 lines.append(f'Transcript: {e["transcript_excerpt"]}')
             if e.get("summary"):
                 lines.append(f'Summary: {e["summary"]}')
+            if e.get("follow_up_items"):
+                items = e["follow_up_items"]
+                if isinstance(items, list) and items:
+                    lines.append("Follow-ups from this call:")
+                    for item in items:
+                        lines.append(f"  - {item}")
+            if e.get("decisions"):
+                decs = e["decisions"]
+                if isinstance(decs, list) and decs:
+                    lines.append("Decisions from this call:")
+                    for d in decs:
+                        lines.append(f"  - {d}")
         return "\n".join(lines)
 
     # Get LLM config
@@ -569,12 +583,19 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 return [{**call_matches[0], "topic_id": None}]
             # Multiple call topics grouped as new → LLM merge into one with proposed name
             try:
-                call_excerpts = "\n\n".join(
-                    f'Topic: "{m.get("name", "")}"\n'
-                    f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
-                    f'Summary: {m.get("summary", "")}'
-                    for m in call_matches
-                )
+                call_excerpts_parts = []
+                for m in call_matches:
+                    part = f'Topic: "{m.get("name", "")}"\n'
+                    part += f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
+                    part += f'Summary: {m.get("summary", "")}'
+                    fups = m.get("follow_up_items") or []
+                    if fups:
+                        part += "\nFollow-ups:\n" + "\n".join(f"  - {f}" for f in fups)
+                    decs = m.get("decisions") or []
+                    if decs:
+                        part += "\nDecisions:\n" + "\n".join(f"  - {d}" for d in decs)
+                    call_excerpts_parts.append(part)
+                call_excerpts = "\n\n".join(call_excerpts_parts)
                 prompt = (
                     f"{merge_instructions}\n\n"
                     f"Multiple call topics need to be merged into ONE topic.\n"
@@ -606,12 +627,19 @@ async def run_merge_preview(call_id: str) -> list[dict]:
 
             # Build RAG context from historical transcript excerpts
             excerpt_context = _build_excerpt_context(existing.get("name", ""), ptid)
-            call_excerpts = "\n\n".join(
-                f'New from this call: "{m.get("name", "")}"\n'
-                f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
-                f'Summary: {m.get("summary", "")}'
-                for m in call_matches
-            )
+            call_excerpts_parts = []
+            for m in call_matches:
+                part = f'New from this call: "{m.get("name", "")}"\n'
+                part += f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
+                part += f'Summary: {m.get("summary", "")}'
+                fups = m.get("follow_up_items") or []
+                if fups:
+                    part += "\nFollow-ups from this call:\n" + "\n".join(f"  - {f}" for f in fups)
+                decs = m.get("decisions") or []
+                if decs:
+                    part += "\nDecisions from this call:\n" + "\n".join(f"  - {d}" for d in decs)
+                call_excerpts_parts.append(part)
+            call_excerpts = "\n\n".join(call_excerpts_parts)
 
             try:
                 prompt = (
@@ -646,12 +674,19 @@ async def run_merge_preview(call_id: str) -> list[dict]:
             _build_excerpt_context(prev_by_id[pid].get("name", ""), pid)
             for pid in ptids if pid in prev_by_id
         )
-        call_excerpts = "\n\n".join(
-            f'New from this call: "{m.get("name", "")}"\n'
-            f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
-            f'Summary: {m.get("summary", "")}'
-            for m in call_matches
-        )
+        call_excerpts_parts = []
+        for m in call_matches:
+            part = f'New from this call: "{m.get("name", "")}"\n'
+            part += f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
+            part += f'Summary: {m.get("summary", "")}'
+            fups = m.get("follow_up_items") or []
+            if fups:
+                part += "\nFollow-ups from this call:\n" + "\n".join(f"  - {f}" for f in fups)
+            decs = m.get("decisions") or []
+            if decs:
+                part += "\nDecisions from this call:\n" + "\n".join(f"  - {d}" for d in decs)
+            call_excerpts_parts.append(part)
+        call_excerpts = "\n\n".join(call_excerpts_parts)
 
         try:
             prompt = (
