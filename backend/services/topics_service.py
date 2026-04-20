@@ -1506,18 +1506,35 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
     call_ids = [c["id"] for c in all_calls]
     call_order = {c["id"]: i for i, c in enumerate(all_calls)}
 
-    topics = (
+    # Load both active and archived topics (archived shown with merged cell)
+    active_topics = (
         db.table("topics")
-        .select("id, name, first_raised_call_id")
+        .select("id, name, first_raised_call_id, archived, merged_into_topic_id")
         .eq("project_id", project_id)
         .eq("archived", False)
         .execute()
         .data
     )
+    archived_topics = (
+        db.table("topics")
+        .select("id, name, first_raised_call_id, archived, merged_into_topic_id")
+        .eq("project_id", project_id)
+        .eq("archived", True)
+        .execute()
+        .data
+    )
+    topics = active_topics + archived_topics
     if not topics:
         topic_ids = []
     else:
         topic_ids = [t["id"] for t in topics]
+
+    # Build merged-into name lookup for archived topics
+    merged_target_ids = list({t["merged_into_topic_id"] for t in archived_topics if t.get("merged_into_topic_id")})
+    merged_name_map: dict[str, str] = {}
+    if merged_target_ids:
+        target_rows = db.table("topics").select("id, name").in_("id", merged_target_ids).execute().data
+        merged_name_map = {r["id"]: r["name"] for r in target_rows}
 
     updates = (
         db.table("topic_updates")
@@ -1582,6 +1599,24 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
             else:
                 call_updates[cid] = {"type": "not_discussed"}
 
+        # For archived topics, add a "merged" cell at the latest call with a topic_update
+        is_archived = t.get("archived", False)
+        merged_into_id = t.get("merged_into_topic_id")
+        if is_archived and merged_into_id and topic_updates_by_call:
+            # Find the last call that has an update for this topic
+            latest_call_for_topic = max(
+                topic_updates_by_call.keys(),
+                key=lambda cid: call_order.get(cid, 0),
+                default=None,
+            )
+            if latest_call_for_topic:
+                merged_name = merged_name_map.get(merged_into_id, "")
+                call_updates[latest_call_for_topic] = {
+                    "type": "merged",
+                    "merged_into_name": merged_name,
+                    "merged_into_topic_id": merged_into_id,
+                }
+
         ls = latest_state.get(tid, {})
         result_topics.append({
             "topic_id": tid,
@@ -1591,6 +1626,9 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
             "sentiment": ls.get("sentiment", "neutral"),
             "first_raised_call_id": first_call_id,
             "call_updates": call_updates,
+            "archived": is_archived,
+            "merged_into_topic_id": merged_into_id,
+            "merged_into_name": merged_name_map.get(merged_into_id, "") if merged_into_id else None,
         })
 
     # ── Pending rows for calls with no committed topic_updates ──────────────

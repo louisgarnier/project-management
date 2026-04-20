@@ -163,6 +163,7 @@ export interface TimelineTopic {
   owner: string;
   sentiment: TopicSentiment;
   first_raised_call_id: string | null;
+  archived?: boolean;
   merged_into_topic_id?: string | null;
   merged_into_name?: string | null;
   call_updates: Record<string, TimelineCell>;

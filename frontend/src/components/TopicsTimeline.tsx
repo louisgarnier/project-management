@@ -44,6 +44,25 @@ function Cell({ cell }: { cell: TimelineCell | undefined }) {
     );
   }
 
+  if (cell.type === "merged") {
+    return (
+      <td style={{ width: 180, minWidth: 180, borderRight: "1px solid #f0f1f3",
+        verticalAlign: "top", padding: "10px 12px" }}>
+        <div style={{
+          background: "#f4f5f7", border: "1.5px dashed #97a0af", borderRadius: 5,
+          padding: "7px 9px",
+        }}>
+          <span style={{ ...BADGE_BASE, background: "#97a0af", color: "white" }}>Merged</span>
+          {cell.merged_into_name && (
+            <div style={{ fontSize: 11, color: "#5e6c84", lineHeight: 1.4, marginTop: 4 }}>
+              → {cell.merged_into_name}
+            </div>
+          )}
+        </div>
+      </td>
+    );
+  }
+
   if (cell.type === "pending") {
     return (
       <td style={{ width: 180, minWidth: 180, borderRight: "1px solid #f0f1f3",
@@ -151,6 +170,7 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
   const [data, setData] = useState<TopicsTimelineData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -189,8 +209,30 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
     </div>
   );
 
+  const archivedCount = data.topics.filter(t => t.archived).length;
+  const visibleTopics = showArchived ? data.topics : data.topics.filter(t => !t.archived);
+
   return (
-    <div style={{ flex: 1, overflow: "auto", background: "#f4f5f7" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#f4f5f7" }}>
+      {archivedCount > 0 && (
+        <div style={{ padding: "6px 12px", borderBottom: "1px solid #dfe1e6", background: "#f4f5f7", flexShrink: 0,
+          display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={() => setShowArchived(v => !v)}
+            style={{
+              fontSize: 11, color: "#5e6c84", background: showArchived ? "#e9f0ff" : "white",
+              border: "1px solid #dfe1e6", borderRadius: 4, padding: "3px 10px",
+              cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            {showArchived ? `Hide ${archivedCount} archived` : `Show ${archivedCount} archived`}
+          </button>
+          {showArchived && (
+            <span style={{ fontSize: 10, color: "#97a0af" }}>Archived topics are shown with reduced opacity</span>
+          )}
+        </div>
+      )}
+    <div style={{ flex: 1, overflow: "auto" }}>
       <table style={{ borderCollapse: "collapse", minWidth: "100%", background: "white" }}>
         <thead>
           <tr>
@@ -225,29 +267,47 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
           </tr>
         </thead>
         <tbody>
-          {data.topics.map((topic) => {
+          {visibleTopics.map((topic) => {
             const isResolved = topic.status === "resolved";
+            const isArchived = topic.archived;
             return (
-              <tr key={topic.topic_id} style={{ borderBottom: "1px solid #f0f1f3", opacity: isResolved ? 0.65 : 1 }}>
+              <tr key={topic.topic_id} style={{
+                borderBottom: "1px solid #f0f1f3",
+                opacity: isArchived ? 0.5 : isResolved ? 0.65 : 1,
+              }}>
                 <td style={{
                   position: "sticky", left: 0, background: "white", zIndex: 1,
                   width: 220, minWidth: 220, maxWidth: 220,
                   borderRight: "2px solid #dfe1e6", padding: "10px 12px", verticalAlign: "top",
                 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "#172b4d", marginBottom: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#172b4d", marginBottom: 4,
+                    textDecoration: isArchived ? "line-through" : undefined }}>
                     {topic.name}
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    <span style={{ ...BADGE_BASE, ...(STATUS_BADGE[topic.status] ?? STATUS_BADGE.open) }}>
-                      {topic.status.replace("_", " ")}
-                    </span>
-                    <span style={{ ...BADGE_BASE, ...(SENTIMENT_BADGE[topic.sentiment] ?? SENTIMENT_BADGE.neutral) }}>
-                      {topic.sentiment}
-                    </span>
-                    <span style={{ ...BADGE_BASE, background: "#f4f5f7", color: "#5e6c84" }}>
-                      {topic.owner}
-                    </span>
+                    {isArchived ? (
+                      <span style={{ ...BADGE_BASE, background: "#f4f5f7", color: "#97a0af" }}>
+                        Archived
+                      </span>
+                    ) : (
+                      <>
+                        <span style={{ ...BADGE_BASE, ...(STATUS_BADGE[topic.status] ?? STATUS_BADGE.open) }}>
+                          {topic.status.replace("_", " ")}
+                        </span>
+                        <span style={{ ...BADGE_BASE, ...(SENTIMENT_BADGE[topic.sentiment] ?? SENTIMENT_BADGE.neutral) }}>
+                          {topic.sentiment}
+                        </span>
+                        <span style={{ ...BADGE_BASE, background: "#f4f5f7", color: "#5e6c84" }}>
+                          {topic.owner}
+                        </span>
+                      </>
+                    )}
                   </div>
+                  {isArchived && topic.merged_into_name && (
+                    <div style={{ fontSize: 10, color: "#97a0af", marginTop: 3 }}>
+                      → Merged into: {topic.merged_into_name}
+                    </div>
+                  )}
                 </td>
                 {data.calls.map((c) => (
                   <Cell key={c.id} cell={topic.call_updates[c.id]} />
@@ -257,6 +317,7 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
           })}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }
