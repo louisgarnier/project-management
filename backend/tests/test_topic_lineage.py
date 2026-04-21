@@ -558,3 +558,194 @@ def test_extraction_prompt_has_no_vocabulary_hint_when_no_prior_topics():
     assert "Existing project topic names" not in captured["prompt"]
 
 
+# ---------------------------------------------------------------------------
+# Story 10.6 / Fix 6.4 — Merge Verification: ancestor evidence + full transcript
+# ---------------------------------------------------------------------------
+
+def _make_verify_db(project_id: str, transcript: str):
+    """Minimal DB mock for _verify_merged_topics.
+
+    Responses needed:
+      - calls.select(project_id, transcript).eq(id).execute → [{project_id, transcript}]
+      - artifact_types.select(prompt, llm).eq.eq.order.limit.execute → []
+        (so it falls through to the default verify_instructions)
+      - projects.select(default_llm).eq(id).execute → [{default_llm: 'groq'}]
+      - topic_match_groups.select.eq(call_id).execute → []
+      - calls.select(pending_topics).eq(id).execute → [{pending_topics: []}]
+      - _get_previous_topics queries (topics.select... + topic_updates.select...)
+        → empty lists (we don't exercise the source-list fallback path here)
+    """
+    db = MagicMock()
+
+    def table_side(name):
+        t = MagicMock()
+        if name == "calls":
+            (
+                t.select.return_value
+                 .eq.return_value
+                 .execute.return_value
+                 .data
+            ) = [{
+                "project_id": project_id,
+                "transcript": transcript,
+                "pending_topics": [],
+            }]
+            return t
+        if name == "artifact_types":
+            (
+                t.select.return_value
+                 .eq.return_value
+                 .eq.return_value
+                 .order.return_value
+                 .limit.return_value
+                 .execute.return_value
+                 .data
+            ) = []
+            return t
+        if name == "projects":
+            (
+                t.select.return_value
+                 .eq.return_value
+                 .execute.return_value
+                 .data
+            ) = [{"default_llm": "groq"}]
+            return t
+        if name == "topic_match_groups":
+            (
+                t.select.return_value
+                 .eq.return_value
+                 .execute.return_value
+                 .data
+            ) = []
+            return t
+        if name == "topics":
+            (
+                t.select.return_value
+                 .eq.return_value
+                 .eq.return_value
+                 .execute.return_value
+                 .data
+            ) = []
+            return t
+        if name == "topic_updates":
+            (
+                t.select.return_value
+                 .eq.return_value
+                 .order.return_value
+                 .limit.return_value
+                 .execute.return_value
+                 .data
+            ) = []
+            return t
+        return t
+
+    db.table.side_effect = table_side
+    return db
+
+
+def test_merge_verification_prompt_includes_ancestor_lineage_block():
+    """Fix 6.4: when the merged topic has a topic_id, the verification prompt
+    contains the ancestor-aware evidence block (not the flat source-lists path),
+    and the full transcript is passed (no 8000-char truncation).
+    """
+    from backend.services.topics_service import _verify_merged_topics
+
+    # Transcript longer than 8000 chars with a unique marker at the END
+    marker = "END_MARKER_XYZ_12345"
+    transcript = ("A" * 9000) + " " + marker
+
+    db = _make_verify_db("proj-1", transcript)
+
+    captured = {}
+
+    async def fake_llm(prompt, llm):
+        captured["prompt"] = prompt
+        return {"name": "API", "summary": "ok", "follow_up_items": [],
+                "decisions": [], "status": "open", "owner": "Us",
+                "sentiment": "neutral"}
+
+    def fake_evidence_block(name, topic_id, _db):
+        return (
+            f'== Topic: "{name}" — Per-Call Evidence ==\n\n'
+            f'--- Kickoff ---\n'
+            f'(from archived topic: REST API)\n'
+            f'Transcript: we picked REST\n'
+            f'Summary: REST raised\n'
+        )
+
+    merged = [{
+        "topic_id": "c",
+        "name": "API",
+        "summary": "merged",
+        "follow_up_items": [],
+        "decisions": [],
+        "status": "open",
+        "owner": "Us",
+        "sentiment": "neutral",
+    }]
+
+    with patch("backend.services.topics_service.get_client", return_value=db), \
+         patch("backend.services.topics_service.build_lineage_evidence_block",
+               side_effect=fake_evidence_block), \
+         patch("backend.services.topics_service._call_llm",
+               new=AsyncMock(side_effect=fake_llm)):
+        asyncio.run(_verify_merged_topics("call-1", merged))
+
+    prompt = captured["prompt"]
+    # Lineage block present
+    assert '== Topic: "API" — Per-Call Evidence ==' in prompt
+    assert "(from archived topic: REST API)" in prompt
+    # Full transcript present — the unique end marker must survive (no :8000 cut)
+    assert marker in prompt
+    # Section heading updated
+    assert "Current call full transcript" in prompt
+
+
+def test_merge_verification_prompt_falls_back_to_flat_lists_when_no_topic_id():
+    """Fix 6.4: merged topic with topic_id=None (brand-new M:N merge result)
+    must NOT call the lineage helper and must use the flat source lists instead.
+    """
+    from backend.services.topics_service import _verify_merged_topics
+
+    db = _make_verify_db("proj-1", "short transcript")
+
+    captured = {}
+
+    async def fake_llm(prompt, llm):
+        captured["prompt"] = prompt
+        return {"name": "New M:N", "summary": "ok", "follow_up_items": [],
+                "decisions": [], "status": "open", "owner": "Us",
+                "sentiment": "neutral"}
+
+    lineage_calls = {"count": 0}
+
+    def fake_evidence_block(*args, **kwargs):
+        lineage_calls["count"] += 1
+        return "SHOULD_NOT_APPEAR"
+
+    merged = [{
+        "topic_id": None,
+        "name": "New M:N",
+        "summary": "merged",
+        "follow_up_items": [],
+        "decisions": [],
+        "status": "open",
+        "owner": "Us",
+        "sentiment": "neutral",
+    }]
+
+    with patch("backend.services.topics_service.get_client", return_value=db), \
+         patch("backend.services.topics_service.build_lineage_evidence_block",
+               side_effect=fake_evidence_block), \
+         patch("backend.services.topics_service._call_llm",
+               new=AsyncMock(side_effect=fake_llm)):
+        asyncio.run(_verify_merged_topics("call-1", merged))
+
+    # Did not crash. Did not call lineage helper.
+    assert lineage_calls["count"] == 0
+    prompt = captured["prompt"]
+    assert "SHOULD_NOT_APPEAR" not in prompt
+    # Uses flat source lists path instead
+    assert "Source follow-up items" in prompt
+    assert "Source decisions" in prompt
+

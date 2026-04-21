@@ -805,18 +805,41 @@ async def _verify_merged_topics(call_id: str, merged_topics: list[dict]) -> list
         source_decisions = source["all_decisions"]
 
         try:
+            # Fix 6.4: prefer ancestor-aware lineage evidence when the merged
+            # topic has a persisted topic_id. This lets the verifier see
+            # per-call excerpts/decisions/follow-ups from archived sources —
+            # not just the current call. When topic_id is None (brand-new
+            # M:N merge result not yet written), fall back to the flat
+            # source-lists path since there is no lineage to walk.
+            tid_for_lineage = topic.get("topic_id")
+            if tid_for_lineage:
+                evidence_block = build_lineage_evidence_block(
+                    topic.get("name", ""), tid_for_lineage, db
+                )
+                evidence_section = (
+                    f"== Lineage evidence (all calls that contributed to this topic, "
+                    f"including archived ancestor sources — every follow-up, decision, "
+                    f"and detail here must be preserved) ==\n{evidence_block}\n\n"
+                )
+            else:
+                evidence_section = (
+                    f"== Source follow-up items (must ALL be present) ==\n"
+                    f"{json.dumps(source_follow_ups, indent=2)}\n\n"
+                    f"== Source decisions (must ALL be present) ==\n"
+                    f"{json.dumps(source_decisions, indent=2)}\n\n"
+                )
+
             prompt = (
                 f"{verify_instructions}\n\n"
                 f"== Merged topic (to verify) ==\n{json.dumps(topic, indent=2)}\n\n"
-                f"== Source follow-up items (must ALL be present) ==\n"
-                f"{json.dumps(source_follow_ups, indent=2)}\n\n"
-                f"== Source decisions (must ALL be present) ==\n"
-                f"{json.dumps(source_decisions, indent=2)}\n\n"
-                f"== Relevant section of call transcript ==\n"
-                f"{transcript[:8000]}\n\n"
-                f"Return the corrected topic JSON (same schema). "
-                f"Add back any missing follow-ups, decisions, or key details. "
-                f"Never remove or shorten anything that was already correct.\n"
+                f"{evidence_section}"
+                f"== Current call full transcript ==\n"
+                f"{transcript}\n\n"
+                f"Verify ALL key points from ALL calls in the lineage are preserved, "
+                f"not just the current call's. Add back any missing follow-ups, "
+                f"decisions, or key details. Never remove or shorten anything that "
+                f"was already correct.\n"
+                f"Return the corrected topic JSON (same schema).\n"
                 f"{_TOPIC_SCHEMA}"
             )
             corrected = await _call_llm(prompt, llm)
