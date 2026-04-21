@@ -144,12 +144,32 @@ Updated `run_transcription.sh` to auto-create the venv and install deps on first
 
 ---
 
+---
+
+### ERR-004: Promote-not-discussed state lost on re-merge or page refresh
+
+**Symptom:** User clicks "Promote to Updated" on a not-discussed topic at Project Updates. Topic correctly moves to Updated Topics. Then — after re-running merge OR refreshing the page — the topic reverts to not-discussed and any edits made in the interim are discarded.
+
+**Root Cause:** `handlePromote` updated only React local state. The backend's `run_merge_preview` rebuilds topic state from `topic_match_groups`. Since the promoted topic had no match group referencing it, the backend re-marked it as not-discussed on every rebuild.
+
+**Fix Applied**
+- **Date fixed:** 2026-04-21
+- **Backend:** new endpoint `POST /api/calls/{id}/topics/promote-not-discussed` inserts a ptid-only match group `{project_topic_ids: [topic_id], call_topic_names: []}`. The existing merge logic already handles ptid-only groups (returns the existing topic as an Updated Topic at `topics_service.py:618-619`), so no merge-logic change needed.
+- **Frontend:** `handlePromote` now awaits `topicsAPI.promoteNotDiscussed(callId, topic.topic_id)` before updating local state.
+- **Tests:** `test_promote_not_discussed_inserts_ptid_only_match_group` + `test_promote_not_discussed_is_idempotent`.
+
+**Prevention Rule**
+> 🔒 **RULE ERR-004:** Any UI "bucket move" action that changes how a topic is classified (promote, demote, reclassify) must persist to the backend via a match-group or equivalent durable source of truth — never rely on React local state alone. The backend is the authority for topic classification; frontend-only flips are erased on any rebuild.
+
+---
+
 ## 🔒 Prevention Rules Summary
 | Rule ID | Applies To | Rule |
 |---|---|---|
 | ERR-001 | `frontend/src/api/client.ts` | All `proxyFetch()` paths must include `/api` prefix |
 | ERR-002 | `frontend/` CSS + PostCSS | Tailwind v4: use `@import "tailwindcss"` + `@tailwindcss/postcss` |
 | ERR-003 | `run_transcription.sh` / any server script | Auto-create venv in launch script; verify server starts on clean checkout before closing story |
+| ERR-004 | Any frontend bucket-move action (promote/demote/reclassify) | Must persist to backend — never rely on React local state alone |
 
 ---
 

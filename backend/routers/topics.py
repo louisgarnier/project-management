@@ -190,6 +190,41 @@ async def save_matches(call_id: str, groups: list[MatchGroupPayload], background
         raise HTTPException(status_code=500, detail="Save matches failed")
 
 
+class PromotePayload(PydanticBaseModel):
+    topic_id: str
+
+
+@router.post("/calls/{call_id}/topics/promote-not-discussed", status_code=200)
+async def promote_not_discussed(call_id: str, payload: PromotePayload):
+    """Persist a not-discussed topic promotion as a ptid-only match group so
+    subsequent merge re-runs (or page refreshes) keep the topic as an Updated
+    Topic instead of rebuilding it as not-discussed.
+    """
+    logger.info(f"📥 [Topics] Promote not-discussed: call={call_id}, topic={payload.topic_id}")
+    db = get_client()
+    # Idempotent: if a group for this ptid already exists, skip
+    existing = (
+        db.table("topic_match_groups")
+        .select("project_topic_ids, call_topic_names")
+        .eq("call_id", call_id)
+        .execute()
+        .data
+    )
+    for g in existing:
+        ptids = g.get("project_topic_ids") or []
+        cnames = g.get("call_topic_names") or []
+        if payload.topic_id in ptids and not cnames:
+            logger.info(f"✅ [Topics] Promote no-op — ptid-only group already exists for {payload.topic_id}")
+            return {"ok": True, "created": False}
+    db.table("topic_match_groups").insert({
+        "call_id": call_id,
+        "project_topic_ids": [payload.topic_id],
+        "call_topic_names": [],
+    }).execute()
+    logger.info(f"✅ [Topics] Promoted topic {payload.topic_id} as ptid-only match group")
+    return {"ok": True, "created": True}
+
+
 @router.get("/calls/{call_id}/topics/match-groups")
 async def get_match_groups(call_id: str):
     """Return saved match groups for a call with project topic names resolved."""

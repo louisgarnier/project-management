@@ -297,10 +297,17 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
     }
   }
 
-  function handlePromote(topic: TopicData) {
+  async function handlePromote(topic: TopicData) {
     // Move from not_discussed straight to editable Updated Topics section.
-    // The topic already has a topic_id, so it goes to updatedTopics (not pending_merge).
-    // Removing not_discussed + pending_merge ensures it lands in the right filter bucket.
+    // Persist as a ptid-only match group so re-running merge or refreshing the
+    // page doesn't wipe the promotion (backend rebuilds from match_groups).
+    if (!topic.topic_id) return;
+    try {
+      await topicsAPI.promoteNotDiscussed(callId, topic.topic_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Promote failed");
+      return;
+    }
     setTopics(prev => prev.map(t =>
       t === topic ? { ...t, not_discussed: false, pending_merge: false } : t
     ));

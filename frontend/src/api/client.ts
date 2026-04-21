@@ -305,4 +305,10 @@ export const topicsAPI = {
     proxyFetch<{ status: string }>(`/api/calls/${callId}/topics/verify-not-discussed`, {
       method: "POST",
     }),
+
+  promoteNotDiscussed: (callId: string, topicId: string) =>
+    proxyFetch<{ ok: true; created: boolean }>(`/api/calls/${callId}/topics/promote-not-discussed`, {
+      method: "POST",
+      body: JSON.stringify({ topic_id: topicId }),
+    }),
 };

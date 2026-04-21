@@ -716,3 +716,53 @@ class TestTopicsTimeline(unittest.TestCase):
         self.assertEqual(timeline_cell["type"], "pending")
         self.assertEqual(timeline_cell["decisions"], ["Q3 deadline"])
         self.assertEqual(timeline_cell["follow_up_items"], [])
+
+
+@patch("backend.routers.topics.get_client")
+def test_promote_not_discussed_inserts_ptid_only_match_group(mock_gc):
+    """Promoting a not-discussed topic persists a ptid-only match group so
+    subsequent merge re-runs treat it as an Updated Topic, not not-discussed.
+    """
+    mock_db = MagicMock()
+    mock_gc.return_value = mock_db
+    # No pre-existing group for this topic
+    mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+
+    r = http.post(
+        f"/api/calls/{CALL_ID}/topics/promote-not-discussed",
+        json={"topic_id": TOPIC_ID},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["created"] is True
+
+    # Verify insert was called on topic_match_groups with the correct payload
+    insert_calls = [
+        call for call in mock_db.table.return_value.insert.call_args_list
+        if call.args and call.args[0].get("call_id") == CALL_ID
+    ]
+    assert len(insert_calls) == 1
+    inserted = insert_calls[0].args[0]
+    assert inserted["project_topic_ids"] == [TOPIC_ID]
+    assert inserted["call_topic_names"] == []
+
+
+@patch("backend.routers.topics.get_client")
+def test_promote_not_discussed_is_idempotent(mock_gc):
+    """Calling promote twice for the same topic does not duplicate the match group."""
+    mock_db = MagicMock()
+    mock_gc.return_value = mock_db
+    # Pre-existing ptid-only group for this topic
+    mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"project_topic_ids": [TOPIC_ID], "call_topic_names": []}
+    ]
+
+    r = http.post(
+        f"/api/calls/{CALL_ID}/topics/promote-not-discussed",
+        json={"topic_id": TOPIC_ID},
+    )
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "created": False}
+    # Insert should not have been called because the group already exists
+    mock_db.table.return_value.insert.assert_not_called()
