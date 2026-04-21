@@ -11,6 +11,7 @@ import type {
   EvidenceVerification,
   TopicData,
 } from "@/types";
+import { CALL_COLORS } from "@/utils/callColors";
 
 // Drawer supports three modes:
 //  - "lineage": fetches /api/topics/{id}/evidence, renders per-call chronology
@@ -48,18 +49,6 @@ type Props =
       pendingTopic: TopicData | null;
       kind: MatchingKind;
     };
-
-// 8-color pastel palette — one band per call, cycled by index
-const CALL_COLORS = [
-  "#dfe7ff", // blue
-  "#daf5e4", // green
-  "#fff7d6", // yellow
-  "#ffe0d3", // orange
-  "#f0d3ff", // purple
-  "#d3f0ff", // cyan
-  "#ffd3e6", // pink
-  "#e8e8e8", // gray
-];
 
 // Shared palette: aligned with ProjectUpdatesStage.tsx
 const STATUS_BADGE: Record<string, React.CSSProperties> = {
