@@ -1829,14 +1829,23 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
         target_rows = db.table("topics").select("id, name").in_("id", merged_target_ids).execute().data
         merged_name_map = {r["id"]: r["name"] for r in target_rows}
 
-    # Build source-names lookup for active topics that ARE merge results
+    # Build source-names AND source-ids lookup for active topics that are merge results.
     # (i.e. archived topics with merged_into_topic_id pointing to them).
-    # Powers the "+ new (merged)" label on Timeline cells (Story 10.5).
+    # Powers the "+ new (merged)" label on Timeline cells (Story 10.5) and the
+    # Story 10.9 chevron + indented-rendering (ancestor_topic_ids).
+    # Ordered by each ancestor's first_raised_call_id's chronological position.
     sources_by_target: dict[str, list[str]] = {}
-    for src in archived_topics:
+    ancestor_ids_by_target: dict[str, list[str]] = {}
+    call_order_idx = {c["id"]: i for i, c in enumerate(all_calls)}
+    archived_sorted = sorted(
+        archived_topics,
+        key=lambda t: call_order_idx.get(t.get("first_raised_call_id") or "", 10**6),
+    )
+    for src in archived_sorted:
         target_id = src.get("merged_into_topic_id")
         if target_id:
             sources_by_target.setdefault(target_id, []).append(src.get("name", ""))
+            ancestor_ids_by_target.setdefault(target_id, []).append(src["id"])
 
     updates = (
         db.table("topic_updates")
@@ -1921,6 +1930,14 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
 
         ls = latest_state.get(tid, {})
         source_names = sources_by_target.get(tid, [])
+        ancestor_ids = ancestor_ids_by_target.get(tid, [])
+        # For archived rows, resolve merge_call_id = merge target's first_raised_call_id
+        merge_call_id = None
+        if is_archived and merged_into_id:
+            for other in topics:
+                if other["id"] == merged_into_id:
+                    merge_call_id = other.get("first_raised_call_id")
+                    break
         result_topics.append({
             "topic_id": tid,
             "name": t["name"],
@@ -1934,6 +1951,8 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
             "merged_into_name": merged_name_map.get(merged_into_id, "") if merged_into_id else None,
             "has_sources": len(source_names) > 0,
             "source_names": source_names,
+            "ancestor_topic_ids": ancestor_ids,
+            "merge_call_id": merge_call_id,
         })
 
     # ── Pending rows for calls with no committed topic_updates ──────────────

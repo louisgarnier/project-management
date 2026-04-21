@@ -614,6 +614,74 @@ class TestTopicsTimeline(unittest.TestCase):
             self.assertEqual(src["source_names"], [])
 
     @patch("backend.services.topics_service.get_client")
+    def test_timeline_returns_ancestor_topic_ids_and_merge_call_id(self, mock_gc):
+        """Merge-result topics expose ancestor_topic_ids (ordered by ancestor
+        first_raised_call_id); archived rows expose merge_call_id (the call where
+        they were folded in). Powers Story 10.9 chevron + indented rendering."""
+        from backend.services.topics_service import list_topics_timeline
+        db = MagicMock()
+
+        calls = [
+            {"id": "c1", "title": "Kickoff", "call_number": 1, "kanban_stage": "done"},
+            {"id": "c2", "title": "Review", "call_number": 2, "kanban_stage": "done"},
+        ]
+        active = [{"id": "merged", "name": "API Strategy", "first_raised_call_id": "c2",
+                   "archived": False, "merged_into_topic_id": None}]
+        archived = [
+            {"id": "a", "name": "REST API", "first_raised_call_id": "c1",
+             "archived": True, "merged_into_topic_id": "merged"},
+            {"id": "b", "name": "GraphQL API", "first_raised_call_id": "c1",
+             "archived": True, "merged_into_topic_id": "merged"},
+        ]
+        updates = [
+            {"topic_id": "merged", "call_id": "c2", "summary": "Unified API",
+             "follow_up_items": [], "decisions": [], "status": "open",
+             "owner": "Us", "sentiment": "neutral"},
+            {"topic_id": "a", "call_id": "c1", "summary": "REST discussed",
+             "follow_up_items": [], "decisions": [], "status": "open",
+             "owner": "Us", "sentiment": "neutral"},
+            {"topic_id": "b", "call_id": "c1", "summary": "GraphQL discussed",
+             "follow_up_items": [], "decisions": [], "status": "open",
+             "owner": "Us", "sentiment": "neutral"},
+        ]
+
+        topics_call_count = {"n": 0}
+
+        def table_side_effect(name):
+            m = MagicMock()
+            if name == "calls":
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+            elif name == "topics":
+                topics_call_count["n"] += 1
+                if topics_call_count["n"] == 1:
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = active
+                elif topics_call_count["n"] == 2:
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = archived
+                # merged-name lookup
+                m.select.return_value.in_.return_value.execute.return_value.data = [
+                    {"id": "merged", "name": "API Strategy"}
+                ]
+            elif name == "topic_updates":
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = updates
+                m.select.return_value.in_.return_value.order.return_value.execute.return_value.data = [
+                    {"topic_id": "merged", "status": "open", "owner": "Us",
+                     "sentiment": "neutral", "created_at": "2026-04-08"},
+                    {"topic_id": "a", "status": "open", "owner": "Us",
+                     "sentiment": "neutral", "created_at": "2026-04-01"},
+                    {"topic_id": "b", "status": "open", "owner": "Us",
+                     "sentiment": "neutral", "created_at": "2026-04-01"},
+                ]
+            return m
+        db.table.side_effect = table_side_effect
+
+        result = list_topics_timeline("proj-1", db)
+        merged_target = next(t for t in result["topics"] if t["topic_id"] == "merged")
+        self.assertEqual(merged_target.get("ancestor_topic_ids"), ["a", "b"])
+        for tid in ("a", "b"):
+            src = next(t for t in result["topics"] if t["topic_id"] == tid)
+            self.assertEqual(src.get("merge_call_id"), "c2")
+
+    @patch("backend.services.topics_service.get_client")
     def test_timeline_followed_up_and_absent(self, mock_gc):
         """Topic raised in call 1 and followed up in call 2."""
         from backend.services.topics_service import list_topics_timeline
