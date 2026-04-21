@@ -284,11 +284,28 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#172b4d" }}>{t.name}</span>
+                    <span style={{
+                      fontSize: 12, fontWeight: 600, color: "#172b4d",
+                      textDecoration: t.archived_later ? "line-through" : undefined,
+                      opacity: t.archived_later ? 0.7 : 1,
+                    }}>{t.name}</span>
                     {t.status && (
                       <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
                         padding: "2px 6px", borderRadius: 3, ...(STATUS_BADGE[t.status] ?? STATUS_BADGE.open) }}>
                         {t.status.replace("_", " ")}
+                      </span>
+                    )}
+                    {t.archived_later && (
+                      <span
+                        style={{
+                          fontSize: 9, fontWeight: 700, textTransform: "uppercase",
+                          padding: "2px 6px", borderRadius: 3,
+                          background: "#f5ecff", color: "#6f42c1",
+                          border: "1px solid #d9c2ff",
+                        }}
+                        title={t.merged_into_name ? `Merged in a later call → ${t.merged_into_name}` : "Merged in a later call"}
+                      >
+                        ✦ Merged later
                       </span>
                     )}
                     {isMatched && (

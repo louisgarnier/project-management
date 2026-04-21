@@ -1617,8 +1617,16 @@ async def list_project_topics(project_id: str, db=None) -> list[dict]:
 
 def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[dict]:
     """
-    Return project topics that existed BEFORE the given call, based on call creation timestamps.
-    A topic 'existed before call X' if its first_raised_call_id points to a call created before X.
+    Return project topics that existed BEFORE the given call, as of this call's
+    matching time. A topic 'existed before call X' if its first_raised_call_id
+    points to a call created before X AND the topic was either (a) still active
+    at call-X's matching time, or (b) archived via a merge in call X or later.
+
+    Includes archived topics whose merge target was created in call X or later
+    (i.e., "would have been matchable at call X"). Each such entry carries:
+      archived_later = True
+      merged_into_name = name of the merge target topic (for UI badge)
+
     For the very first call, this always returns [].
     """
     if db is None:
@@ -1642,18 +1650,74 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
 
     prior_call_ids = [c["id"] for c in prior_calls]
 
+    # Fetch ALL project topics raised by prior calls (both active and archived).
+    # We'll filter archived ones afterwards based on when they were archived.
     topics = (
         db.table("topics")
-        .select("id, name, calls_open, first_raised_call_id")
+        .select("id, name, calls_open, first_raised_call_id, archived, merged_into_topic_id")
         .eq("project_id", project_id)
-        .eq("archived", False)
         .in_("first_raised_call_id", prior_call_ids)
         .execute()
         .data
     )
 
+    # Build call_id → created_at map so we can decide "was this topic still
+    # active at current call's matching time?"
+    all_call_rows = (
+        db.table("calls")
+        .select("id, created_at")
+        .eq("project_id", project_id)
+        .execute()
+        .data
+    )
+    call_created_map = {c["id"]: c["created_at"] for c in all_call_rows}
+
+    # Resolve merge-target ids to get their first_raised_call_id + name
+    target_ids = list({t["merged_into_topic_id"] for t in topics
+                       if t.get("merged_into_topic_id")})
+    target_map: dict[str, dict] = {}
+    if target_ids:
+        target_rows = (
+            db.table("topics")
+            .select("id, name, first_raised_call_id")
+            .in_("id", target_ids)
+            .execute()
+            .data
+        )
+        target_map = {r["id"]: r for r in target_rows}
+
+    def _archival_happened_at_or_after_current_call(topic: dict) -> tuple[bool, str | None]:
+        """Return (include_it, merge_target_name). A topic archived via merge
+        is included iff the merge happened in the current call or later — i.e.,
+        it was still active at current-call matching time.
+        """
+        target_id = topic.get("merged_into_topic_id")
+        if not target_id:
+            # Archived without merge target (manual archive) — can't tell when
+            # it was archived, so exclude for safety.
+            return False, None
+        target = target_map.get(target_id)
+        if not target:
+            return False, None
+        target_first_call = target.get("first_raised_call_id")
+        target_created_at = call_created_map.get(target_first_call or "")
+        if not target_created_at:
+            return False, None
+        # Archival is AT OR AFTER current call iff the merge target's
+        # first_raised_call_id's created_at >= current call's created_at
+        return target_created_at >= call_created_at, target.get("name")
+
     result = []
     for t in topics:
+        archived_later = False
+        merged_into_name: str | None = None
+        if t.get("archived"):
+            include, target_name = _archival_happened_at_or_after_current_call(t)
+            if not include:
+                continue
+            archived_later = True
+            merged_into_name = target_name
+
         updates = (
             db.table("topic_updates")
             .select("summary, follow_up_items, decisions, status, owner, sentiment")
@@ -1674,6 +1738,8 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
             "status": latest.get("status", "open"),
             "owner": latest.get("owner", "Us"),
             "sentiment": latest.get("sentiment", "neutral"),
+            "archived_later": archived_later,
+            "merged_into_name": merged_into_name,
         })
     return result
 

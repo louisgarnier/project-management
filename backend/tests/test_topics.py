@@ -841,3 +841,89 @@ def test_promote_not_discussed_is_idempotent(mock_gc):
     assert r.json() == {"ok": True, "created": False}
     # Insert should not have been called because the group already exists
     mock_db.table.return_value.insert.assert_not_called()
+
+
+def test_list_topics_prior_to_call_includes_archived_later():
+    """Topic X raised in Call 1, archived via M:N merge in Call 2, should still
+    appear on Call 2's matching page with archived_later=True and the
+    merged_into_name populated so the UI can render a visual cue.
+    """
+    from backend.services.topics_service import list_topics_prior_to_call
+
+    call1_at = "2026-04-01T00:00:00Z"
+    call2_at = "2026-04-08T00:00:00Z"
+
+    mock_db = MagicMock()
+
+    topics_call_count = {"n": 0}
+
+    def table_side_effect(name):
+        m = MagicMock()
+        if name == "calls":
+            # Chain 1: .select("created_at").eq("id", call2).execute().data → current call
+            m.select.return_value.eq.return_value.execute.return_value.data = [
+                {"created_at": call2_at}
+            ]
+            # Chain 2: .select("id").eq("project_id", …).lt("created_at", …) → prior calls
+            m.select.return_value.eq.return_value.lt.return_value.execute.return_value.data = [
+                {"id": "call-1"}
+            ]
+            # Chain 3: all_call_rows — .select("id, created_at").eq("project_id", …).execute()
+            # Needs to overwrite the first chain's default .select.return_value.eq.return_value
+            # — use a side_effect on .eq so we can branch on the selected columns.
+            def eq_side(col, val):
+                result = MagicMock()
+                if col == "id" and val == "call-2":
+                    result.execute.return_value.data = [{"created_at": call2_at}]
+                elif col == "project_id":
+                    # Chained as prior_calls OR all_call_rows.
+                    # The prior_calls chain adds .lt(...), all_call_rows goes direct to .execute().
+                    result.lt.return_value.execute.return_value.data = [{"id": "call-1"}]
+                    result.execute.return_value.data = [
+                        {"id": "call-1", "created_at": call1_at},
+                        {"id": "call-2", "created_at": call2_at},
+                    ]
+                return result
+            m.select.return_value.eq.side_effect = eq_side
+        elif name == "topics":
+            topics_call_count["n"] += 1
+            if topics_call_count["n"] == 1:
+                # Main query: .select(...).eq("project_id").in_("first_raised_call_id") — returns all topics raised by prior calls
+                m.select.return_value.eq.return_value.in_.return_value.execute.return_value.data = [
+                    # Active Call-1 topic still alive
+                    {"id": "survivor", "name": "Survivor", "calls_open": 1,
+                     "first_raised_call_id": "call-1", "archived": False,
+                     "merged_into_topic_id": None},
+                    # Call-1 topic archived via M:N merge in Call 2
+                    {"id": "archived-via-call-2", "name": "Old REST", "calls_open": 1,
+                     "first_raised_call_id": "call-1", "archived": True,
+                     "merged_into_topic_id": "merge-target-c2"},
+                ]
+            else:
+                # merge-target lookup: .select("id, name, first_raised_call_id").in_("id", [...])
+                m.select.return_value.in_.return_value.execute.return_value.data = [
+                    {"id": "merge-target-c2", "name": "API Strategy",
+                     "first_raised_call_id": "call-2"},
+                ]
+        elif name == "topic_updates":
+            m.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = [
+                {"summary": "s", "follow_up_items": [], "decisions": [],
+                 "status": "open", "owner": "Us", "sentiment": "neutral"}
+            ]
+        return m
+
+    mock_db.table.side_effect = table_side_effect
+
+    result = list_topics_prior_to_call("call-2", "proj-1", mock_db)
+
+    # Should include BOTH the survivor AND the archived-via-later-merge topic
+    names = {t["name"] for t in result}
+    assert names == {"Survivor", "Old REST"}
+
+    survivor = next(t for t in result if t["name"] == "Survivor")
+    assert survivor["archived_later"] is False
+    assert survivor["merged_into_name"] is None
+
+    archived_later = next(t for t in result if t["name"] == "Old REST")
+    assert archived_later["archived_later"] is True
+    assert archived_later["merged_into_name"] == "API Strategy"

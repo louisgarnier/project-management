@@ -92,6 +92,10 @@ export interface TopicData {
   verification_status?: "pending" | "confirmed" | "flagged";
   _source_topic_ids?: string[];
   transcript_excerpt?: string | null;  // verbatim transcript chunk captured at extraction (EPIC-9)
+  // From list_topics_prior_to_call: topic was active at this call's matching
+  // time but has since been merged away in a later call. UI shows a badge.
+  archived_later?: boolean;
+  merged_into_name?: string | null;
 }
 
 /** Response from POST /extract */
