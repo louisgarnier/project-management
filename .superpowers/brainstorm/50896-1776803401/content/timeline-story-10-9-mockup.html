@@ -1,0 +1,284 @@
+<h2>Story 10.9 mockup — Timeline with provenance + ancestor expansion</h2>
+<p class="subtitle">Click chevrons (▸) to expand ancestor rows. Click cells to expand items with provenance pills. Hover pills to see call titles. Try the "Expand all lineage" toggle at the top.</p>
+
+<div style="margin:16px 0;display:flex;gap:12px;align-items:center">
+  <button id="expand-all-btn" onclick="toggleAllLineage()" style="background:white;border:1px solid #dfe1e6;color:#172b4d;padding:6px 14px;border-radius:5px;cursor:pointer;font-size:12px;fontFamily:inherit">
+    <span id="expand-all-label">Expand all lineage</span>
+  </button>
+  <span style="font-size:11px;color:#5e6c84">AAAA project · 3 calls · 3 merge-result topics</span>
+</div>
+
+<!-- Timeline grid -->
+<div style="background:white;border:1px solid #dfe1e6;border-radius:6px;overflow:hidden;font-size:12px">
+
+  <!-- Header row -->
+  <div class="tl-row tl-header" style="display:grid;grid-template-columns:260px 180px 180px 180px;background:#f4f5f7;font-size:10px;font-weight:700;text-transform:uppercase;color:#5e6c84;border-bottom:1px solid #dfe1e6">
+    <div style="padding:10px 12px">Topic</div>
+    <div style="padding:10px 12px;border-left:1px solid #dfe1e6">
+      <div>Call 1</div>
+      <div style="font-weight:400;text-transform:none;color:#97a0af;font-size:10px;margin-top:2px">Kickoff · 2026-04-01</div>
+    </div>
+    <div style="padding:10px 12px;border-left:1px solid #dfe1e6">
+      <div>Call 2</div>
+      <div style="font-weight:400;text-transform:none;color:#97a0af;font-size:10px;margin-top:2px">Review · 2026-04-08</div>
+    </div>
+    <div style="padding:10px 12px;border-left:1px solid #dfe1e6">
+      <div>Call 3</div>
+      <div style="font-weight:400;text-transform:none;color:#97a0af;font-size:10px;margin-top:2px">Followup · 2026-04-15</div>
+    </div>
+  </div>
+
+  <!-- ========== Topic 1: Risk Analytics and EDS Integration (merge-result with 3 ancestors) ========== -->
+  <div class="tl-row tl-merge-result" data-lineage-id="r1" style="display:grid;grid-template-columns:260px 180px 180px 180px;border-bottom:1px solid #f0f1f3;background:white">
+    <div style="padding:10px 12px;display:flex;align-items:center;gap:8px">
+      <button onclick="toggleLineage('r1')" class="chev-r1" style="background:none;border:none;cursor:pointer;color:#5e6c84;padding:0;font-size:11px;width:14px">▸</button>
+      <span style="font-weight:600;color:#172b4d">Risk Analytics and EDS Integration</span>
+      <span title="Merged from: Portfolio Risk Analytics, Fund Risk Analytics Module, Stress Testing Overview" style="background:#f5ecff;color:#6f42c1;border:1px solid #d9c2ff;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">✦ merged</span>
+    </div>
+    <div style="padding:10px 12px;border-left:1px solid #f0f1f3;color:#97a0af;font-size:11px;font-style:italic">(not yet raised)</div>
+    <!-- Call 2 cell: New (merged) -->
+    <div class="cell" onclick="toggleCell(this)" style="padding:10px 12px;border-left:1px solid #f0f1f3;cursor:pointer;background:#f5ecff;border-right:3px solid #d9c2ff">
+      <span style="background:#6f42c1;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">✦ new (merged)</span>
+      <div style="font-size:11px;color:#5e6c84;margin-top:5px;line-height:1.4">Consolidated risk analytics stream covering portfolio, fund-level, and stress testing.</div>
+      <div style="font-size:10px;color:#5e6c84;margin-top:4px">4 follow-ups (C1, C2) · 1 decision (C2)</div>
+      <div class="cell-detail" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #dfe1e6">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#97a0af;margin-bottom:3px">Follow-ups</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="1" title="Call 1 · Kickoff">C1</span>Audit current portfolio risk module</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="1" title="Call 1 · Kickoff">C1</span>Document stress-testing methodology</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="2" title="Call 2 · Review">C2</span>Integrate with EDS data pipeline</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="2" title="Call 2 · Review">C2</span>Define reporting cadence</div>
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#97a0af;margin:8px 0 3px">Decisions</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="2" title="Call 2 · Review">C2</span>Unify risk streams under single EDS-backed module</div>
+      </div>
+    </div>
+    <!-- Call 3 cell: Updated -->
+    <div class="cell" onclick="toggleCell(this)" style="padding:10px 12px;border-left:1px solid #f0f1f3;cursor:pointer;background:#f0f4ff;border-right:3px solid #c0d0f0">
+      <span style="background:#0052cc;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">Updated</span>
+      <div style="font-size:11px;color:#5e6c84;margin-top:5px;line-height:1.4">Pilot EDS integration underway; reporting template drafted.</div>
+      <div style="font-size:10px;color:#5e6c84;margin-top:4px">5 follow-ups (C1, C2, C3) · 2 decisions (C2, C3)</div>
+      <div class="cell-detail" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #dfe1e6">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#97a0af;margin-bottom:3px">Follow-ups</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="1" title="Call 1 · Kickoff">C1</span>Audit current portfolio risk module</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="1" title="Call 1 · Kickoff">C1</span>Document stress-testing methodology</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="2" title="Call 2 · Review">C2</span>Integrate with EDS data pipeline</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="2" title="Call 2 · Review">C2</span>Define reporting cadence</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="3" title="Call 3 · Followup">C3</span>Schedule EDS pilot review</div>
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#97a0af;margin:8px 0 3px">Decisions</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="2" title="Call 2 · Review">C2</span>Unify risk streams under single EDS-backed module</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="3" title="Call 3 · Followup">C3</span>Stress-test scenario library lands end of month</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ancestor rows for r1 (hidden by default) -->
+  <div class="lineage-r1" style="display:none">
+    <!-- Portfolio Risk Analytics (ancestor 1) -->
+    <div class="tl-row tl-ancestor" style="display:grid;grid-template-columns:260px 180px 180px 180px;border-bottom:1px solid #f0f1f3;background:#fafbfc">
+      <div style="padding:8px 12px 8px 34px;color:#8e94a3;font-size:11px;font-style:italic;position:relative">
+        <span style="position:absolute;left:20px;color:#bfc5ce">├─</span>
+        <span style="text-decoration:line-through">Portfolio Risk Analytics</span>
+      </div>
+      <div class="cell" onclick="toggleCell(this)" style="padding:8px 12px;border-left:1px solid #f0f1f3;cursor:pointer;background:#fff7ec;border-right:3px solid #ffe0b2">
+        <span style="background:#ff8b00;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">✦ new</span>
+        <div style="font-size:11px;color:#5e6c84;margin-top:4px">Portfolio-level risk coverage baselines.</div>
+        <div style="font-size:10px;color:#5e6c84;margin-top:3px">2 follow-ups (C1)</div>
+        <div class="cell-detail" style="display:none;margin-top:6px;padding-top:6px;border-top:1px solid #dfe1e6">
+          <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:2px 0"><span class="pill" data-call="1" title="Call 1 · Kickoff">C1</span>Audit current portfolio risk module</div>
+          <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:2px 0"><span class="pill" data-call="1" title="Call 1 · Kickoff">C1</span>Identify data gaps</div>
+        </div>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;background:#f5ecff;border-right:3px solid #d9c2ff">
+        <span style="background:#6f42c1;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">merged ↗</span>
+        <div style="font-size:10px;color:#5e6c84;margin-top:4px;font-style:italic">→ folded into<br>"Risk Analytics and EDS Integration"</div>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;color:#bfc5ce;font-size:10px;font-style:italic">(archived)</div>
+    </div>
+
+    <!-- Fund Risk Analytics Module (ancestor 2) -->
+    <div class="tl-row tl-ancestor" style="display:grid;grid-template-columns:260px 180px 180px 180px;border-bottom:1px solid #f0f1f3;background:#fafbfc">
+      <div style="padding:8px 12px 8px 34px;color:#8e94a3;font-size:11px;font-style:italic;position:relative">
+        <span style="position:absolute;left:20px;color:#bfc5ce">├─</span>
+        <span style="text-decoration:line-through">Fund Risk Analytics Module</span>
+      </div>
+      <div class="cell" onclick="toggleCell(this)" style="padding:8px 12px;border-left:1px solid #f0f1f3;cursor:pointer;background:#fff7ec;border-right:3px solid #ffe0b2">
+        <span style="background:#ff8b00;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">✦ new</span>
+        <div style="font-size:11px;color:#5e6c84;margin-top:4px">Fund-level calculations with Monte Carlo pipeline.</div>
+        <div style="font-size:10px;color:#5e6c84;margin-top:3px">1 follow-up (C1)</div>
+        <div class="cell-detail" style="display:none;margin-top:6px;padding-top:6px;border-top:1px solid #dfe1e6">
+          <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:2px 0"><span class="pill" data-call="1" title="Call 1 · Kickoff">C1</span>Design Monte Carlo engine interface</div>
+        </div>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;background:#f5ecff;border-right:3px solid #d9c2ff">
+        <span style="background:#6f42c1;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">merged ↗</span>
+        <div style="font-size:10px;color:#5e6c84;margin-top:4px;font-style:italic">→ folded into<br>"Risk Analytics and EDS Integration"</div>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;color:#bfc5ce;font-size:10px;font-style:italic">(archived)</div>
+    </div>
+
+    <!-- Stress Testing Overview (ancestor 3) -->
+    <div class="tl-row tl-ancestor" style="display:grid;grid-template-columns:260px 180px 180px 180px;border-bottom:1px solid #f0f1f3;background:#fafbfc">
+      <div style="padding:8px 12px 8px 34px;color:#8e94a3;font-size:11px;font-style:italic;position:relative">
+        <span style="position:absolute;left:20px;color:#bfc5ce">└─</span>
+        <span style="text-decoration:line-through">Stress Testing Overview</span>
+      </div>
+      <div class="cell" onclick="toggleCell(this)" style="padding:8px 12px;border-left:1px solid #f0f1f3;cursor:pointer;background:#fff7ec;border-right:3px solid #ffe0b2">
+        <span style="background:#ff8b00;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">✦ new</span>
+        <div style="font-size:11px;color:#5e6c84;margin-top:4px">S07 scenario framework proposal.</div>
+        <div style="font-size:10px;color:#5e6c84;margin-top:3px">1 follow-up (C1)</div>
+        <div class="cell-detail" style="display:none;margin-top:6px;padding-top:6px;border-top:1px solid #dfe1e6">
+          <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:2px 0"><span class="pill" data-call="1" title="Call 1 · Kickoff">C1</span>Document stress-testing methodology</div>
+        </div>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;background:#f5ecff;border-right:3px solid #d9c2ff">
+        <span style="background:#6f42c1;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">merged ↗</span>
+        <div style="font-size:10px;color:#5e6c84;margin-top:4px;font-style:italic">→ folded into<br>"Risk Analytics and EDS Integration"</div>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;color:#bfc5ce;font-size:10px;font-style:italic">(archived)</div>
+    </div>
+  </div>
+
+  <!-- ========== Topic 2: Model Selection and Memory Efficiency (merge-result with 2 ancestors) ========== -->
+  <div class="tl-row tl-merge-result" data-lineage-id="r2" style="display:grid;grid-template-columns:260px 180px 180px 180px;border-bottom:1px solid #f0f1f3;background:white">
+    <div style="padding:10px 12px;display:flex;align-items:center;gap:8px">
+      <button onclick="toggleLineage('r2')" class="chev-r2" style="background:none;border:none;cursor:pointer;color:#5e6c84;padding:0;font-size:11px;width:14px">▸</button>
+      <span style="font-weight:600;color:#172b4d">Model Selection and Memory Efficiency</span>
+      <span title="Merged from: Model Selection Discussion, Efficiency Assessment" style="background:#f5ecff;color:#6f42c1;border:1px solid #d9c2ff;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">✦ merged</span>
+    </div>
+    <div style="padding:10px 12px;border-left:1px solid #f0f1f3;color:#97a0af;font-size:11px;font-style:italic">(not yet raised)</div>
+    <div class="cell" onclick="toggleCell(this)" style="padding:10px 12px;border-left:1px solid #f0f1f3;cursor:pointer;background:#f5ecff;border-right:3px solid #d9c2ff">
+      <span style="background:#6f42c1;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">✦ new (merged)</span>
+      <div style="font-size:11px;color:#5e6c84;margin-top:5px;line-height:1.4">Joint model-selection + memory-profiling workstream.</div>
+      <div style="font-size:10px;color:#5e6c84;margin-top:4px">2 follow-ups (C1, C2)</div>
+      <div class="cell-detail" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #dfe1e6">
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="1" title="Call 1 · Kickoff">C1</span>Benchmark top-3 model candidates</div>
+        <div style="font-size:11px;display:flex;align-items:flex-start;gap:4px;margin:3px 0"><span class="pill" data-call="2" title="Call 2 · Review">C2</span>Memory-profile model-A under peak load</div>
+      </div>
+    </div>
+    <div class="cell" onclick="toggleCell(this)" style="padding:10px 12px;border-left:1px solid #f0f1f3;cursor:pointer;background:#f4f5f7;border-right:3px solid #c4c9d1">
+      <span style="background:#8993a3;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">Not discussed</span>
+      <div style="font-size:10px;color:#97a0af;margin-top:4px;font-style:italic">Verified not mentioned in call transcript.</div>
+    </div>
+  </div>
+
+  <div class="lineage-r2" style="display:none">
+    <div class="tl-row tl-ancestor" style="display:grid;grid-template-columns:260px 180px 180px 180px;border-bottom:1px solid #f0f1f3;background:#fafbfc">
+      <div style="padding:8px 12px 8px 34px;color:#8e94a3;font-size:11px;font-style:italic;position:relative">
+        <span style="position:absolute;left:20px;color:#bfc5ce">├─</span>
+        <span style="text-decoration:line-through">Model Selection Discussion</span>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;background:#fff7ec;border-right:3px solid #ffe0b2">
+        <span style="background:#ff8b00;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">✦ new</span>
+        <div style="font-size:11px;color:#5e6c84;margin-top:4px">Shortlist of 3 candidate models surveyed.</div>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;background:#f5ecff;border-right:3px solid #d9c2ff">
+        <span style="background:#6f42c1;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">merged ↗</span>
+        <div style="font-size:10px;color:#5e6c84;margin-top:4px;font-style:italic">→ folded into<br>"Model Selection and Memory Efficiency"</div>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;color:#bfc5ce;font-size:10px;font-style:italic">(archived)</div>
+    </div>
+    <div class="tl-row tl-ancestor" style="display:grid;grid-template-columns:260px 180px 180px 180px;border-bottom:1px solid #f0f1f3;background:#fafbfc">
+      <div style="padding:8px 12px 8px 34px;color:#8e94a3;font-size:11px;font-style:italic;position:relative">
+        <span style="position:absolute;left:20px;color:#bfc5ce">└─</span>
+        <span style="text-decoration:line-through">Efficiency Assessment</span>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;background:#fff7ec;border-right:3px solid #ffe0b2">
+        <span style="background:#ff8b00;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">✦ new</span>
+        <div style="font-size:11px;color:#5e6c84;margin-top:4px">Memory & throughput baseline initiated.</div>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;background:#f5ecff;border-right:3px solid #d9c2ff">
+        <span style="background:#6f42c1;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">merged ↗</span>
+        <div style="font-size:10px;color:#5e6c84;margin-top:4px;font-style:italic">→ folded into<br>"Model Selection and Memory Efficiency"</div>
+      </div>
+      <div style="padding:8px 12px;border-left:1px solid #f0f1f3;color:#bfc5ce;font-size:10px;font-style:italic">(archived)</div>
+    </div>
+  </div>
+
+  <!-- ========== Topic 3: Architectural Plan Discussion (regular, no ancestors) ========== -->
+  <div class="tl-row" style="display:grid;grid-template-columns:260px 180px 180px 180px;border-bottom:1px solid #f0f1f3;background:white">
+    <div style="padding:10px 12px;display:flex;align-items:center;gap:8px">
+      <span style="width:14px"></span>
+      <span style="font-weight:600;color:#172b4d">Architectural Plan Discussion</span>
+    </div>
+    <div class="cell" onclick="toggleCell(this)" style="padding:10px 12px;border-left:1px solid #f0f1f3;cursor:pointer;background:#fff7ec;border-right:3px solid #ffe0b2">
+      <span style="background:#ff8b00;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">✦ new</span>
+      <div style="font-size:11px;color:#5e6c84;margin-top:5px">Initial architecture sketch covering tiers 1–3.</div>
+      <div style="font-size:10px;color:#5e6c84;margin-top:4px">1 follow-up (C1)</div>
+    </div>
+    <div class="cell" onclick="toggleCell(this)" style="padding:10px 12px;border-left:1px solid #f0f1f3;cursor:pointer;background:#f0f4ff;border-right:3px solid #c0d0f0">
+      <span style="background:#0052cc;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">Updated</span>
+      <div style="font-size:11px;color:#5e6c84;margin-top:5px">ADR drafted for transport layer.</div>
+      <div style="font-size:10px;color:#5e6c84;margin-top:4px">2 follow-ups (C1, C2) · 1 decision (C2)</div>
+    </div>
+    <div style="padding:10px 12px;border-left:1px solid #f0f1f3;background:#f4f5f7;border-right:3px solid #c4c9d1">
+      <span style="background:#8993a3;color:white;font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px">Not discussed</span>
+    </div>
+  </div>
+
+</div>
+
+<div style="margin-top:16px;padding:12px;background:#f4f5f7;border-radius:4px;font-size:12px;color:#5e6c84">
+  <strong style="color:#172b4d">Interaction checklist:</strong>
+  <ul style="margin:6px 0 0 18px;padding:0;line-height:1.8">
+    <li>Click <strong>▸</strong> next to "Risk Analytics and EDS Integration" or "Model Selection…" — ancestor rows slide out below</li>
+    <li>Click any cell — expands inline to show follow-ups/decisions with C1/C2/C3 pills</li>
+    <li>Hover a pill — tooltip shows full call title</li>
+    <li>Click the <strong>"Expand all lineage"</strong> button at the top — all merge-result chevrons toggle at once</li>
+  </ul>
+</div>
+
+<style>
+  .pill {
+    display: inline-block;
+    min-width: 22px;
+    text-align: center;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: #dfe7ff;
+    color: #0747a6;
+    cursor: help;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .pill[data-call="1"] { background: #dfe7ff; color: #0747a6; }
+  .pill[data-call="2"] { background: #daf5e4; color: #00623e; }
+  .pill[data-call="3"] { background: #fff7d6; color: #926212; }
+  .pill[data-call="4"] { background: #ffe0d3; color: #a14300; }
+  .pill[data-call="?"] { background: #e5e7eb; color: #97a0af; }
+  .cell.expanded .cell-detail { display: block !important; }
+</style>
+
+<script>
+  function toggleLineage(id) {
+    const rows = document.querySelector('.lineage-' + id);
+    const chev = document.querySelector('.chev-' + id);
+    if (!rows || !chev) return;
+    const isOpen = rows.style.display === 'block';
+    rows.style.display = isOpen ? 'none' : 'block';
+    chev.textContent = isOpen ? '▸' : '▾';
+  }
+  function toggleCell(el) {
+    const detail = el.querySelector('.cell-detail');
+    if (!detail) return;
+    el.classList.toggle('expanded');
+  }
+  function toggleAllLineage() {
+    const chevrons = document.querySelectorAll('[class^="chev-r"]');
+    const btn = document.getElementById('expand-all-label');
+    const anyClosed = Array.from(chevrons).some((c) => c.textContent === '▸');
+    chevrons.forEach((c) => {
+      const id = c.className.replace('chev-', '');
+      const rows = document.querySelector('.lineage-' + id);
+      if (!rows) return;
+      if (anyClosed) {
+        rows.style.display = 'block';
+        c.textContent = '▾';
+      } else {
+        rows.style.display = 'none';
+        c.textContent = '▸';
+      }
+    });
+    btn.textContent = anyClosed ? 'Collapse all lineage' : 'Expand all lineage';
+  }
+</script>
