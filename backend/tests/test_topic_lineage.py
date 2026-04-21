@@ -438,3 +438,123 @@ def test_build_block_for_merged_topic_includes_call1_excerpt_from_archived_sourc
             next_line = lines[i + 1] if i + 1 < len(lines) else ""
             assert "from archived topic" not in next_line
             break
+
+
+# ---------------------------------------------------------------------------
+# Story 10.6 / Fix 6.1 — Call Topics Extraction vocabulary hint
+# ---------------------------------------------------------------------------
+
+import asyncio
+from unittest.mock import patch, AsyncMock
+
+
+def _make_extraction_db(project_id: str, transcript: str, existing_topic_names: list[str]):
+    """Build a MagicMock DB compatible with extract_call_topics's queries:
+       - calls.select(...).eq(id, call_id) → [{project_id, transcript}]
+       - artifact_types.select(...).eq(project_id).eq(category).order.limit → []
+       - projects.select(...).eq(id).execute → [{default_llm, context}]
+       - topics.select('name').eq(project_id).eq(archived, False) → existing names
+    """
+    db = MagicMock()
+
+    def table_side(name):
+        t = MagicMock()
+        if name == "calls":
+            (
+                t.select.return_value
+                 .eq.return_value
+                 .execute.return_value
+                 .data
+            ) = [{"project_id": project_id, "transcript": transcript}]
+            return t
+        if name == "artifact_types":
+            (
+                t.select.return_value
+                 .eq.return_value
+                 .eq.return_value
+                 .order.return_value
+                 .limit.return_value
+                 .execute.return_value
+                 .data
+            ) = []
+            return t
+        if name == "projects":
+            (
+                t.select.return_value
+                 .eq.return_value
+                 .execute.return_value
+                 .data
+            ) = [{"default_llm": "groq", "context": ""}]
+            return t
+        if name == "topics":
+            # .select("name").eq("project_id", X).eq("archived", False).execute()
+            (
+                t.select.return_value
+                 .eq.return_value
+                 .eq.return_value
+                 .execute.return_value
+                 .data
+            ) = [{"name": n} for n in existing_topic_names]
+            return t
+        return t
+
+    db.table.side_effect = table_side
+    return db
+
+
+def test_extraction_prompt_includes_vocabulary_hint_when_topics_exist():
+    """Fix 6.1: existing project topic names are passed as a vocabulary hint
+    right before the transcript.
+    """
+    from backend.services.topics_service import extract_call_topics
+
+    db = _make_extraction_db(
+        project_id="proj-1",
+        transcript="We discussed API design and billing tiers.",
+        existing_topic_names=["API design", "Billing tier"],
+    )
+
+    captured = {}
+
+    async def fake_llm(prompt, llm):
+        captured["prompt"] = prompt
+        return []
+
+    with patch("backend.services.topics_service.get_client", return_value=db), \
+         patch("backend.services.topics_service._call_llm",
+               new=AsyncMock(side_effect=fake_llm)):
+        asyncio.run(extract_call_topics("call-1"))
+
+    prompt = captured["prompt"]
+    assert "Existing project topic names" in prompt
+    assert "- API design" in prompt
+    assert "- Billing tier" in prompt
+    assert "Transcript:" in prompt
+    # Vocabulary hint appears immediately before the Transcript: section
+    assert prompt.index("Existing project topic names") < prompt.index("Transcript:")
+
+
+def test_extraction_prompt_has_no_vocabulary_hint_when_no_prior_topics():
+    """Fix 6.1: call-1 (empty project) → prompt unchanged, no vocab header."""
+    from backend.services.topics_service import extract_call_topics
+
+    db = _make_extraction_db(
+        project_id="proj-1",
+        transcript="Kickoff call.",
+        existing_topic_names=[],
+    )
+
+    captured = {}
+
+    async def fake_llm(prompt, llm):
+        captured["prompt"] = prompt
+        return []
+
+    with patch("backend.services.topics_service.get_client", return_value=db), \
+         patch("backend.services.topics_service._call_llm",
+               new=AsyncMock(side_effect=fake_llm)):
+        asyncio.run(extract_call_topics("call-1"))
+
+    assert "Existing project topic names" not in captured["prompt"]
+
+

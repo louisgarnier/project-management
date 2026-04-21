@@ -298,10 +298,35 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         "Return ONLY a JSON array. No markdown, no explanation."
     )
     context_prefix = f"Project context:\n{project_context}\n\n" if project_context else ""
+
+    # Vocabulary hint: pass existing project topic names so the LLM aligns the
+    # new call topic `name` fields with prior naming conventions. Names only —
+    # no summaries or decisions — keeps extraction focused on the transcript.
+    existing_names_rows = (
+        db.table("topics")
+        .select("name")
+        .eq("project_id", project_id)
+        .eq("archived", False)
+        .execute()
+        .data
+    )
+    existing_names = [r["name"] for r in (existing_names_rows or []) if r.get("name")]
+    if existing_names:
+        vocab_lines = "\n".join(f"- {n}" for n in existing_names)
+        vocabulary_hint = (
+            "Existing project topic names (align your `name` field to these "
+            "when the same subject is discussed — do NOT invent new names for "
+            "existing subjects):\n"
+            f"{vocab_lines}\n\n"
+        )
+    else:
+        vocabulary_hint = ""
+
     prompt = (
         context_prefix
         + f"{base_instruction}\n\n"
         + f"Return a JSON array where each element matches this exact schema:\n{_TOPIC_SCHEMA}\n\n"
+        + vocabulary_hint
         + f"Transcript:\n{transcript}"
     )
 
