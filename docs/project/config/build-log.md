@@ -1,11 +1,38 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality — IN PROGRESS**
-- Story 10.1 — lineage helper + merge-prompt fix — **done** (2026-04-20)
-- Next: Story 10.2 — prompts audit (read-only doc)
+**EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality — COMPLETE (2026-04-21)**
+- All 8 stories done. Full Kanban-wide evidence traceability shipped.
 
 ---
+
+### 2026-04-21 — EPIC-10: Stories 10.2 through 10.8 + ERR-004
+
+**ERR-004 side fix** (`d6773de`): promote-not-discussed persisted via ptid-only match group (`POST /api/calls/{id}/topics/promote-not-discussed`); survives re-merge and page refresh.
+
+**Story 10.2 — Prompts audit** (`6c39d88`): `docs/project/config/epic-10-prompts-audit.md` covering 5 LLM prompts (extraction, per-topic merge, merge verification, not-discussed verification, artifacts) with file/line refs, blindnesses, and prioritised recommendations.
+
+**Story 10.3 — Topic Evidence API** (`716bc08`): `GET /api/topics/{id}/evidence` returns ancestor-aware per-call trail (lineage nodes + calls with excerpt/summary/follow-ups/decisions/raw_extract/match_group/verification). 6 new backend tests.
+
+**Story 10.4 — Evidence Drawer (lineage mode)** (`a8e78d9`): new `TopicEvidenceDrawer.tsx` — full-overlay drawer rendering per-call color-coded cards (8-pastel palette), lineage chip for merged topics, provenance badges on ancestor-source cards, collapsible raw_extract/match_group/verification. Mounted on Project Updates ("View evidence" per Updated Topic row) + Topics Timeline (click topic name).
+
+**Story 10.5 — "+ new (merged)" label** (`a2b39b0`): backend returns `has_sources` + `source_names[]` on timeline topics; frontend renders merge-result cells in purple with tooltip listing source names. 1 new backend test.
+
+**Story 10.6 — Prompt fixes from audit** (`8e68c3e`, `fd45fc4`, `ecce0ed`, `c3c9b43`):
+- Fix 6.1 — extraction prompt receives existing project topic names as vocabulary hint (not Call 1)
+- Fix 6.4 — merge verification now consumes `build_lineage_evidence_block` for ancestor evidence + dropped `transcript[:8000]` truncation
+- Fix 6.5 — new `get_project_topics_lineage_context` for project-scope artifacts; per-call evolution visible
+- 5 new backend tests + 1 pre-existing test repaired; audit doc updated with implemented/deferred status per prompt
+
+**Story 10.7 — Call Topics evidence drawer** (`21ec689`): `TopicEvidenceDrawer` gained `mode="call_topic"` rendering a single-panel view of pending_topic data (transcript_excerpt + summary + follow-ups + decisions). Added `transcript_excerpt?` to the `TopicData` type. Mounted on Call Topics stage via "Show source" link per row. No fetch — uses inline pending data.
+
+**Story 10.8 — Project Matching side-by-side drawer** (`206ec22`): `TopicEvidenceDrawer` gained `mode="matching"` — two-column grid with existing topic lineage (left) + current call extraction (right), kind-driven empty states, footer strip explaining the classification ("followed up" / "new" / "not discussed"). Mounted on Project Matching stage via "Show evidence" link on every row in both panes. No backend changes — reuses in-component state.
+
+**Test status:** 52/52 topics+lineage+evidence tests green; 129/133 full suite (4 known pre-existing failures unrelated to Epic 10).
+
+---
+
+### 2026-04-20 — EPIC-10: Story 10.1 — Lineage Helper + Merge-Prompt Fix
 
 ### 2026-04-20 — EPIC-10: Story 10.1 — Lineage Helper + Merge-Prompt Fix
 

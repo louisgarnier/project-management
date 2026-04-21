@@ -1,9 +1,8 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Epic:** EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality
-- **Story:** 10.2 — Prompts Audit (Read-Only Documentation)
-- **Status:** `pending`
+- **Epic:** EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality — **DONE 2026-04-21**
+- **Next:** TBD — all defined epics complete.
 - **Spec:** `docs/project/config/2026-04-20-epic-10-topic-lineage-and-prompt-traceability-design.md`
 - **PRD:** `docs/project/config/prd-epic10-topic-lineage-and-prompt-traceability.md`
 
@@ -11,13 +10,16 @@
 | # | Story | Status | Depends on |
 |---|---|---|---|
 | 10.1 | Lineage Helper + Merge-Prompt Fix | **done 2026-04-20** | — |
-| 10.2 | Prompts Audit (Read-Only Documentation) | pending | 10.1 |
-| 10.3 | Topic Evidence API | pending | 10.1 |
-| 10.4 | Evidence Drawer UI — Lineage Mode | pending | 10.3 |
-| 10.5 | "+ new (merged)" Label on Timeline Cells | pending | 10.3 |
-| 10.6 | Implement Prompt Fixes From Audit | pending | 10.2 |
-| 10.7 | Call Topics Stage: Evidence Drawer | pending | 10.4 |
-| 10.8 | Project Matching Stage: Side-by-Side Evidence Drawer | pending | 10.3, 10.4 |
+| 10.2 | Prompts Audit (Read-Only Documentation) | **done 2026-04-21** | 10.1 |
+| 10.3 | Topic Evidence API | **done 2026-04-21** | 10.1 |
+| 10.4 | Evidence Drawer UI — Lineage Mode | **done 2026-04-21** | 10.3 |
+| 10.5 | "+ new (merged)" Label on Timeline Cells | **done 2026-04-21** | 10.3 |
+| 10.6 | Implement Prompt Fixes From Audit | **done 2026-04-21** | 10.2 |
+| 10.7 | Call Topics Stage: Evidence Drawer | **done 2026-04-21** | 10.4 |
+| 10.8 | Project Matching Stage: Side-by-Side Evidence Drawer | **done 2026-04-21** | 10.3, 10.4 |
+
+### Side fix
+- **ERR-004** — Promote-not-discussed state lost on re-merge/refresh — **done 2026-04-21** (commit `d6773de`)
 
 ### EPIC-9 Stories (Done)
 | # | Story | Status |
