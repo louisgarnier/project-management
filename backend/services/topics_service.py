@@ -1715,6 +1715,15 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
         target_rows = db.table("topics").select("id, name").in_("id", merged_target_ids).execute().data
         merged_name_map = {r["id"]: r["name"] for r in target_rows}
 
+    # Build source-names lookup for active topics that ARE merge results
+    # (i.e. archived topics with merged_into_topic_id pointing to them).
+    # Powers the "+ new (merged)" label on Timeline cells (Story 10.5).
+    sources_by_target: dict[str, list[str]] = {}
+    for src in archived_topics:
+        target_id = src.get("merged_into_topic_id")
+        if target_id:
+            sources_by_target.setdefault(target_id, []).append(src.get("name", ""))
+
     updates = (
         db.table("topic_updates")
         .select("topic_id, call_id, summary, follow_up_items, decisions, status, owner, sentiment")
@@ -1797,6 +1806,7 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
                 }
 
         ls = latest_state.get(tid, {})
+        source_names = sources_by_target.get(tid, [])
         result_topics.append({
             "topic_id": tid,
             "name": t["name"],
@@ -1808,6 +1818,8 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
             "archived": is_archived,
             "merged_into_topic_id": merged_into_id,
             "merged_into_name": merged_name_map.get(merged_into_id, "") if merged_into_id else None,
+            "has_sources": len(source_names) > 0,
+            "source_names": source_names,
         })
 
     # ── Pending rows for calls with no committed topic_updates ──────────────

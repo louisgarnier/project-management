@@ -28,7 +28,12 @@ const BADGE_BASE: React.CSSProperties = {
 
 // ── Cell component ────────────────────────────────────────────────────────
 
-function Cell({ cell }: { cell: TimelineCell | undefined }) {
+function Cell({ cell, hasSources, sourceNames, isFirstRaisedCell }: {
+  cell: TimelineCell | undefined;
+  hasSources?: boolean;
+  sourceNames?: string[];
+  isFirstRaisedCell?: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   if (!cell) {
@@ -90,26 +95,42 @@ function Cell({ cell }: { cell: TimelineCell | undefined }) {
 
   const isNew = cell.type === "new";
   const isResolved = cell.status === "resolved";
+  // Story 10.5: a "new" cell on a topic that is itself a merge result is a "+ new (merged)" cell.
+  // Distinct purple palette + tooltip listing source topic names.
+  const isMergedNew = isNew && isFirstRaisedCell && !!hasSources;
 
   const cellStyle: React.CSSProperties = isResolved
     ? { background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 5, padding: "7px 9px" }
-    : isNew
-      ? { background: "#fff7ec", border: "1px solid #ffe0b2", borderRadius: 5, padding: "7px 9px", cursor: "pointer" }
-      : { background: "#f0f4ff", border: "1px solid #c0d0f0", borderRadius: 5, padding: "7px 9px", cursor: "pointer" };
+    : isMergedNew
+      ? { background: "#f5ecff", border: "1px solid #d9c2ff", borderRadius: 5, padding: "7px 9px", cursor: "pointer" }
+      : isNew
+        ? { background: "#fff7ec", border: "1px solid #ffe0b2", borderRadius: 5, padding: "7px 9px", cursor: "pointer" }
+        : { background: "#f0f4ff", border: "1px solid #c0d0f0", borderRadius: 5, padding: "7px 9px", cursor: "pointer" };
 
   const badgeStyle: React.CSSProperties = isResolved
     ? { ...BADGE_BASE, background: "#006644", color: "white" }
-    : isNew
-      ? { ...BADGE_BASE, background: "#ff8b00", color: "white" }
-      : { ...BADGE_BASE, background: "#0052cc", color: "white" };
+    : isMergedNew
+      ? { ...BADGE_BASE, background: "#6f42c1", color: "white" }
+      : isNew
+        ? { ...BADGE_BASE, background: "#ff8b00", color: "white" }
+        : { ...BADGE_BASE, background: "#0052cc", color: "white" };
 
-  const badgeLabel = isResolved ? "✓ Resolved" : isNew ? "✦ New" : "Updated";
+  const badgeLabel = isResolved
+    ? "✓ Resolved"
+    : isMergedNew
+      ? "✦ New (merged)"
+      : isNew
+        ? "✦ New"
+        : "Updated";
+  const tooltip = isMergedNew && sourceNames && sourceNames.length > 0
+    ? `Merged from: ${sourceNames.join(", ")}`
+    : undefined;
   const canExpand = true;
 
   return (
     <td style={{ width: 180, minWidth: 180, borderRight: "1px solid #f0f1f3",
       verticalAlign: "top", padding: "10px 12px" }}>
-      <div style={cellStyle} onClick={() => canExpand && setExpanded((v) => !v)}>
+      <div style={cellStyle} onClick={() => canExpand && setExpanded((v) => !v)} title={tooltip}>
         <span style={badgeStyle}>{badgeLabel}</span>
 
         {cell.summary && (
@@ -320,7 +341,13 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
                   )}
                 </td>
                 {data.calls.map((c) => (
-                  <Cell key={c.id} cell={topic.call_updates[c.id]} />
+                  <Cell
+                    key={c.id}
+                    cell={topic.call_updates[c.id]}
+                    hasSources={topic.has_sources}
+                    sourceNames={topic.source_names}
+                    isFirstRaisedCell={c.id === topic.first_raised_call_id}
+                  />
                 ))}
               </tr>
             );

@@ -166,6 +166,8 @@ export interface TimelineTopic {
   archived?: boolean;
   merged_into_topic_id?: string | null;
   merged_into_name?: string | null;
+  has_sources?: boolean;
+  source_names?: string[];
   call_updates: Record<string, TimelineCell>;
 }
 

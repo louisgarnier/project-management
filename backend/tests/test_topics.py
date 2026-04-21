@@ -539,6 +539,81 @@ class TestTopicsTimeline(unittest.TestCase):
         self.assertEqual(t["call_updates"]["c3"]["type"], "not_discussed")
 
     @patch("backend.services.topics_service.get_client")
+    def test_timeline_marks_merge_result_with_has_sources(self, mock_gc):
+        """An active topic that is the target of M:N merges (archived topics
+        pointing to it via merged_into_topic_id) gets has_sources=True and
+        source_names populated. Powers the '+ new (merged)' cell label."""
+        from backend.services.topics_service import list_topics_timeline
+        db = MagicMock()
+
+        calls = [
+            {"id": "c1", "title": "Kickoff", "call_number": 1, "kanban_stage": "done"},
+            {"id": "c2", "title": "Review", "call_number": 2, "kanban_stage": "done"},
+        ]
+        # Active topic 'c' is the merge target; archived 'a' and 'b' point to it.
+        active = [{"id": "c", "name": "API strategy", "first_raised_call_id": "c2",
+                   "archived": False, "merged_into_topic_id": None}]
+        archived = [
+            {"id": "a", "name": "REST API", "first_raised_call_id": "c1",
+             "archived": True, "merged_into_topic_id": "c"},
+            {"id": "b", "name": "GraphQL API", "first_raised_call_id": "c1",
+             "archived": True, "merged_into_topic_id": "c"},
+        ]
+        updates = [
+            {"topic_id": "c", "call_id": "c2", "summary": "merged", "follow_up_items": [],
+             "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral"},
+            {"topic_id": "a", "call_id": "c1", "summary": "REST raised", "follow_up_items": [],
+             "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral"},
+            {"topic_id": "b", "call_id": "c1", "summary": "GraphQL raised", "follow_up_items": [],
+             "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral"},
+        ]
+        latest = [
+            {"id": "c", "status": "open", "owner": "Us", "sentiment": "neutral"},
+            {"id": "a", "status": "open", "owner": "Us", "sentiment": "neutral"},
+            {"id": "b", "status": "open", "owner": "Us", "sentiment": "neutral"},
+        ]
+
+        topics_call_count = {"n": 0}
+
+        def table_side_effect(name):
+            m = MagicMock()
+            if name == "calls":
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+            elif name == "topics":
+                topics_call_count["n"] += 1
+                if topics_call_count["n"] == 1:
+                    # active
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = active
+                elif topics_call_count["n"] == 2:
+                    # archived
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = archived
+                # .select("id, name").in_("id", [...]).execute().data → merged-name lookup
+                m.select.return_value.in_.return_value.execute.return_value.data = [
+                    {"id": "c", "name": "API strategy"},
+                ]
+            elif name == "topic_updates":
+                # updates query: .select(...).in_().in_().execute()
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = updates
+                # latest_updates query: .select(...).in_().order().execute()
+                m.select.return_value.in_.return_value.order.return_value.execute.return_value.data = [
+                    {"topic_id": "c", "status": "open", "owner": "Us", "sentiment": "neutral", "created_at": "2026-04-08"},
+                    {"topic_id": "a", "status": "open", "owner": "Us", "sentiment": "neutral", "created_at": "2026-04-01"},
+                    {"topic_id": "b", "status": "open", "owner": "Us", "sentiment": "neutral", "created_at": "2026-04-01"},
+                ]
+            return m
+        db.table.side_effect = table_side_effect
+
+        result = list_topics_timeline("proj-1", db)
+        merged_target = next(t for t in result["topics"] if t["topic_id"] == "c")
+        self.assertTrue(merged_target["has_sources"])
+        self.assertEqual(sorted(merged_target["source_names"]), ["GraphQL API", "REST API"])
+        # Archived sources have has_sources=False (they're leaves, not targets)
+        for tid in ("a", "b"):
+            src = next(t for t in result["topics"] if t["topic_id"] == tid)
+            self.assertFalse(src["has_sources"])
+            self.assertEqual(src["source_names"], [])
+
+    @patch("backend.services.topics_service.get_client")
     def test_timeline_followed_up_and_absent(self, mock_gc):
         """Topic raised in call 1 and followed up in call 2."""
         from backend.services.topics_service import list_topics_timeline
