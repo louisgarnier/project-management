@@ -52,17 +52,22 @@ export default function ProjectMatchingHistoricalView({ callId, projectId }: Pro
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Use pending_topics (the original call-topic extractions), NOT listForCall.
+    // listForCall returns the post-merge final topics, whose names don't appear
+    // in the saved match_groups — so match lookups would fail for 5/7 topics
+    // and they'd render as unmatched. pending_topics preserves the names that
+    // match_groups actually reference.
     Promise.all([
       topicsAPI.priorToCall(projectId, callId),
-      topicsAPI.listForCall(callId),
+      topicsAPI.getPending(callId),
       topicsAPI.getMatchGroups(callId),
-    ]).then(([proj, callTopicsData, groups]) => {
+    ]).then(([proj, pendingTopics, groups]) => {
       setProjectTopics(proj);
-      setCallTopics(callTopicsData);
+      setCallTopics(pendingTopics);
       setMatchGroups(groups);
       logger.info("[ProjectMatchingHistoricalView] Loaded match data", {
         component: "ProjectMatchingHistoricalView",
-        data: { projectTopics: proj.length, callTopics: callTopicsData.length, groups: groups.length },
+        data: { projectTopics: proj.length, callTopics: pendingTopics.length, groups: groups.length },
       });
     }).catch((err) => {
       logger.error("[ProjectMatchingHistoricalView] Failed to load", { component: "ProjectMatchingHistoricalView", data: err });
