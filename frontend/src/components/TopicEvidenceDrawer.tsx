@@ -12,12 +12,19 @@ import type {
   TopicData,
 } from "@/types";
 
-// Drawer supports two modes:
+// Drawer supports three modes:
 //  - "lineage": fetches /api/topics/{id}/evidence, renders per-call chronology
 //    with ancestor provenance (Story 10.4). Used on Project Updates + Timeline.
 //  - "call_topic": no fetch — renders a single pending-topic card showing the
 //    transcript excerpt that caused the extraction (Story 10.7). Used on
 //    Call Topics stage where topics have no topic_id yet.
+//  - "matching": side-by-side view (Story 10.8) — left column shows existing
+//    project topic's lineage (fetched, like lineage mode); right column shows
+//    the current call's extraction (pending_topic). Used on Project Matching
+//    stage. Classification (followed_up/new/not_discussed) drives which side
+//    is empty and the footer explanation.
+type MatchingKind = "followed_up" | "new" | "not_discussed";
+
 type Props =
   | {
       open: boolean;
@@ -32,6 +39,14 @@ type Props =
       mode: "call_topic";
       pendingTopic: TopicData | null;
       topicId?: undefined;
+    }
+  | {
+      open: boolean;
+      onClose: () => void;
+      mode: "matching";
+      topicId: string | null;
+      pendingTopic: TopicData | null;
+      kind: MatchingKind;
     };
 
 // 8-color pastel palette — one band per call, cycled by index
@@ -542,15 +557,35 @@ function PendingTopicCard({ topic }: { topic: TopicData }) {
 export default function TopicEvidenceDrawer(props: Props) {
   const { open, onClose } = props;
   const isCallTopicMode = props.mode === "call_topic";
-  const topicId = isCallTopicMode ? null : (props as Extract<Props, { mode?: "lineage" }>).topicId;
-  const pendingTopic = isCallTopicMode ? props.pendingTopic : null;
+  const isMatchingMode = props.mode === "matching";
+  const isLineageMode = !isCallTopicMode && !isMatchingMode;
+  const topicId = isCallTopicMode
+    ? null
+    : isMatchingMode
+    ? props.topicId
+    : (props as Extract<Props, { mode?: "lineage" }>).topicId;
+  const pendingTopic = isCallTopicMode
+    ? props.pendingTopic
+    : isMatchingMode
+    ? props.pendingTopic
+    : null;
+  const matchingKind: MatchingKind | null = isMatchingMode ? props.kind : null;
 
   const [data, setData] = useState<TopicEvidence | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchEvidence = useCallback(async () => {
-    if (!open || !topicId || isCallTopicMode) return;
+    // Fetch when we need a lineage for the left-column (lineage mode or
+    // matching mode with a topicId). call_topic mode never fetches.
+    if (!open || isCallTopicMode) return;
+    if (!topicId) {
+      // Matching mode with no existing topic (kind="new"): nothing to fetch.
+      setData(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     setData(null);
@@ -580,7 +615,9 @@ export default function TopicEvidenceDrawer(props: Props) {
 
   if (!open) return null;
   if (isCallTopicMode && !pendingTopic) return null;
-  if (!isCallTopicMode && !topicId) return null;
+  if (isLineageMode && !topicId) return null;
+  // Matching mode: need at least one side populated
+  if (isMatchingMode && !topicId && !pendingTopic) return null;
 
   return (
     <div
@@ -603,7 +640,7 @@ export default function TopicEvidenceDrawer(props: Props) {
           borderRadius: 8,
           boxShadow: "0 16px 40px rgba(9,30,66,0.25)",
           width: "100%",
-          maxWidth: 960,
+          maxWidth: isMatchingMode ? 1200 : 960,
           maxHeight: "90vh",
           display: "flex",
           flexDirection: "column",
@@ -634,14 +671,36 @@ export default function TopicEvidenceDrawer(props: Props) {
             >
               {isCallTopicMode
                 ? (pendingTopic?.name ?? "Topic source")
+                : isMatchingMode
+                ? (() => {
+                    const existingName = data?.topic_name ?? null;
+                    const pendingName = pendingTopic?.name ?? null;
+                    if (existingName && pendingName) {
+                      return `Match evidence: ${existingName} ↔ ${pendingName}`;
+                    }
+                    if (existingName) {
+                      return `Match evidence: ${existingName}`;
+                    }
+                    if (pendingName) {
+                      return `Match evidence: ${pendingName}`;
+                    }
+                    return loading ? "Loading…" : "Match evidence";
+                  })()
                 : (data?.topic_name ?? (loading ? "Loading…" : "Topic evidence"))}
             </h2>
-            {!isCallTopicMode && data && (
+            {(isLineageMode || isMatchingMode) && data && (
               <LineageChip lineage={data.lineage} currentTopicId={data.topic_id} />
             )}
             {isCallTopicMode && (
               <div style={{ fontSize: 11, color: "#5e6c84", marginTop: 6 }}>
                 Source data from this call&apos;s extraction
+              </div>
+            )}
+            {isMatchingMode && matchingKind && (
+              <div style={{ fontSize: 11, color: "#5e6c84", marginTop: 6, textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 700 }}>
+                {matchingKind === "followed_up" && "Followed up"}
+                {matchingKind === "new" && "New topic"}
+                {matchingKind === "not_discussed" && "Not discussed"}
               </div>
             )}
           </div>
@@ -666,12 +725,12 @@ export default function TopicEvidenceDrawer(props: Props) {
         {/* Body */}
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", background: "#f4f5f7" }}>
           {isCallTopicMode && pendingTopic && <PendingTopicCard topic={pendingTopic} />}
-          {!isCallTopicMode && loading && (
+          {isLineageMode && loading && (
             <div style={{ fontSize: 13, color: "#5e6c84", textAlign: "center", padding: 40 }}>
               Loading evidence…
             </div>
           )}
-          {!isCallTopicMode && error && !loading && (
+          {isLineageMode && error && !loading && (
             <div
               style={{
                 background: "#fff1f0",
@@ -705,17 +764,183 @@ export default function TopicEvidenceDrawer(props: Props) {
               </button>
             </div>
           )}
-          {!isCallTopicMode && !loading && !error && data && data.calls.length === 0 && (
+          {isLineageMode && !loading && !error && data && data.calls.length === 0 && (
             <div style={{ fontSize: 13, color: "#5e6c84", textAlign: "center", padding: 40 }}>
               No evidence available for this topic.
             </div>
           )}
-          {!isCallTopicMode && !loading && !error && data && data.calls.length > 0 && (
+          {isLineageMode && !loading && !error && data && data.calls.length > 0 && (
             <div>
               {data.calls.map((c, i) => (
                 <CallCard key={`${c.call_id}-${c.source_topic_id}-${i}`} call={c} index={i} currentTopicId={data.topic_id} />
               ))}
             </div>
+          )}
+          {isMatchingMode && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {/* LEFT — existing project topic's lineage */}
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      color: "#5e6c84",
+                      letterSpacing: ".04em",
+                      marginBottom: 8,
+                    }}
+                  >
+                    Existing project topic
+                  </div>
+                  {!topicId ? (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#5e6c84",
+                        fontStyle: "italic",
+                        background: "white",
+                        border: "1px dashed #dfe1e6",
+                        borderRadius: 6,
+                        padding: 20,
+                        textAlign: "center",
+                      }}
+                    >
+                      No existing project topic matches this subject
+                    </div>
+                  ) : loading ? (
+                    <div style={{ fontSize: 12, color: "#5e6c84", textAlign: "center", padding: 20 }}>
+                      Loading evidence…
+                    </div>
+                  ) : error ? (
+                    <div
+                      style={{
+                        background: "#fff1f0",
+                        border: "1px solid #ffbdad",
+                        borderRadius: 6,
+                        padding: 12,
+                        fontSize: 12,
+                        color: "#ae2a19",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                      }}
+                    >
+                      <span>{error}</span>
+                      <button
+                        onClick={fetchEvidence}
+                        style={{
+                          fontSize: 12,
+                          padding: "4px 10px",
+                          borderRadius: 4,
+                          border: "1px solid #ae2a19",
+                          background: "white",
+                          color: "#ae2a19",
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : data && data.calls.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "#5e6c84", textAlign: "center", padding: 20, fontStyle: "italic" }}>
+                      No evidence available for this topic.
+                    </div>
+                  ) : data ? (
+                    <div>
+                      {data.calls.map((c, i) => (
+                        <CallCard
+                          key={`${c.call_id}-${c.source_topic_id}-${i}`}
+                          call={c}
+                          index={i}
+                          currentTopicId={data.topic_id}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* RIGHT — current call's extraction */}
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      color: "#5e6c84",
+                      letterSpacing: ".04em",
+                      marginBottom: 8,
+                    }}
+                  >
+                    This call&apos;s extraction
+                  </div>
+                  {pendingTopic ? (
+                    <PendingTopicCard topic={pendingTopic} />
+                  ) : (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#5e6c84",
+                        fontStyle: "italic",
+                        background: "white",
+                        border: "1px dashed #dfe1e6",
+                        borderRadius: 6,
+                        padding: 20,
+                        textAlign: "center",
+                      }}
+                    >
+                      Not extracted from this call
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer classification strip */}
+              {matchingKind && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    background: "white",
+                    border: "1px solid #dfe1e6",
+                    borderLeft: "4px solid #0052cc",
+                    borderRadius: 6,
+                    padding: "12px 14px",
+                    fontSize: 12,
+                    color: "#172b4d",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      color: "#5e6c84",
+                      letterSpacing: ".04em",
+                      marginRight: 8,
+                    }}
+                  >
+                    Why this classification:
+                  </span>
+                  {matchingKind === "followed_up" && (
+                    <>
+                      Matched because the same subject appears across{" "}
+                      <strong>{data?.calls.length ?? 0}</strong> prior call
+                      {(data?.calls.length ?? 0) === 1 ? "" : "s"}, and this call&apos;s extraction aligns with that subject.
+                    </>
+                  )}
+                  {matchingKind === "new" && (
+                    <>Marked new because no existing project topic matches the subject of this call&apos;s extraction.</>
+                  )}
+                  {matchingKind === "not_discussed" && (
+                    <>Marked not-discussed because the LLM found no call topic on this subject in this call.</>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
