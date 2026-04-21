@@ -46,6 +46,8 @@ frontend/
 └── src/
     ├── api/client.ts              → proxyFetch, proxyFetchForm, projectsAPI, callsAPI (getCall, submitTranscript, updateTranscript, resetTranscript, advanceStage), transcriptionAPI, filesAPI, localServerAPI, artifactTypesAPI, artifactsAPI (createSelections, list, update) (EPIC-2/3/4/5)
     ├── utils/logger.ts            → Frontend console logger (EPIC-1 / Story 1.2)
+    ├── utils/callColors.ts        → Shared 8-color pastel palette + callColor() helper for per-call index rendering (EPIC-10 / Story 10.9)
+    ├── utils/provenance.ts        → Pure resolveProvenance(items, history, section) — exact-string match of items against topic's per-call history; powers pill rendering (EPIC-10 / Story 10.9)
     └── components/
         ├── TopNav.tsx             → Blue top nav bar (EPIC-2 / Story 2.3)
         ├── Sidebar.tsx            → Project list + per-project nav + delete project (EPIC-2 / Story 2.3 + EPIC-4 extra)
@@ -60,7 +62,8 @@ frontend/
         ├── AddArtifactTypeModal.tsx → two-mode modal: Create new (name + prompt) + Import from another project (project selector → checklist); error states + retry (EPIC-5 / Story 5.1)
         ├── ArtifactSelector.tsx   → per-type row: Generate via Claude / Manual / Skip toggle buttons; exports ArtifactMode type (EPIC-5 / Story 5.4)
         ├── ArtifactCard.tsx       → status badge, editable textarea, spinner during generation, Mark Done button, inline StatusBadge (EPIC-5 / Story 5.4)
-        └── ArtifactsStage.tsx     → three-phase orchestrator (select → generating → reviewing); SSE via ReadableStream + line buffer; AbortController cleanup; skips to reviewing if artifacts exist (EPIC-5 / Story 5.4)
+        ├── ArtifactsStage.tsx     → three-phase orchestrator (select → generating → reviewing); SSE via ReadableStream + line buffer; AbortController cleanup; skips to reviewing if artifacts exist (EPIC-5 / Story 5.4)
+        └── ProvenancePill.tsx     → compact pill showing origin call of a follow-up/decision item (EPIC-10 / Story 10.9)
 
 backend/services/
 ├── llm_service.py                 → generate_artifact(prompt_used, transcript, llm) → str; dispatches to Groq (llama-3.3-70b-versatile), Claude (claude-sonnet-4-6), OpenAI (gpt-4o); 3-retry backoff (EPIC-6)

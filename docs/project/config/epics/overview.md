@@ -13,7 +13,7 @@
 | EPIC-7 | Two-Step Topic Extraction + New Stages | [ ] | 6 |
 | EPIC-8 | Topics Timeline Grid | [ ] | 2 |
 | EPIC-9 | M:N Topic Merge + Not-Discussed Verification | [x] Done | 7 |
-| EPIC-10 | Topic Lineage + Full-Stage Traceability + Prompt Quality | [ ] In Progress (10.9 added) | 9 |
+| EPIC-10 | Topic Lineage + Full-Stage Traceability + Prompt Quality | [x] Done | 9 |
 
 ---
 
@@ -40,9 +40,9 @@ EPIC-1 (Foundation + Logging)
 ## 🚦 Status
 
 ```
-Working on : EPIC-10 / Story 10.9 — Timeline Provenance + Ancestor Visualization
+Working on : — (all defined epics complete)
 Blocked by : —
-Next up    : mockup approval, then implementation
+Next up    : TBD
 ```
 
 ---

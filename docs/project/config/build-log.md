@@ -2,7 +2,24 @@
 
 ## Current Stage
 **EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality — COMPLETE (2026-04-21)**
-- All 8 stories done. Full Kanban-wide evidence traceability shipped.
+- All 9 stories done. Full Kanban-wide evidence traceability + Timeline item provenance & ancestor visualization shipped.
+
+---
+
+### 2026-04-21 — EPIC-10: Story 10.9 — Timeline Provenance + Ancestor Visualization
+
+**Backend** — `list_topics_timeline` now returns `ancestor_topic_ids` on merge-result topics (ordered by ancestor's first_raised_call_id) and `merge_call_id` on archived topics. New backend regression test: `test_timeline_returns_ancestor_topic_ids_and_merge_call_id`.
+
+**Frontend:**
+- `frontend/src/utils/callColors.ts` — shared 8-color pastel palette (extracted from TopicEvidenceDrawer).
+- `frontend/src/utils/provenance.ts` — pure `resolveProvenance` utility; exact-string match of current items against topic's per-call history, returning origin call_id or null. Standalone test script at `provenance.test.ts` runnable via `npx tsx`.
+- `frontend/src/components/ProvenancePill.tsx` — compact pill showing `C{n}` with tooltip = full call title; muted `?` fallback when origin not matched.
+- `TopicEvidenceDrawer.tsx` — follow-ups and decisions in per-call cards render with ProvenancePill.
+- `TopicsTimeline.tsx` — chevron per merge-result row toggles indented ancestor rows (tree connectors, strikethrough, "merged ↗" badges on the merge-call cell, "(archived)" on later cells). "Show archived" toggle replaced with "Expand all lineage" / "Collapse all lineage". Cell expanded views render items with pills; collapsed summaries show unique origin-call set (e.g., "4 follow-ups (C1, C2)").
+
+**Commits (8):** `8cf313d` (Task 1), `0d14ee1` (Task 2), `d5d33a6` (Task 3), `0fa7f70` (Task 4), `78bd6ff` (Task 5), `df5d784` (Task 6), `d82988f` (Task 7), `10a86e4` (Task 8). All `[EPIC-10]` prefix.
+
+**Tests:** 54/54 backend tests PASS; standalone provenance tests 5/5 PASS; `npx tsc --noEmit` clean. Manual smoke pending user validation.
 
 ---
 
