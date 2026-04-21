@@ -26,18 +26,38 @@ export default function CallTopicsHistoricalView({ callId, call }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    topicsAPI.listForCall(callId)
-      .then((data) => {
-        if (data.length > 0) {
-          setTopics(data);
-        } else {
-          // Fallback: use pending_topics or extraction_cache from the call object
-          const fallback = call?.pending_topics ?? call?.extraction_cache ?? [];
-          setTopics(fallback);
+    // Preference order:
+    //   1. pending_topics (Call 2+ — the raw extraction, matches what was shown
+    //      on Call Topics stage originally; keeps parity with Project Matching
+    //      view which also renders pending_topics)
+    //   2. extraction_cache (pre-aggregate snapshot, if still present)
+    //   3. listForCall / topic_updates (Call 1 auto-advance path, where pending
+    //      is never persisted because matching is skipped)
+    topicsAPI.getPending(callId)
+      .then((pending) => {
+        if (pending.length > 0) {
+          setTopics(pending);
+          logger.info("[CallTopicsHistoricalView] Loaded from pending_topics", {
+            component: "CallTopicsHistoricalView",
+            data: { count: pending.length },
+          });
+          return;
         }
-        logger.info("[CallTopicsHistoricalView] Loaded", {
-          component: "CallTopicsHistoricalView",
-          data: { count: data.length },
+        const cache = call?.extraction_cache ?? [];
+        if (cache.length > 0) {
+          setTopics(cache);
+          logger.info("[CallTopicsHistoricalView] Loaded from extraction_cache", {
+            component: "CallTopicsHistoricalView",
+            data: { count: cache.length },
+          });
+          return;
+        }
+        return topicsAPI.listForCall(callId).then((data) => {
+          setTopics(data);
+          logger.info("[CallTopicsHistoricalView] Loaded from listForCall fallback", {
+            component: "CallTopicsHistoricalView",
+            data: { count: data.length },
+          });
         });
       })
       .catch((err) => {
@@ -45,7 +65,7 @@ export default function CallTopicsHistoricalView({ callId, call }: Props) {
         setError("Failed to load call topics");
       })
       .finally(() => setLoading(false));
-  }, [callId]);
+  }, [callId, call]);
 
   if (loading) {
     return (
