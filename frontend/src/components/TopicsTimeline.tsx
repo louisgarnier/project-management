@@ -192,8 +192,17 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
   const [data, setData] = useState<TopicsTimelineData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showArchived, setShowArchived] = useState(false);
   const [drawerTopicId, setDrawerTopicId] = useState<string | null>(null);
+  const [expandedLineageIds, setExpandedLineageIds] = useState<Set<string>>(new Set());
+
+  function toggleLineage(topicId: string) {
+    setExpandedLineageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(topicId)) next.delete(topicId);
+      else next.add(topicId);
+      return next;
+    });
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -232,28 +241,45 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
     </div>
   );
 
-  const archivedCount = data.topics.filter(t => t.archived).length;
-  const visibleTopics = showArchived ? data.topics : data.topics.filter(t => !t.archived);
+  const mergeResultCount = data.topics.filter(t => t.has_sources && !t.archived).length;
+  // Archived topics are shown only when their merge-result parent is in
+  // expandedLineageIds. Non-archived topics always visible. (Task 7 refines
+  // ordering to interleave ancestors directly below their parent.)
+  const visibleTopics = data.topics.filter((t) => {
+    if (!t.archived) return true;
+    return t.merged_into_topic_id != null && expandedLineageIds.has(t.merged_into_topic_id);
+  });
 
   return (
     <>
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#f4f5f7" }}>
-      {archivedCount > 0 && (
+      {mergeResultCount > 0 && (
         <div style={{ padding: "6px 12px", borderBottom: "1px solid #dfe1e6", background: "#f4f5f7", flexShrink: 0,
           display: "flex", alignItems: "center", gap: 8 }}>
           <button
-            onClick={() => setShowArchived(v => !v)}
+            onClick={() => {
+              // Toggle "expand all lineage": if ANY merge-result row is not yet
+              // expanded, expand them all; otherwise collapse all.
+              const mergeIds = (data?.topics ?? [])
+                .filter((t) => t.has_sources && !t.archived)
+                .map((t) => t.topic_id);
+              const allExpanded = mergeIds.length > 0 && mergeIds.every((id) => expandedLineageIds.has(id));
+              if (allExpanded) {
+                setExpandedLineageIds(new Set());
+              } else {
+                setExpandedLineageIds(new Set(mergeIds));
+              }
+            }}
             style={{
-              fontSize: 11, color: "#5e6c84", background: showArchived ? "#e9f0ff" : "white",
+              fontSize: 11, color: "#5e6c84", background: expandedLineageIds.size > 0 ? "#e9f0ff" : "white",
               border: "1px solid #dfe1e6", borderRadius: 4, padding: "3px 10px",
               cursor: "pointer", fontFamily: "inherit",
             }}
           >
-            {showArchived ? `Hide ${archivedCount} archived` : `Show ${archivedCount} archived`}
+            {expandedLineageIds.size > 0 && expandedLineageIds.size === (data?.topics ?? []).filter((t) => t.has_sources && !t.archived).length
+              ? "Collapse all lineage"
+              : "Expand all lineage"}
           </button>
-          {showArchived && (
-            <span style={{ fontSize: 10, color: "#97a0af" }}>Archived topics are shown with reduced opacity</span>
-          )}
         </div>
       )}
     <div style={{ flex: 1, overflow: "auto" }}>
@@ -305,7 +331,23 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
                   borderRight: "2px solid #dfe1e6", padding: "10px 12px", verticalAlign: "top",
                 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "#172b4d", marginBottom: 4,
-                    textDecoration: isArchived ? "line-through" : undefined }}>
+                    textDecoration: isArchived ? "line-through" : undefined,
+                    display: "flex", alignItems: "center", gap: 6 }}>
+                    {topic.has_sources && !isArchived ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleLineage(topic.topic_id); }}
+                        title={expandedLineageIds.has(topic.topic_id) ? "Collapse ancestor lineage" : "Expand ancestor lineage"}
+                        style={{
+                          background: "none", border: "none", cursor: "pointer",
+                          color: "#5e6c84", padding: 0, fontSize: 11, width: 14,
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        {expandedLineageIds.has(topic.topic_id) ? "▾" : "▸"}
+                      </button>
+                    ) : (
+                      <span style={{ width: 14, display: "inline-block" }} />
+                    )}
                     <span
                       onClick={() => setDrawerTopicId(topic.topic_id)}
                       style={{ cursor: "pointer" }}
