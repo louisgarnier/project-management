@@ -173,3 +173,53 @@ export interface TopicsTimelineData {
   calls: Array<{ id: string; title: string; call_number: number; kanban_stage: string }>;
   topics: TimelineTopic[];
 }
+
+// ── EPIC-10: Topic Evidence (lineage view) ────────────────────────────────
+
+export type EvidenceLineageNode = {
+  topic_id: string;
+  name: string;
+  archived: boolean;
+  merged_into_topic_id: string | null;
+};
+
+export type EvidenceRawExtract = {
+  summary: string;
+  follow_up_items: string[];
+  decisions: string[];
+};
+
+export type EvidenceMatchGroup = {
+  project_topic_ids: string[];
+  call_topic_names: string[];
+};
+
+export type EvidenceVerification = {
+  discussed: boolean;
+  transcript_excerpt: string | null;
+  reasoning: string;
+};
+
+export type EvidenceCall = {
+  call_id: string;
+  call_title: string;
+  call_date: string | null;
+  source_topic_id: string;
+  source_topic_name: string;
+  transcript_excerpt: string | null;
+  merged_summary: string;
+  follow_up_items: string[];
+  decisions: string[];
+  status: string;
+  raw_extract: EvidenceRawExtract | null;
+  match_group: EvidenceMatchGroup | null;
+  not_discussed_verification: EvidenceVerification | null;
+  is_not_discussed: boolean;
+};
+
+export type TopicEvidence = {
+  topic_id: string;
+  topic_name: string;
+  lineage: EvidenceLineageNode[];
+  calls: EvidenceCall[];
+};

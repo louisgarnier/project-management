@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { Call, TopicData } from "@/types";
+import TopicEvidenceDrawer from "./TopicEvidenceDrawer";
 
 type Props = {
   callId: string;
@@ -29,7 +30,11 @@ const SENTIMENT_COLOR: Record<string, string> = {
   positive: "#216e4e", neutral: "#5e6c84", concern: "#ae2a19",
 };
 
-function TopicRow({ topic, onChange }: { topic: TopicData; onChange: (t: TopicData) => void }) {
+function TopicRow({ topic, onChange, onViewEvidence }: {
+  topic: TopicData;
+  onChange: (t: TopicData) => void;
+  onViewEvidence?: (topicId: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [newFollowUp, setNewFollowUp] = useState("");
   const isNew = !topic.topic_id;
@@ -70,6 +75,22 @@ function TopicRow({ topic, onChange }: { topic: TopicData; onChange: (t: TopicDa
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          {onViewEvidence && topic.topic_id && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewEvidence(topic.topic_id!);
+              }}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                fontSize: 11, color: "#0052cc", padding: 0, fontFamily: "inherit",
+                textDecoration: "underline",
+              }}
+            >
+              View evidence
+            </button>
+          )}
           <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase",
             color: SENTIMENT_COLOR[topic.sentiment ?? "neutral"] ?? "#5e6c84" }}>
             {topic.sentiment}
@@ -176,6 +197,7 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(() => call.verification_status === "processing");
   const [verificationCache, setVerificationCache] = useState<Call["verification_cache"]>(call.verification_cache);
+  const [drawerTopicId, setDrawerTopicId] = useState<string | null>(null);
 
   // Track whether we've applied the cache to avoid overwriting user edits
   const mergeApplied = useRef(alreadyMerged);
@@ -320,6 +342,7 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
   const discussed = topics.filter(t => !t.not_discussed);
 
   return (
+    <>
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
       {/* Header */}
@@ -456,6 +479,7 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
                     next[i] = updated;
                     setTopics(next);
                   }}
+                  onViewEvidence={setDrawerTopicId}
                 />
               );
             })}
@@ -573,5 +597,11 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
         </button>
       </div>
     </div>
+    <TopicEvidenceDrawer
+      open={!!drawerTopicId}
+      topicId={drawerTopicId}
+      onClose={() => setDrawerTopicId(null)}
+    />
+    </>
   );
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { topicsAPI } from "@/api/client";
 import type { TopicsTimelineData, TimelineCell, TopicStatus, TopicSentiment } from "@/types";
+import TopicEvidenceDrawer from "./TopicEvidenceDrawer";
 
 type Props = { projectId: string; refreshKey?: number };
 
@@ -171,6 +172,7 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [drawerTopicId, setDrawerTopicId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -213,6 +215,7 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
   const visibleTopics = showArchived ? data.topics : data.topics.filter(t => !t.archived);
 
   return (
+    <>
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#f4f5f7" }}>
       {archivedCount > 0 && (
         <div style={{ padding: "6px 12px", borderBottom: "1px solid #dfe1e6", background: "#f4f5f7", flexShrink: 0,
@@ -282,7 +285,14 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
                 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "#172b4d", marginBottom: 4,
                     textDecoration: isArchived ? "line-through" : undefined }}>
-                    {topic.name}
+                    <span
+                      onClick={() => setDrawerTopicId(topic.topic_id)}
+                      style={{ cursor: "pointer" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLSpanElement).style.textDecoration = isArchived ? "line-through underline" : "underline"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLSpanElement).style.textDecoration = isArchived ? "line-through" : "none"; }}
+                    >
+                      {topic.name}
+                    </span>
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {isArchived ? (
@@ -319,5 +329,11 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
       </table>
     </div>
     </div>
+    <TopicEvidenceDrawer
+      open={!!drawerTopicId}
+      topicId={drawerTopicId}
+      onClose={() => setDrawerTopicId(null)}
+    />
+    </>
   );
 }

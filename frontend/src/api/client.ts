@@ -311,4 +311,7 @@ export const topicsAPI = {
       method: "POST",
       body: JSON.stringify({ topic_id: topicId }),
     }),
+
+  getEvidence: (topicId: string) =>
+    proxyFetch<import("@/types").TopicEvidence>(`/api/topics/${topicId}/evidence`),
 };
