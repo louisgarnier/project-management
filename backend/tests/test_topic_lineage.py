@@ -749,3 +749,54 @@ def test_merge_verification_prompt_falls_back_to_flat_lists_when_no_topic_id():
     assert "Source follow-up items" in prompt
     assert "Source decisions" in prompt
 
+
+# ---------------------------------------------------------------------------
+# Story 10.6 / Fix 6.5 — get_project_topics_lineage_context
+# ---------------------------------------------------------------------------
+
+def test_get_project_topics_lineage_context_returns_evidence_blocks_per_open_topic():
+    """Fix 6.5: one block per open/in_progress topic, resolved topics skipped,
+    sections joined with '\\n\\n---\\n\\n', empty → ''.
+    """
+    from backend.services import topics_service
+
+    open_topics = [
+        {"topic_id": "t1", "name": "API design", "status": "open",
+         "owner": "Us", "sentiment": "neutral",
+         "summary": "", "follow_up_items": [], "decisions": []},
+        {"topic_id": "t2", "name": "Billing tier", "status": "in_progress",
+         "owner": "Client", "sentiment": "concern",
+         "summary": "", "follow_up_items": [], "decisions": []},
+        {"topic_id": "t3", "name": "Old thing", "status": "resolved",
+         "owner": "Us", "sentiment": "neutral",
+         "summary": "", "follow_up_items": [], "decisions": []},
+    ]
+
+    def fake_evidence_block(name, topic_id, db):
+        return f"EVIDENCE_FOR_{topic_id}"
+
+    db = MagicMock()
+
+    with patch.object(topics_service, "_get_previous_topics",
+                      return_value=open_topics), \
+         patch.object(topics_service, "build_lineage_evidence_block",
+                      side_effect=fake_evidence_block):
+        out = topics_service.get_project_topics_lineage_context("proj-1", db)
+
+    # Both open topics present
+    assert "EVIDENCE_FOR_t1" in out
+    assert "EVIDENCE_FOR_t2" in out
+    # Resolved topic excluded
+    assert "EVIDENCE_FOR_t3" not in out
+    # Sections separated by the explicit separator
+    assert "\n\n---\n\n" in out
+
+
+def test_get_project_topics_lineage_context_returns_empty_string_when_no_open_topics():
+    from backend.services import topics_service
+
+    with patch.object(topics_service, "_get_previous_topics", return_value=[]):
+        out = topics_service.get_project_topics_lineage_context("proj-1", MagicMock())
+
+    assert out == ""
+

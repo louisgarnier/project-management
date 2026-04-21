@@ -365,9 +365,11 @@ async def test_generate_artifact_without_topics_has_no_topics_block():
 
 @patch("backend.routers.artifacts.get_client")
 @patch("backend.routers.artifacts.generate_artifact")
-@patch("backend.routers.artifacts.get_project_topics_context")
+@patch("backend.routers.artifacts.get_project_topics_lineage_context")
 def test_artifact_stream_injects_project_context(mock_ctx, mock_gen, mock_gc):
-    """SSE stream calls get_project_topics_context during generation."""
+    """SSE stream calls the lineage-aware project topics context during generation
+    (Story 10.6 / Fix 6.5: switched from get_project_topics_context).
+    """
     db = MagicMock()
     mock_gc.return_value = db
 

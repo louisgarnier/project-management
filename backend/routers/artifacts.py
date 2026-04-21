@@ -4,7 +4,10 @@ from typing import Literal
 
 from backend.database.supabase_client import get_client
 from backend.services.llm_service import generate_artifact
-from backend.services.topics_service import get_project_topics_context
+from backend.services.topics_service import (
+    get_project_topics_context,  # kept for backwards compatibility
+    get_project_topics_lineage_context,
+)
 from backend.utils.logger import db_logger, get_logger
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response, StreamingResponse
@@ -201,10 +204,14 @@ async def stream_artifacts(call_id: str):
     except Exception:
         call_topics = None
 
-    # Project-level open topics context (best-effort)
+    # Project-level open topics context, lineage-aware (Fix 6.5).
+    # Falls back to empty string on any error so artifact generation still runs
+    # without project context rather than failing outright.
     project_topics_context = ""
     try:
-        project_topics_context = get_project_topics_context(project_id, supabase)
+        project_topics_context = get_project_topics_lineage_context(
+            project_id, supabase
+        )
     except Exception:
         project_topics_context = ""
 

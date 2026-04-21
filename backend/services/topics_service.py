@@ -1914,6 +1914,10 @@ def get_project_topics_context(project_id: str, db=None) -> str:
     """
     Build a compact summary of open/in_progress project topics for artifact context.
     Returns empty string if no open topics.
+
+    Kept for backwards compatibility with any remaining callers. Prefer
+    ``get_project_topics_lineage_context`` for project-scope artifact prompts —
+    it exposes per-call evolution, decisions, and archived-ancestor evidence.
     """
     if db is None:
         db = get_client()
@@ -1932,3 +1936,36 @@ def get_project_topics_context(project_id: str, db=None) -> str:
         for item in (t.get("follow_up_items") or [])[:3]:
             lines.append(f"  → {item}")
     return "\n".join(lines)
+
+
+def get_project_topics_lineage_context(project_id: str, db=None) -> str:
+    """
+    Lineage-aware project topics context (Story 10.6 / Fix 6.5).
+
+    For each open/in_progress project topic, emit a full per-call evidence
+    block built from ``build_lineage_evidence_block``. This lets project-scope
+    artifact prompts (Executive Summary, Next Steps, etc.) narrate how each
+    topic evolved across calls, including decisions and archived-ancestor
+    excerpts — not just the latest merged state.
+
+    Returns an empty string when there are no open topics.
+    """
+    if db is None:
+        db = get_client()
+    previous = _get_previous_topics(project_id, db)
+    open_topics = [t for t in previous if t.get("status") in ("open", "in_progress")]
+    if not open_topics:
+        return ""
+
+    sections: list[str] = []
+    for t in open_topics:
+        name = t.get("name", "")
+        topic_id = t.get("topic_id")
+        if not topic_id:
+            # Defensive: skip any topic without an id (should not happen for
+            # rows returned by _get_previous_topics, which always sets one).
+            continue
+        block = build_lineage_evidence_block(name, topic_id, db)
+        sections.append(block)
+
+    return "\n\n---\n\n".join(sections)
