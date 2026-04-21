@@ -173,6 +173,8 @@ export interface TimelineTopic {
   merged_into_name?: string | null;
   has_sources?: boolean;
   source_names?: string[];
+  ancestor_topic_ids?: string[];
+  merge_call_id?: string | null;
   call_updates: Record<string, TimelineCell>;
 }
 

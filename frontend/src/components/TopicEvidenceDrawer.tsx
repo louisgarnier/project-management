@@ -12,6 +12,7 @@ import type {
   TopicData,
 } from "@/types";
 import { CALL_COLORS } from "@/utils/callColors";
+import ProvenancePill from "./ProvenancePill";
 
 // Drawer supports three modes:
 //  - "lineage": fetches /api/topics/{id}/evidence, renders per-call chronology
@@ -350,9 +351,13 @@ function CallCard({
           {call.follow_up_items.length === 0 ? (
             <div style={{ fontSize: 12, color: "#97a0af", fontStyle: "italic" }}>(none)</div>
           ) : (
-            <ul style={{ margin: 0, paddingLeft: 20 }}>
+            <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
               {call.follow_up_items.map((f, i) => (
-                <li key={i} style={{ fontSize: 12, color: "#172b4d", lineHeight: 1.5 }}>{f}</li>
+                <li key={i} style={{ fontSize: 12, color: "#172b4d", lineHeight: 1.5,
+                  display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 2 }}>
+                  <ProvenancePill callIndex={index} callTitle={call.call_title} />
+                  <span>{f}</span>
+                </li>
               ))}
             </ul>
           )}
@@ -375,9 +380,13 @@ function CallCard({
           {call.decisions.length === 0 ? (
             <div style={{ fontSize: 12, color: "#97a0af", fontStyle: "italic" }}>(none)</div>
           ) : (
-            <ul style={{ margin: 0, paddingLeft: 20 }}>
+            <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
               {call.decisions.map((d, i) => (
-                <li key={i} style={{ fontSize: 12, color: "#172b4d", lineHeight: 1.5 }}>{d}</li>
+                <li key={i} style={{ fontSize: 12, color: "#172b4d", lineHeight: 1.5,
+                  display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 2 }}>
+                  <ProvenancePill callIndex={index} callTitle={call.call_title} />
+                  <span>{d}</span>
+                </li>
               ))}
             </ul>
           )}
