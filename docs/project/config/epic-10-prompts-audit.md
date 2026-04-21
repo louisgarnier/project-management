@@ -85,6 +85,8 @@ Return ONLY a JSON array. No markdown, no explanation.
 **Deferred:**
 - Passing prior decisions for contradiction detection — broader scope, worth its own story if needed.
 
+**Status:** implemented 2026-04-21 — commit 8e68c3e
+
 ---
 
 ## Prompt 2 — Per-topic Merge (CRITICAL RULES)
@@ -135,6 +137,8 @@ CRITICAL RULES — follow these exactly:
 **Blindness identified:** None critical after Story 10.1. The lineage walker now includes archived ancestors.
 
 **Recommended fix:** None for Story 10.6. Confirm in audit doc that Story 10.1 closed the blindness. Track token-budget observation as Call count scales.
+
+**Status:** already shipped in Story 10.1 (commit dbabdb1)
 
 ---
 
@@ -196,6 +200,8 @@ Return the corrected topic JSON (same schema). ...
 
 **Deferred:** Multi-model consensus verification (running two LLMs and comparing) — out of scope.
 
+**Status:** implemented 2026-04-21 — commit fd45fc4
+
 ---
 
 ## Prompt 4 — Not-Discussed Verification
@@ -247,6 +253,8 @@ Call transcript:
 - If we do tackle it: inject the most recent 1-2 prior `transcript_excerpt` values for the topic as "Prior discussion examples". Keeps prompt short, gives the verifier grounded vocabulary.
 
 **Decision:** Defer unless false-negative rate becomes a concern.
+
+**Status:** deferred — low priority per audit; revisit if false-negative rate becomes a concern
 
 ---
 
@@ -306,6 +314,8 @@ content = await generate_artifact(effective_prompt, full_context, mode, topics=c
 
 **Deferred:**
 - Citation tracking (click a sentence → jump to source topic) — not scoped to Epic 10 per user decision.
+
+**Status:** implemented 2026-04-21 — commit ecce0ed
 
 ---
 
