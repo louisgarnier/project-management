@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { topicsAPI } from "@/api/client";
 import type { TopicsTimelineData, TimelineCell, TopicStatus, TopicSentiment, TimelineTopic } from "@/types";
+import { resolveProvenance, type CellHistory } from "@/utils/provenance";
+import ProvenancePill from "./ProvenancePill";
 import TopicEvidenceDrawer from "./TopicEvidenceDrawer";
 
 type Props = { projectId: string; refreshKey?: number };
@@ -28,11 +30,13 @@ const BADGE_BASE: React.CSSProperties = {
 
 // ── Cell component ────────────────────────────────────────────────────────
 
-function Cell({ cell, hasSources, sourceNames, isFirstRaisedCell }: {
+function Cell({ cell, hasSources, sourceNames, isFirstRaisedCell, history, calls }: {
   cell: TimelineCell | undefined;
   hasSources?: boolean;
   sourceNames?: string[];
   isFirstRaisedCell?: boolean;
+  history?: CellHistory[];
+  calls?: Array<{ id: string; call_number: number; title: string }>;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -143,11 +147,28 @@ function Cell({ cell, hasSources, sourceNames, isFirstRaisedCell }: {
           </div>
         )}
 
-        {!expanded && (cell.follow_up_items ?? []).length > 0 && (
-          <div style={{ fontSize: 10, color: "#5e6c84", marginTop: 4 }}>
-            {cell.follow_up_items!.length} follow-up{cell.follow_up_items!.length !== 1 ? "s" : ""}
-          </div>
-        )}
+        {!expanded && (cell.follow_up_items ?? []).length > 0 && (() => {
+          const items = cell.follow_up_items ?? [];
+          const origins = history && calls
+            ? resolveProvenance(items, history, "follow_up_items")
+            : [];
+          // Unique call-index set across all items, oldest first
+          const callIdxSet = new Set<number>();
+          for (const cid of origins) {
+            if (!cid || !calls) continue;
+            const idx = calls.findIndex((c) => c.id === cid);
+            if (idx >= 0) callIdxSet.add(idx);
+          }
+          const sortedIdxs = Array.from(callIdxSet).sort((a, b) => a - b);
+          const originSummary = sortedIdxs.length > 0
+            ? ` (${sortedIdxs.map((i) => `C${i + 1}`).join(", ")})`
+            : "";
+          return (
+            <div style={{ fontSize: 10, color: "#5e6c84", marginTop: 4 }}>
+              {items.length} follow-up{items.length !== 1 ? "s" : ""}{originSummary}
+            </div>
+          );
+        })()}
 
         {canExpand && expanded && (
           <div style={{ marginTop: 6, borderTop: "1px solid #dfe1e6", paddingTop: 6 }}>
@@ -155,22 +176,56 @@ function Cell({ cell, hasSources, sourceNames, isFirstRaisedCell }: {
               <>
                 <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
                   color: "#97a0af", marginBottom: 3 }}>Follow-ups</div>
-                {cell.follow_up_items!.map((item, i) => (
-                  <div key={i} style={{ fontSize: 10, color: "#5e6c84", padding: "1px 0" }}>
-                    → {item}
-                  </div>
-                ))}
+                {(() => {
+                  const items = cell.follow_up_items ?? [];
+                  const origins = history && calls
+                    ? resolveProvenance(items, history, "follow_up_items")
+                    : items.map(() => null);
+                  return items.map((item, i) => {
+                    const originCallId = origins[i];
+                    const idx = originCallId && calls
+                      ? calls.findIndex((c) => c.id === originCallId)
+                      : -1;
+                    const title = idx >= 0 && calls
+                      ? `Call ${calls[idx].call_number} · ${calls[idx].title}`
+                      : null;
+                    return (
+                      <div key={i} style={{ fontSize: 10, color: "#5e6c84", padding: "1px 0",
+                        display: "flex", alignItems: "flex-start", gap: 4 }}>
+                        <ProvenancePill callIndex={idx >= 0 ? idx : null} callTitle={title} />
+                        <span>{item}</span>
+                      </div>
+                    );
+                  });
+                })()}
               </>
             )}
             {(cell.decisions ?? []).length > 0 && (
               <>
                 <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
                   color: "#97a0af", marginTop: 6, marginBottom: 3 }}>Decisions</div>
-                {cell.decisions!.map((d, i) => (
-                  <div key={i} style={{ fontSize: 10, color: "#172b4d", padding: "1px 0" }}>
-                    ✓ {d}
-                  </div>
-                ))}
+                {(() => {
+                  const items = cell.decisions ?? [];
+                  const origins = history && calls
+                    ? resolveProvenance(items, history, "decisions")
+                    : items.map(() => null);
+                  return items.map((d, i) => {
+                    const originCallId = origins[i];
+                    const idx = originCallId && calls
+                      ? calls.findIndex((c) => c.id === originCallId)
+                      : -1;
+                    const title = idx >= 0 && calls
+                      ? `Call ${calls[idx].call_number} · ${calls[idx].title}`
+                      : null;
+                    return (
+                      <div key={i} style={{ fontSize: 10, color: "#172b4d", padding: "1px 0",
+                        display: "flex", alignItems: "flex-start", gap: 4 }}>
+                        <ProvenancePill callIndex={idx >= 0 ? idx : null} callTitle={title} />
+                        <span>{d}</span>
+                      </div>
+                    );
+                  });
+                })()}
               </>
             )}
           </div>
@@ -346,6 +401,13 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
             const isArchived = topic.archived;
             const isAncestorRow = isAncestorOf !== null;
             const parentName = isAncestorRow ? topicById[isAncestorOf]?.name ?? "" : "";
+            // Build per-cell history for provenance resolution. Order by call
+            // chronology (matches data.calls order).
+            const topicHistory: CellHistory[] = data.calls.map((c) => ({
+              call_id: c.id,
+              follow_up_items: topic.call_updates[c.id]?.follow_up_items ?? [],
+              decisions: topic.call_updates[c.id]?.decisions ?? [],
+            }));
             return (
               <tr key={topic.topic_id} style={{
                 borderBottom: "1px solid #f0f1f3",
@@ -464,6 +526,8 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
                       hasSources={topic.has_sources}
                       sourceNames={topic.source_names}
                       isFirstRaisedCell={c.id === topic.first_raised_call_id}
+                      history={topicHistory}
+                      calls={data.calls}
                     />
                   );
                 })}
