@@ -1,6 +1,10 @@
 from typing import Optional
 
 from backend.database.supabase_client import get_client
+from backend.services.topic_lineage import (
+    get_topic_lineage,
+    get_lineage_topic_updates,
+)
 from backend.services.topics_service import (
     save_topics, validate_call, generate_brief,
     list_project_topics, list_call_topics, extract_call_topics, aggregate_topics,
@@ -399,6 +403,205 @@ async def delete_topic_from_call(call_id: str, topic_id: str):
         logger.info(f"🗄️ [DB] Updated first_raised_call_id for topic {topic_id} → {new_first}")
 
     logger.info(f"✅ [Topics] Removed topic {topic_id} from call {call_id}, calls_open={calls_open}")
+
+
+# --------------------------------------------------------------------------- #
+# Story 10.3 — Topic Evidence API
+# --------------------------------------------------------------------------- #
+
+
+class LineageNode(PydanticBaseModel):
+    topic_id: str
+    name: str
+    archived: bool
+    merged_into_topic_id: str | None
+
+
+class EvidenceRawExtract(PydanticBaseModel):
+    summary: str
+    follow_up_items: list[str]
+    decisions: list[str]
+
+
+class EvidenceMatchGroup(PydanticBaseModel):
+    project_topic_ids: list[str]
+    call_topic_names: list[str]
+
+
+class EvidenceVerification(PydanticBaseModel):
+    discussed: bool
+    transcript_excerpt: str | None
+    reasoning: str
+
+
+class EvidenceCall(PydanticBaseModel):
+    call_id: str
+    call_title: str
+    call_date: str | None
+    source_topic_id: str
+    source_topic_name: str
+    transcript_excerpt: str | None
+    merged_summary: str
+    follow_up_items: list[str]
+    decisions: list[str]
+    status: str
+    raw_extract: EvidenceRawExtract | None
+    match_group: EvidenceMatchGroup | None
+    not_discussed_verification: EvidenceVerification | None
+    is_not_discussed: bool
+
+
+class TopicEvidenceResponse(PydanticBaseModel):
+    topic_id: str
+    topic_name: str
+    lineage: list[LineageNode]
+    calls: list[EvidenceCall]
+
+
+@router.get("/topics/{topic_id}/evidence", response_model=TopicEvidenceResponse)
+async def get_topic_evidence(topic_id: str):
+    """Return the ancestor-aware per-call evidence trail for a topic.
+
+    Used by the frontend evidence panel (Story 10.4). Walks the lineage chain via
+    topics.merged_into_topic_id, collects topic_updates rows across all ancestors,
+    and enriches each row with call metadata, the original raw pending_topics
+    extract, the saved match group, and any not-discussed verification result.
+    """
+    logger.info(f"📥 [Topics] Evidence requested: topic={topic_id}")
+    db = get_client()
+
+    # 1. Fetch the target topic — 404 if missing
+    topic_rows = (
+        db.table("topics")
+        .select("id, name, archived, merged_into_topic_id")
+        .eq("id", topic_id)
+        .execute()
+        .data
+    )
+    if not topic_rows:
+        logger.info(f"⚠️ [Topics] Evidence 404: topic {topic_id} not found")
+        raise HTTPException(status_code=404, detail=f"Topic {topic_id} not found")
+    topic_row = topic_rows[0]
+
+    # 2. Lineage
+    lineage_raw = get_topic_lineage(topic_id, db)
+    lineage = [
+        LineageNode(
+            topic_id=n["id"],
+            name=n["name"],
+            archived=bool(n.get("archived", False)),
+            merged_into_topic_id=n.get("merged_into_topic_id"),
+        )
+        for n in lineage_raw
+    ]
+
+    # 3. Ancestor-inclusive topic_updates rows (chronological)
+    update_rows = get_lineage_topic_updates(topic_id, db)
+
+    # Caches to avoid N+1 lookups
+    call_cache: dict[str, dict | None] = {}
+    match_group_cache: dict[str, list[dict]] = {}
+
+    def _load_call(call_id: str) -> dict | None:
+        if call_id in call_cache:
+            return call_cache[call_id]
+        rows = (
+            db.table("calls")
+            .select("id, title, created_at, pending_topics, verification_cache")
+            .eq("id", call_id)
+            .execute()
+            .data
+        )
+        call_cache[call_id] = rows[0] if rows else None
+        return call_cache[call_id]
+
+    def _load_match_groups(call_id: str) -> list[dict]:
+        if call_id in match_group_cache:
+            return match_group_cache[call_id]
+        rows = (
+            db.table("topic_match_groups")
+            .select("project_topic_ids, call_topic_names")
+            .eq("call_id", call_id)
+            .execute()
+            .data
+        )
+        match_group_cache[call_id] = rows or []
+        return match_group_cache[call_id]
+
+    def _find_raw_extract(pending_topics, source_name: str) -> EvidenceRawExtract | None:
+        if not pending_topics or not isinstance(pending_topics, list):
+            return None
+        needle = (source_name or "").strip().lower()
+        if not needle:
+            return None
+        for pt in pending_topics:
+            if not isinstance(pt, dict):
+                continue
+            name = (pt.get("name") or "").strip().lower()
+            if name == needle:
+                return EvidenceRawExtract(
+                    summary=pt.get("summary", "") or "",
+                    follow_up_items=pt.get("follow_up_items", []) or [],
+                    decisions=pt.get("decisions", []) or [],
+                )
+        return None
+
+    def _find_match_group(call_id: str, source_tid: str) -> EvidenceMatchGroup | None:
+        for g in _load_match_groups(call_id):
+            ptids = g.get("project_topic_ids") or []
+            if source_tid in ptids:
+                return EvidenceMatchGroup(
+                    project_topic_ids=ptids,
+                    call_topic_names=g.get("call_topic_names") or [],
+                )
+        return None
+
+    def _find_verification(verification_cache, source_tid: str) -> EvidenceVerification | None:
+        if not isinstance(verification_cache, dict):
+            return None
+        entry = verification_cache.get(source_tid)
+        if not isinstance(entry, dict):
+            return None
+        return EvidenceVerification(
+            discussed=bool(entry.get("discussed", False)),
+            transcript_excerpt=entry.get("transcript_excerpt"),
+            reasoning=entry.get("reasoning", "") or "",
+        )
+
+    calls: list[EvidenceCall] = []
+    for row in update_rows:
+        call_id = row["call_id"]
+        source_tid = row["source_topic_id"]
+        source_name = row["source_topic_name"]
+        call = _load_call(call_id) or {}
+
+        calls.append(EvidenceCall(
+            call_id=call_id,
+            call_title=row.get("call_title") or call_id,
+            call_date=call.get("created_at"),
+            source_topic_id=source_tid,
+            source_topic_name=source_name,
+            transcript_excerpt=row.get("transcript_excerpt"),
+            merged_summary=row.get("summary") or "",
+            follow_up_items=row.get("follow_up_items") or [],
+            decisions=row.get("decisions") or [],
+            status=row.get("status") or "open",
+            raw_extract=_find_raw_extract(call.get("pending_topics"), source_name),
+            match_group=_find_match_group(call_id, source_tid),
+            not_discussed_verification=_find_verification(call.get("verification_cache"), source_tid),
+            is_not_discussed=False,
+        ))
+
+    logger.info(
+        f"✅ [Topics] Evidence assembled: topic={topic_id}, "
+        f"lineage={len(lineage)}, calls={len(calls)}"
+    )
+    return TopicEvidenceResponse(
+        topic_id=topic_row["id"],
+        topic_name=topic_row["name"],
+        lineage=lineage,
+        calls=calls,
+    )
 
 
 @router.get("/calls/{call_id}/brief")
