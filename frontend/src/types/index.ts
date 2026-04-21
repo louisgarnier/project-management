@@ -91,6 +91,7 @@ export interface TopicData {
   pending_merge?: boolean;
   verification_status?: "pending" | "confirmed" | "flagged";
   _source_topic_ids?: string[];
+  transcript_excerpt?: string | null;  // verbatim transcript chunk captured at extraction (EPIC-9)
 }
 
 /** Response from POST /extract */

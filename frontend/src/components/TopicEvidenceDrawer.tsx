@@ -9,13 +9,30 @@ import type {
   EvidenceRawExtract,
   EvidenceMatchGroup,
   EvidenceVerification,
+  TopicData,
 } from "@/types";
 
-type Props = {
-  open: boolean;
-  topicId: string | null;
-  onClose: () => void;
-};
+// Drawer supports two modes:
+//  - "lineage": fetches /api/topics/{id}/evidence, renders per-call chronology
+//    with ancestor provenance (Story 10.4). Used on Project Updates + Timeline.
+//  - "call_topic": no fetch — renders a single pending-topic card showing the
+//    transcript excerpt that caused the extraction (Story 10.7). Used on
+//    Call Topics stage where topics have no topic_id yet.
+type Props =
+  | {
+      open: boolean;
+      topicId: string | null;
+      onClose: () => void;
+      mode?: "lineage";
+      pendingTopic?: undefined;
+    }
+  | {
+      open: boolean;
+      onClose: () => void;
+      mode: "call_topic";
+      pendingTopic: TopicData | null;
+      topicId?: undefined;
+    };
 
 // 8-color pastel palette — one band per call, cycled by index
 const CALL_COLORS = [
@@ -387,13 +404,153 @@ function CallCard({
   );
 }
 
-export default function TopicEvidenceDrawer({ open, topicId, onClose }: Props) {
+function PendingTopicCard({ topic }: { topic: TopicData }) {
+  return (
+    <div
+      style={{
+        border: "1px solid #dfe1e6",
+        borderRadius: 6,
+        background: "white",
+        borderLeft: `6px solid ${CALL_COLORS[0]}`,
+        marginBottom: 12,
+        padding: "14px 16px",
+      }}
+    >
+      {topic.transcript_excerpt ? (
+        <div style={{ marginBottom: 12 }}>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              textTransform: "uppercase",
+              color: "#5e6c84",
+              letterSpacing: ".04em",
+              marginBottom: 4,
+            }}
+          >
+            Extracted from transcript
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: "#172b4d",
+              fontStyle: "italic",
+              borderLeft: "3px solid #dfe1e6",
+              paddingLeft: 10,
+              whiteSpace: "pre-wrap",
+              lineHeight: 1.5,
+            }}
+          >
+            “{topic.transcript_excerpt}”
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: "#97a0af", fontStyle: "italic", marginBottom: 12 }}>
+          (No transcript excerpt captured for this topic)
+        </div>
+      )}
+
+      <div style={{ marginBottom: 10 }}>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            color: "#5e6c84",
+            letterSpacing: ".04em",
+            marginBottom: 3,
+          }}
+        >
+          Summary
+        </div>
+        <div style={{ fontSize: 13, color: "#172b4d", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+          {topic.summary || <em style={{ color: "#97a0af" }}>(empty)</em>}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            color: "#5e6c84",
+            letterSpacing: ".04em",
+            marginBottom: 3,
+          }}
+        >
+          Follow-ups
+        </div>
+        {(topic.follow_up_items ?? []).length === 0 ? (
+          <div style={{ fontSize: 13, color: "#97a0af", fontStyle: "italic" }}>(none)</div>
+        ) : (
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {(topic.follow_up_items ?? []).map((f, i) => (
+              <li key={i} style={{ fontSize: 13, color: "#172b4d", lineHeight: 1.5 }}>
+                {f}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            color: "#5e6c84",
+            letterSpacing: ".04em",
+            marginBottom: 3,
+          }}
+        >
+          Decisions
+        </div>
+        {(topic.decisions ?? []).length === 0 ? (
+          <div style={{ fontSize: 13, color: "#97a0af", fontStyle: "italic" }}>(none)</div>
+        ) : (
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {(topic.decisions ?? []).map((d, i) => (
+              <li key={i} style={{ fontSize: 13, color: "#172b4d", lineHeight: 1.5 }}>
+                {d}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {topic.status && (
+          <span style={{ ...BADGE_BASE, ...(STATUS_BADGE[topic.status] ?? STATUS_BADGE.open) }}>
+            {topic.status.replace("_", " ")}
+          </span>
+        )}
+        {topic.owner && (
+          <span style={{ ...BADGE_BASE, background: "#f4f5f7", color: "#5e6c84" }}>{topic.owner}</span>
+        )}
+        {topic.sentiment && (
+          <span style={{ ...BADGE_BASE, background: "#f4f5f7", color: "#5e6c84" }}>
+            {topic.sentiment}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function TopicEvidenceDrawer(props: Props) {
+  const { open, onClose } = props;
+  const isCallTopicMode = props.mode === "call_topic";
+  const topicId = isCallTopicMode ? null : (props as Extract<Props, { mode?: "lineage" }>).topicId;
+  const pendingTopic = isCallTopicMode ? props.pendingTopic : null;
+
   const [data, setData] = useState<TopicEvidence | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchEvidence = useCallback(async () => {
-    if (!open || !topicId) return;
+    if (!open || !topicId || isCallTopicMode) return;
     setLoading(true);
     setError(null);
     setData(null);
@@ -405,7 +562,7 @@ export default function TopicEvidenceDrawer({ open, topicId, onClose }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [open, topicId]);
+  }, [open, topicId, isCallTopicMode]);
 
   useEffect(() => {
     fetchEvidence();
@@ -421,7 +578,9 @@ export default function TopicEvidenceDrawer({ open, topicId, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  if (!open || !topicId) return null;
+  if (!open) return null;
+  if (isCallTopicMode && !pendingTopic) return null;
+  if (!isCallTopicMode && !topicId) return null;
 
   return (
     <div
@@ -473,9 +632,18 @@ export default function TopicEvidenceDrawer({ open, topicId, onClose }: Props) {
                 lineHeight: 1.3,
               }}
             >
-              {data?.topic_name ?? (loading ? "Loading…" : "Topic evidence")}
+              {isCallTopicMode
+                ? (pendingTopic?.name ?? "Topic source")
+                : (data?.topic_name ?? (loading ? "Loading…" : "Topic evidence"))}
             </h2>
-            {data && <LineageChip lineage={data.lineage} currentTopicId={data.topic_id} />}
+            {!isCallTopicMode && data && (
+              <LineageChip lineage={data.lineage} currentTopicId={data.topic_id} />
+            )}
+            {isCallTopicMode && (
+              <div style={{ fontSize: 11, color: "#5e6c84", marginTop: 6 }}>
+                Source data from this call&apos;s extraction
+              </div>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -497,12 +665,13 @@ export default function TopicEvidenceDrawer({ open, topicId, onClose }: Props) {
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", background: "#f4f5f7" }}>
-          {loading && (
+          {isCallTopicMode && pendingTopic && <PendingTopicCard topic={pendingTopic} />}
+          {!isCallTopicMode && loading && (
             <div style={{ fontSize: 13, color: "#5e6c84", textAlign: "center", padding: 40 }}>
               Loading evidence…
             </div>
           )}
-          {error && !loading && (
+          {!isCallTopicMode && error && !loading && (
             <div
               style={{
                 background: "#fff1f0",
@@ -536,12 +705,12 @@ export default function TopicEvidenceDrawer({ open, topicId, onClose }: Props) {
               </button>
             </div>
           )}
-          {!loading && !error && data && data.calls.length === 0 && (
+          {!isCallTopicMode && !loading && !error && data && data.calls.length === 0 && (
             <div style={{ fontSize: 13, color: "#5e6c84", textAlign: "center", padding: 40 }}>
               No evidence available for this topic.
             </div>
           )}
-          {!loading && !error && data && data.calls.length > 0 && (
+          {!isCallTopicMode && !loading && !error && data && data.calls.length > 0 && (
             <div>
               {data.calls.map((c, i) => (
                 <CallCard key={`${c.call_id}-${c.source_topic_id}-${i}`} call={c} index={i} currentTopicId={data.topic_id} />

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { artifactTypesAPI, projectsAPI, topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { Call, TopicData, TopicStatus, TopicOwner, TopicSentiment, LLMProvider } from "@/types";
+import TopicEvidenceDrawer from "./TopicEvidenceDrawer";
 
 const LLM_LABELS: Record<LLMProvider, string> = {
   groq:     "Groq – Llama 3.3",
@@ -43,10 +44,12 @@ function TopicRow({
   topic,
   onChange,
   onDelete,
+  onViewSource,
 }: {
   topic: TopicData;
   onChange: (updated: TopicData) => void;
   onDelete: () => void;
+  onViewSource?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [newFollowUp, setNewFollowUp] = useState("");
@@ -87,6 +90,22 @@ function TopicRow({
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          {onViewSource && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewSource();
+              }}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                fontSize: 11, color: "#0052cc", padding: 0, fontFamily: "inherit",
+                textDecoration: "underline",
+              }}
+            >
+              Show source
+            </button>
+          )}
           <span style={{
             fontSize: 10, fontWeight: 700, textTransform: "uppercase",
             color: SENTIMENT_COLOR[topic.sentiment] ?? "#5e6c84",
@@ -223,6 +242,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   const [promptName, setPromptName] = useState<string | null>(null);
   const [effectiveLlm, setEffectiveLlm] = useState<string | null>(null);
   const [polling, setPolling] = useState(() => call.extraction_status === "processing");
+  const [sourceDrawerTopic, setSourceDrawerTopic] = useState<TopicData | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -302,6 +322,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   }
 
   return (
+    <>
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
       {/* Header */}
@@ -384,6 +405,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                     setTopics(next);
                   }}
                   onDelete={() => setTopics((prev) => prev.filter((_, idx) => idx !== i))}
+                  onViewSource={() => setSourceDrawerTopic(t)}
                 />
               ))
             )}
@@ -416,5 +438,12 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
         </>
       )}
     </div>
+    <TopicEvidenceDrawer
+      open={!!sourceDrawerTopic}
+      mode="call_topic"
+      pendingTopic={sourceDrawerTopic}
+      onClose={() => setSourceDrawerTopic(null)}
+    />
+    </>
   );
 }
