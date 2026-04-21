@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { topicsAPI } from "@/api/client";
-import type { TopicsTimelineData, TimelineCell, TopicStatus, TopicSentiment } from "@/types";
+import type { TopicsTimelineData, TimelineCell, TopicStatus, TopicSentiment, TimelineTopic } from "@/types";
 import TopicEvidenceDrawer from "./TopicEvidenceDrawer";
 
 type Props = { projectId: string; refreshKey?: number };
@@ -242,13 +242,37 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
   );
 
   const mergeResultCount = data.topics.filter(t => t.has_sources && !t.archived).length;
-  // Archived topics are shown only when their merge-result parent is in
-  // expandedLineageIds. Non-archived topics always visible. (Task 7 refines
-  // ordering to interleave ancestors directly below their parent.)
-  const visibleTopics = data.topics.filter((t) => {
-    if (!t.archived) return true;
-    return t.merged_into_topic_id != null && expandedLineageIds.has(t.merged_into_topic_id);
-  });
+
+  // Build an ordered render list: each non-archived topic appears in its
+  // original timeline order, followed immediately by its expanded ancestors
+  // (in ancestor_topic_ids order). Non-expanded merge-results show only
+  // themselves. Orphan archived topics (merged_into null or parent missing)
+  // are NOT shown — only ancestors attached to a visible merge-result.
+  const topicById: Record<string, TimelineTopic> = Object.fromEntries(
+    data.topics.map((t) => [t.topic_id, t])
+  );
+  const renderTopics: Array<{
+    topic: TimelineTopic;
+    isAncestorOf: string | null;
+    ancestorPosition: "middle" | "last" | null;
+  }> = [];
+  for (const t of data.topics) {
+    if (t.archived) continue;
+    renderTopics.push({ topic: t, isAncestorOf: null, ancestorPosition: null });
+    if (t.has_sources && expandedLineageIds.has(t.topic_id)) {
+      const ancestorIds = t.ancestor_topic_ids ?? [];
+      ancestorIds.forEach((aid, idx) => {
+        const a = topicById[aid];
+        if (!a) return;
+        const isLast = idx === ancestorIds.length - 1;
+        renderTopics.push({
+          topic: a,
+          isAncestorOf: t.topic_id,
+          ancestorPosition: isLast ? "last" : "middle",
+        });
+      });
+    }
+  }
 
   return (
     <>
@@ -317,19 +341,33 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
           </tr>
         </thead>
         <tbody>
-          {visibleTopics.map((topic) => {
+          {renderTopics.map(({ topic, isAncestorOf, ancestorPosition }) => {
             const isResolved = topic.status === "resolved";
             const isArchived = topic.archived;
+            const isAncestorRow = isAncestorOf !== null;
+            const parentName = isAncestorRow ? topicById[isAncestorOf]?.name ?? "" : "";
             return (
               <tr key={topic.topic_id} style={{
                 borderBottom: "1px solid #f0f1f3",
                 opacity: isArchived ? 0.5 : isResolved ? 0.65 : 1,
               }}>
                 <td style={{
-                  position: "sticky", left: 0, background: "white", zIndex: 1,
+                  position: "sticky", left: 0,
+                  background: isAncestorRow ? "#fafbfc" : "white",
+                  zIndex: 1,
                   width: 220, minWidth: 220, maxWidth: 220,
-                  borderRight: "2px solid #dfe1e6", padding: "10px 12px", verticalAlign: "top",
+                  borderRight: "2px solid #dfe1e6",
+                  padding: isAncestorRow ? "8px 12px 8px 32px" : "10px 12px",
+                  verticalAlign: "top",
                 }}>
+                  {isAncestorRow && (
+                    <span style={{
+                      position: "absolute", left: 14, marginTop: 2,
+                      color: "#bfc5ce", fontSize: 12, fontFamily: "monospace",
+                    }}>
+                      {ancestorPosition === "last" ? "└─" : "├─"}
+                    </span>
+                  )}
                   <div style={{ fontSize: 12, fontWeight: 600, color: "#172b4d", marginBottom: 4,
                     textDecoration: isArchived ? "line-through" : undefined,
                     display: "flex", alignItems: "center", gap: 6 }}>
@@ -382,15 +420,53 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
                     </div>
                   )}
                 </td>
-                {data.calls.map((c) => (
-                  <Cell
-                    key={c.id}
-                    cell={topic.call_updates[c.id]}
-                    hasSources={topic.has_sources}
-                    sourceNames={topic.source_names}
-                    isFirstRaisedCell={c.id === topic.first_raised_call_id}
-                  />
-                ))}
+                {data.calls.map((c) => {
+                  // Ancestor rows render a special "merged ↗" cell at the merge
+                  // call column and "(archived)" text after it.
+                  if (isAncestorRow) {
+                    if (c.id === topic.merge_call_id) {
+                      return (
+                        <td key={c.id} style={{
+                          width: 180, minWidth: 180, borderRight: "1px solid #f0f1f3",
+                          verticalAlign: "top", padding: "8px 12px", background: "#f5ecff",
+                        }}>
+                          <span style={{
+                            ...BADGE_BASE, background: "#6f42c1", color: "white",
+                          }}>
+                            merged ↗
+                          </span>
+                          <div style={{ fontSize: 10, color: "#5e6c84", marginTop: 4,
+                            fontStyle: "italic", lineHeight: 1.3 }}>
+                            → folded into &quot;{parentName}&quot;
+                          </div>
+                        </td>
+                      );
+                    }
+                    const mergeIdx = data.calls.findIndex((x) => x.id === topic.merge_call_id);
+                    const thisIdx = data.calls.findIndex((x) => x.id === c.id);
+                    if (mergeIdx >= 0 && thisIdx > mergeIdx) {
+                      return (
+                        <td key={c.id} style={{
+                          width: 180, minWidth: 180, borderRight: "1px solid #f0f1f3",
+                          verticalAlign: "top", padding: "8px 12px",
+                          color: "#bfc5ce", fontSize: 10, fontStyle: "italic",
+                        }}>
+                          (archived)
+                        </td>
+                      );
+                    }
+                    // Before merge call → fall through to regular Cell rendering
+                  }
+                  return (
+                    <Cell
+                      key={c.id}
+                      cell={topic.call_updates[c.id]}
+                      hasSources={topic.has_sources}
+                      sourceNames={topic.source_names}
+                      isFirstRaisedCell={c.id === topic.first_raised_call_id}
+                    />
+                  );
+                })}
               </tr>
             );
           })}
