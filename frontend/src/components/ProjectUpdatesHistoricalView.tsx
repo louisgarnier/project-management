@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { topicsAPI } from "@/api/client";
+import { callsAPI, topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { TopicData } from "@/types";
 
@@ -85,12 +85,33 @@ export default function ProjectUpdatesHistoricalView({ callId, projectId }: Prop
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Prefer merge_cache when available — it's the authoritative snapshot of
+    // what was shown on Project Updates at validation time, including M:N
+    // merge results with the correct new/updated/not-discussed classification.
+    // Fall back to rebuilding from match_groups only when no cache exists
+    // (e.g. call never completed merge).
     Promise.all([
+      callsAPI.getCall(callId),
       topicsAPI.getMatchGroups(callId),
       topicsAPI.listForCall(callId),
       topicsAPI.priorToCall(projectId, callId),
-    ]).then(([groups, callTopics, projectTopics]) => {
-      // Index call-specific topic data (from topic_updates) by project topic ID and by name
+    ]).then(([call, groups, callTopics, projectTopics]) => {
+      const cache = (call.merge_cache ?? []) as TopicData[];
+      if (call.merge_status === "done" && cache.length > 0) {
+        const newBucket = cache.filter((t) => !t.not_discussed && !t.topic_id);
+        const updatedBucket = cache.filter((t) => !t.not_discussed && !!t.topic_id);
+        const notDiscussedBucket = cache.filter((t) => !!t.not_discussed);
+        setNewTopics(newBucket);
+        setUpdatedTopics(updatedBucket);
+        setNotDiscussed(notDiscussedBucket);
+        logger.info("[ProjectUpdatesHistoricalView] Loaded from merge_cache", {
+          component: "ProjectUpdatesHistoricalView",
+          data: { new: newBucket.length, updated: updatedBucket.length, notDiscussed: notDiscussedBucket.length },
+        });
+        return;
+      }
+
+      // Fallback path: rebuild from match_groups (no cache available).
       const callTopicsByProjectId = new Map(
         callTopics.filter((t: TopicData) => t.topic_id).map((t: TopicData) => [t.topic_id!, t])
       );
@@ -133,7 +154,7 @@ export default function ProjectUpdatesHistoricalView({ callId, projectId }: Prop
       setUpdatedTopics(updatedBucket);
       setNotDiscussed(notDiscussedBucket);
 
-      logger.info("[ProjectUpdatesHistoricalView] Loaded", {
+      logger.info("[ProjectUpdatesHistoricalView] Loaded from match_groups fallback", {
         component: "ProjectUpdatesHistoricalView",
         data: { new: newBucket.length, updated: updatedBucket.length, notDiscussed: notDiscussedBucket.length },
       });
