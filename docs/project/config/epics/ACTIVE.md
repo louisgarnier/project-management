@@ -1,9 +1,10 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Epic:** EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality — **DONE 2026-04-21**
-- **Next:** TBD — all defined epics complete.
-- **Spec:** `docs/project/config/2026-04-20-epic-10-topic-lineage-and-prompt-traceability-design.md`
+- **Epic:** EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality — **IN PROGRESS** (re-opened for Story 10.9)
+- **Story:** 10.9 — Timeline Item Provenance + Ancestor Visualization
+- **Status:** `pending` (design approved — awaiting mockup sign-off)
+- **Spec:** `docs/project/config/2026-04-21-story-10.9-timeline-provenance-design.md`
 - **PRD:** `docs/project/config/prd-epic10-topic-lineage-and-prompt-traceability.md`
 
 ### EPIC-10 Stories
@@ -17,6 +18,7 @@
 | 10.6 | Implement Prompt Fixes From Audit | **done 2026-04-21** | 10.2 |
 | 10.7 | Call Topics Stage: Evidence Drawer | **done 2026-04-21** | 10.4 |
 | 10.8 | Project Matching Stage: Side-by-Side Evidence Drawer | **done 2026-04-21** | 10.3, 10.4 |
+| 10.9 | Timeline Item Provenance + Ancestor Visualization | pending | 10.1, 10.3, 10.4, 10.5 |
 
 ### Side fix
 - **ERR-004** — Promote-not-discussed state lost on re-merge/refresh — **done 2026-04-21** (commit `d6773de`)

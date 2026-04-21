@@ -68,6 +68,9 @@ As a user viewing the Call Topics stage, I want to click any extracted topic and
 **US-10.8 — Understand the reasoning behind every match decision**
 As a user reviewing the Project Matching stage, I want to click any match decision (followed-up / new / not-discussed) and see side-by-side: the existing project topic's full historical evidence (every prior call's excerpt + summary) on the left, and the current call's extraction on the right — so I can read both sides and understand the classification without needing persisted LLM reasoning. This gives me a clear historical trace of how we got to this state for any topic.
 
+**US-10.9 — Trace item provenance + ancestor lineage directly on the Topics Timeline**
+As a user browsing the Topics Timeline, I want each follow-up and decision in a cell to show a small pill (`C1`, `C2`, …) identifying which call first contributed it, and I want a chevron on every merge-result topic row that expands to show the archived ancestor topics as indented rows with full per-cell data — so I can trace the evolution of a topic without leaving the grid or opening the Evidence Drawer.
+
 ---
 
 ## Functional Requirements

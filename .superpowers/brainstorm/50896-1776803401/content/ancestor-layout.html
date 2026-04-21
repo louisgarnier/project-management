@@ -1,0 +1,136 @@
+<h2>Q3 — How should archived-ancestor boxes look in the Timeline?</h2>
+<p class="subtitle">Goal: visually show "this merge-result topic was formed by these ancestors which lived across these calls". Two layout options below — scroll to compare.</p>
+
+<div style="display:flex;flex-direction:column;gap:32px;margin-top:24px">
+
+  <!-- Option A — Ghost rows under each merge-result -->
+  <div class="option" data-choice="a" onclick="toggleSelect(this)" style="cursor:pointer">
+    <div class="letter">A</div>
+    <div class="content" style="width:100%">
+      <h3>Ghost rows beneath the merge-result row</h3>
+      <p style="margin-bottom:12px">Each archived ancestor becomes its own faded, thin row directly under the merge-result row. The row shows a colored box spanning only the columns the ancestor was active (first-raised call → merge call). Compact; one row per ancestor.</p>
+
+      <!-- Mock timeline -->
+      <div style="background:white;border:1px solid #dfe1e6;border-radius:6px;overflow:hidden;font-size:12px">
+        <!-- Header row -->
+        <div style="display:grid;grid-template-columns:240px 160px 160px 160px;background:#f4f5f7;font-size:10px;font-weight:700;text-transform:uppercase;color:#5e6c84;border-bottom:1px solid #dfe1e6">
+          <div style="padding:8px 12px">Topic</div>
+          <div style="padding:8px 12px;border-left:1px solid #dfe1e6">Call 1 · Kickoff</div>
+          <div style="padding:8px 12px;border-left:1px solid #dfe1e6">Call 2 · Review</div>
+          <div style="padding:8px 12px;border-left:1px solid #dfe1e6">Call 3 · Followup</div>
+        </div>
+
+        <!-- Merge-result row -->
+        <div style="display:grid;grid-template-columns:240px 160px 160px 160px;border-bottom:1px solid #f0f1f3;background:white">
+          <div style="padding:10px 12px;font-weight:600;color:#172b4d">API Strategy</div>
+          <div style="padding:10px 12px;border-left:1px solid #f0f1f3;color:#97a0af;font-size:11px">(not yet raised)</div>
+          <div style="padding:10px 12px;border-left:1px solid #f0f1f3">
+            <span style="display:inline-block;padding:3px 8px;background:#6f42c1;color:white;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase">✦ New (merged)</span>
+            <div style="font-size:11px;color:#5e6c84;margin-top:4px">REST chosen for MVP</div>
+          </div>
+          <div style="padding:10px 12px;border-left:1px solid #f0f1f3">
+            <span style="display:inline-block;padding:3px 8px;background:#0052cc;color:white;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase">Updated</span>
+            <div style="font-size:11px;color:#5e6c84;margin-top:4px">Migration scheduled Q4</div>
+          </div>
+        </div>
+
+        <!-- Ghost row: REST API -->
+        <div style="display:grid;grid-template-columns:240px 160px 160px 160px;border-bottom:1px dashed #e4e7eb;background:#fafbfc">
+          <div style="padding:6px 12px 6px 32px;color:#8e94a3;font-size:11px;text-decoration:line-through;font-style:italic">REST API</div>
+          <!-- Bar spanning Call 1 + Call 2 -->
+          <div style="padding:5px 0;border-left:1px solid #f0f1f3;position:relative;grid-column:2 / span 2">
+            <div style="background:linear-gradient(90deg,#dfe7ff,#dfe7ff 95%,#c0d0f0);height:20px;border-radius:3px;margin:0 6px;display:flex;align-items:center;padding:0 8px;font-size:10px;color:#0747a6;position:relative">
+              <span>picked REST as MVP</span>
+              <span style="position:absolute;right:4px;color:#6f42c1;font-size:14px">↗</span>
+            </div>
+          </div>
+          <div style="padding:6px 12px;border-left:1px solid #f0f1f3"></div>
+        </div>
+
+        <!-- Ghost row: GraphQL API -->
+        <div style="display:grid;grid-template-columns:240px 160px 160px 160px;border-bottom:1px solid #f0f1f3;background:#fafbfc">
+          <div style="padding:6px 12px 6px 32px;color:#8e94a3;font-size:11px;text-decoration:line-through;font-style:italic">GraphQL API</div>
+          <div style="padding:5px 0;border-left:1px solid #f0f1f3;grid-column:2 / span 2">
+            <div style="background:linear-gradient(90deg,#daf5e4,#daf5e4 95%,#b2e3c4);height:20px;border-radius:3px;margin:0 6px;display:flex;align-items:center;padding:0 8px;font-size:10px;color:#00623e;position:relative">
+              <span>spiked, deferred to v2</span>
+              <span style="position:absolute;right:4px;color:#6f42c1;font-size:14px">↗</span>
+            </div>
+          </div>
+          <div style="padding:6px 12px;border-left:1px solid #f0f1f3"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;font-size:11px;color:#5e6c84">↗ arrow at end of ghost bar points to the merge call where it folded in.</div>
+    </div>
+  </div>
+
+  <!-- Option B — Vertical lineage connector + indented rows -->
+  <div class="option" data-choice="b" onclick="toggleSelect(this)" style="cursor:pointer">
+    <div class="letter">B</div>
+    <div class="content" style="width:100%">
+      <h3>Indented, tree-nested ancestor rows with a flow connector</h3>
+      <p style="margin-bottom:12px">Archived ancestors render as regular cell-by-cell rows (like today), but indented and visually attached to the merge-result row via a tree connector (├ └). Their cells past the merge call show a "flows into ↗" connector.</p>
+
+      <div style="background:white;border:1px solid #dfe1e6;border-radius:6px;overflow:hidden;font-size:12px">
+        <!-- Header -->
+        <div style="display:grid;grid-template-columns:240px 160px 160px 160px;background:#f4f5f7;font-size:10px;font-weight:700;text-transform:uppercase;color:#5e6c84;border-bottom:1px solid #dfe1e6">
+          <div style="padding:8px 12px">Topic</div>
+          <div style="padding:8px 12px;border-left:1px solid #dfe1e6">Call 1</div>
+          <div style="padding:8px 12px;border-left:1px solid #dfe1e6">Call 2</div>
+          <div style="padding:8px 12px;border-left:1px solid #dfe1e6">Call 3</div>
+        </div>
+
+        <!-- Merge-result row -->
+        <div style="display:grid;grid-template-columns:240px 160px 160px 160px;border-bottom:1px solid #f0f1f3">
+          <div style="padding:10px 12px;font-weight:600;color:#172b4d">API Strategy</div>
+          <div style="padding:10px 12px;border-left:1px solid #f0f1f3;color:#97a0af;font-size:11px">(not yet raised)</div>
+          <div style="padding:10px 12px;border-left:1px solid #f0f1f3">
+            <span style="display:inline-block;padding:3px 8px;background:#6f42c1;color:white;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase">✦ New (merged)</span>
+          </div>
+          <div style="padding:10px 12px;border-left:1px solid #f0f1f3">
+            <span style="display:inline-block;padding:3px 8px;background:#0052cc;color:white;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase">Updated</span>
+          </div>
+        </div>
+
+        <!-- Archived REST API — indented -->
+        <div style="display:grid;grid-template-columns:240px 160px 160px 160px;border-bottom:1px solid #f0f1f3;background:#fafbfc">
+          <div style="padding:8px 12px 8px 28px;color:#8e94a3;font-size:11px;font-style:italic;position:relative">
+            <span style="position:absolute;left:14px;color:#bfc5ce">├─</span>
+            <span style="text-decoration:line-through">REST API</span>
+          </div>
+          <div style="padding:8px 12px;border-left:1px solid #f0f1f3;font-size:11px">
+            <span style="display:inline-block;padding:2px 6px;background:#ffe0b2;color:#974f0c;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase">Raised</span>
+            <div style="color:#5e6c84;margin-top:3px">Team chose REST</div>
+          </div>
+          <div style="padding:8px 12px;border-left:1px solid #f0f1f3;font-size:11px;position:relative">
+            <span style="display:inline-block;padding:2px 6px;background:#f0d3ff;color:#5f2d7a;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase">Merged ↗</span>
+            <div style="color:#5e6c84;margin-top:3px;font-style:italic;font-size:10px">→ folded into "API Strategy"</div>
+          </div>
+          <div style="padding:8px 12px;border-left:1px solid #f0f1f3;color:#bfc5ce;font-size:10px;font-style:italic">(archived)</div>
+        </div>
+
+        <!-- Archived GraphQL — indented -->
+        <div style="display:grid;grid-template-columns:240px 160px 160px 160px;border-bottom:1px solid #f0f1f3;background:#fafbfc">
+          <div style="padding:8px 12px 8px 28px;color:#8e94a3;font-size:11px;font-style:italic;position:relative">
+            <span style="position:absolute;left:14px;color:#bfc5ce">└─</span>
+            <span style="text-decoration:line-through">GraphQL API</span>
+          </div>
+          <div style="padding:8px 12px;border-left:1px solid #f0f1f3;font-size:11px">
+            <span style="display:inline-block;padding:2px 6px;background:#ffe0b2;color:#974f0c;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase">Raised</span>
+            <div style="color:#5e6c84;margin-top:3px">GraphQL considered</div>
+          </div>
+          <div style="padding:8px 12px;border-left:1px solid #f0f1f3;font-size:11px">
+            <span style="display:inline-block;padding:2px 6px;background:#f0d3ff;color:#5f2d7a;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase">Merged ↗</span>
+            <div style="color:#5e6c84;margin-top:3px;font-style:italic;font-size:10px">→ folded into "API Strategy"</div>
+          </div>
+          <div style="padding:8px 12px;border-left:1px solid #f0f1f3;color:#bfc5ce;font-size:10px;font-style:italic">(archived)</div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;font-size:11px;color:#5e6c84">Preserves the cell-by-cell structure (rich content per cell). Indentation + tree connectors show the parent-child lineage. More information per ancestor.</div>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:32px">Click A or B to vote. You can also say "mix" if you want elements of both (e.g., A's compactness with B's per-cell data).</p>
