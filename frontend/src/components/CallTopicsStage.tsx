@@ -41,6 +41,87 @@ type Props = {
 
 // ── Topic row ──────────────────────────────────────────────────────────────────
 
+const IMPORTANCE_COLOR: Record<"high" | "medium" | "low", string> = {
+  high:   "#ae2a19",
+  medium: "#ff991f",
+  low:    "#97a0af",
+};
+
+function SectionBlock({
+  label, count, bg, color, items, prefix, editing, onChange, renderItem,
+}: {
+  label: string;
+  count: number;
+  bg: string;
+  color: string;
+  items: string[];
+  prefix: string;
+  editing: boolean;
+  onChange: (items: string[]) => void;
+  renderItem?: (item: string) => React.ReactNode;
+}) {
+  const [newText, setNewText] = useState("");
+  return (
+    <div style={{ background: bg, borderRadius: 4, padding: "9px 11px", marginBottom: 6 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color, letterSpacing: ".05em", marginBottom: 5 }}>
+        {label} ({count})
+      </div>
+      <div style={{ fontSize: 11.5, color: "#172b4d", lineHeight: 1.55 }}>
+        {items.map((item, i) => (
+          editing ? (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              <span style={{ color: "#97a0af", fontSize: 11 }}>{prefix}</span>
+              <input
+                value={item}
+                onChange={(e) => {
+                  const next = [...items];
+                  next[i] = e.target.value;
+                  onChange(next);
+                }}
+                style={{ flex: 1, fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "3px 6px", fontFamily: "inherit" }}
+              />
+              <button
+                type="button"
+                onClick={() => onChange(items.filter((_, idx) => idx !== i))}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#bfc5ce", fontSize: 11 }}
+              >✕</button>
+            </div>
+          ) : (
+            <div key={i}>
+              {prefix}{renderItem ? renderItem(item) : item}
+            </div>
+          )
+        ))}
+        {editing && (
+          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+            <input
+              value={newText}
+              onChange={(e) => setNewText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newText.trim()) {
+                  onChange([...items, newText.trim()]);
+                  setNewText("");
+                }
+              }}
+              placeholder={`Add ${label.toLowerCase().replace(/s$/, "")}…`}
+              style={{ flex: 1, fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "3px 6px", fontFamily: "inherit" }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (newText.trim()) { onChange([...items, newText.trim()]); setNewText(""); }
+              }}
+              style={{ fontSize: 11, color: "#0052cc", background: "none", border: "1px solid #b3c6e8", borderRadius: 4, padding: "3px 10px", cursor: "pointer" }}
+            >
+              Add
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TopicRow({
   topic,
   onChange,
@@ -52,24 +133,34 @@ function TopicRow({
   onDelete: () => void;
   onViewSource?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [newFollowUp, setNewFollowUp] = useState("");
+  const [editing, setEditing] = useState(false);
+  const parked = topic.is_parked;
+  const dotColor = parked ? "#97a0af" : IMPORTANCE_COLOR[topic.importance] ?? "#ff991f";
+  const borderColor = parked ? "#97a0af" : "#0052cc";
+  const background = parked ? "#fafbfc" : "white";
+
+  const renderOwnerHighlight = (text: string): React.ReactNode => {
+    const m = text.match(/^([A-Z][a-z]+(?:\s[A-Z][a-z]+)?):\s*(.*)$/);
+    if (!m) return text;
+    return (<><strong>{m[1]}:</strong> {m[2]}</>);
+  };
 
   return (
     <div style={{
       borderBottom: "1px solid #f0f1f3",
-      paddingLeft: expanded ? 17 : 20,
-      paddingRight: 20,
-      paddingTop: 10,
-      paddingBottom: 10,
-      borderLeft: expanded ? "3px solid #0052cc" : "3px solid transparent",
-      background: expanded ? "#fafbfc" : "white",
-      transition: "background .1s",
+      padding: "14px 18px",
+      borderLeft: `3px solid ${borderColor}`,
+      background,
+      opacity: parked ? 0.92 : 1,
     }}>
-      {/* Header row */}
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flex: 1, minWidth: 0 }}>
-          {expanded ? (
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flex: 1, minWidth: 0 }}>
+          <span
+            title={topic.rationale || "No rationale provided"}
+            style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, display: "inline-block", flexShrink: 0 }}
+          />
+          {editing ? (
             <input
               value={topic.name}
               onChange={(e) => onChange({ ...topic, name: e.target.value })}
@@ -80,74 +171,129 @@ function TopicRow({
               }}
             />
           ) : (
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#172b4d" }}>{topic.name}</span>
+            <strong style={{ fontSize: 13, color: "#172b4d" }}>{topic.name}</strong>
           )}
-          <span style={{
-            fontSize: 9, fontWeight: 700, textTransform: "uppercase",
-            padding: "2px 6px", borderRadius: 3, whiteSpace: "nowrap", flexShrink: 0,
-            ...(STATUS_BADGE[topic.status] ?? STATUS_BADGE.open),
-          }}>
-            {topic.status?.replace("_", " ")}
-          </span>
+          {parked ? (
+            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", background: "#f4f5f7", color: "#5e6c84", borderRadius: 3 }}>
+              ⏸ PARKED
+            </span>
+          ) : (
+            <span style={{
+              fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+              ...(STATUS_BADGE[topic.status] ?? STATUS_BADGE.open),
+            }}>
+              {topic.status?.replace("_", " ")}
+            </span>
+          )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          {onViewSource && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewSource();
-              }}
-              style={{
-                background: "none", border: "none", cursor: "pointer",
-                fontSize: 11, color: "#0052cc", padding: 0, fontFamily: "inherit",
-                textDecoration: "underline",
-              }}
-            >
-              Show source
-            </button>
-          )}
-          <span style={{
-            fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-            color: SENTIMENT_COLOR[topic.sentiment] ?? "#5e6c84",
-          }}>
-            {topic.sentiment}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+          <span style={{ fontSize: 10, color: "#5e6c84" }}>
+            {topic.sentiment?.toUpperCase()} · {topic.owner?.toUpperCase()}
           </span>
           <button
-            onClick={() => setExpanded((v) => !v)}
-            title="Edit"
-            style={{
-              background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: "0 2px",
-              color: expanded ? "#0052cc" : "#97a0af", lineHeight: 1,
-            }}
-          >
-            ✎
-          </button>
+            type="button"
+            onClick={() => setEditing((v) => !v)}
+            title={editing ? "Done editing" : "Edit"}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: editing ? "#0052cc" : "#97a0af" }}
+          >{editing ? "✓" : "✎"}</button>
           <button
+            type="button"
             onClick={onDelete}
             title="Remove"
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: "0 2px", color: "#bfc5ce", lineHeight: 1 }}
-          >
-            ✕
-          </button>
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#bfc5ce" }}
+          >✕</button>
         </div>
       </div>
 
-      {/* Summary — always visible */}
-      {!expanded && topic.summary && (
-        <p style={{ fontSize: 12, color: "#5e6c84", margin: "3px 0 0", lineHeight: 1.5 }}>
-          {topic.summary}
-        </p>
+      {/* Summary */}
+      {editing ? (
+        <textarea
+          value={topic.summary}
+          onChange={(e) => onChange({ ...topic, summary: e.target.value })}
+          placeholder="3–6 sentence summary…"
+          rows={5}
+          style={{
+            width: "100%", margin: "8px 0 10px", fontSize: 12, color: "#172b4d",
+            border: "1px solid #dfe1e6", borderRadius: 4, padding: "6px 8px",
+            fontFamily: "inherit", resize: "vertical", boxSizing: "border-box",
+          }}
+        />
+      ) : (
+        topic.summary && (
+          <p style={{ fontSize: 12, color: "#172b4d", margin: "6px 0 10px", lineHeight: 1.5 }}>
+            {topic.summary}
+          </p>
+        )
       )}
-      {!expanded && (topic.follow_up_items ?? []).map((item, i) => (
-        <div key={i} style={{ fontSize: 11, color: "#5e6c84", paddingTop: 2 }}>→ {item}</div>
-      ))}
 
-      {/* Expanded edit controls */}
-      {expanded && (
-        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-          {/* Dropdowns */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {/* Decisions */}
+      {(topic.decisions?.length ?? 0) > 0 && (
+        <SectionBlock
+          label="Decisions"
+          count={topic.decisions.length}
+          bg="#f4f5f7" color="#5e6c84"
+          items={topic.decisions}
+          prefix="✓ "
+          editing={editing}
+          onChange={(items) => onChange({ ...topic, decisions: items })}
+        />
+      )}
+
+      {/* Actions — hidden for parked topics */}
+      {!parked && (topic.follow_up_items?.length ?? 0) > 0 && (
+        <SectionBlock
+          label="Actions"
+          count={topic.follow_up_items.length}
+          bg="#fff8e6" color="#974f0c"
+          items={topic.follow_up_items}
+          prefix="→ "
+          renderItem={renderOwnerHighlight}
+          editing={editing}
+          onChange={(items) => onChange({ ...topic, follow_up_items: items })}
+        />
+      )}
+
+      {/* Open questions */}
+      {(topic.open_questions?.length ?? 0) > 0 && (
+        <SectionBlock
+          label="Open questions"
+          count={topic.open_questions.length}
+          bg="#eef5ff" color="#0052cc"
+          items={topic.open_questions}
+          prefix="? "
+          editing={editing}
+          onChange={(items) => onChange({ ...topic, open_questions: items })}
+        />
+      )}
+
+      {/* Footer strip */}
+      <div style={{ display: "flex", gap: 10, paddingTop: 8, marginTop: 6, borderTop: "1px dashed #dfe1e6", alignItems: "center", flexWrap: "wrap" }}>
+        {onViewSource && (
+          <button
+            type="button"
+            onClick={onViewSource}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              fontSize: 11, color: "#0052cc", padding: 0, fontFamily: "inherit", textDecoration: "underline",
+            }}
+          >📄 Source excerpt ↗</button>
+        )}
+        {parked && (
+          <button
+            type="button"
+            onClick={() => onChange({ ...topic, is_parked: false })}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#5e6c84", textDecoration: "underline" }}
+          >Un-park</button>
+        )}
+        {!parked && editing && (
+          <button
+            type="button"
+            onClick={() => onChange({ ...topic, is_parked: true })}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#5e6c84", textDecoration: "underline" }}
+          >⏸ Park</button>
+        )}
+        {editing && (
+          <div style={{ display: "flex", gap: 6 }}>
             <select value={topic.status} onChange={(e) => onChange({ ...topic, status: e.target.value as TopicStatus })} style={SEL}>
               <option value="open">Open</option>
               <option value="in_progress">In Progress</option>
@@ -164,68 +310,8 @@ function TopicRow({
               <option value="concern">Concern</option>
             </select>
           </div>
-
-          {/* Summary textarea */}
-          <textarea
-            value={topic.summary}
-            onChange={(e) => onChange({ ...topic, summary: e.target.value })}
-            placeholder="Summary…"
-            rows={2}
-            style={{
-              fontSize: 12, color: "#172b4d", border: "1px solid #dfe1e6", borderRadius: 4,
-              padding: "6px 8px", resize: "vertical", fontFamily: "inherit",
-              width: "100%", boxSizing: "border-box",
-            }}
-          />
-
-          {/* Follow-ups */}
-          <div>
-            {(topic.follow_up_items ?? []).map((item, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                <span style={{ color: "#97a0af", fontSize: 11 }}>→</span>
-                <input
-                  value={item}
-                  onChange={(e) => {
-                    const items = [...(topic.follow_up_items ?? [])];
-                    items[i] = e.target.value;
-                    onChange({ ...topic, follow_up_items: items });
-                  }}
-                  style={{ flex: 1, fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "3px 6px", fontFamily: "inherit" }}
-                />
-                <button
-                  onClick={() => onChange({ ...topic, follow_up_items: (topic.follow_up_items ?? []).filter((_, idx) => idx !== i) })}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "#bfc5ce", fontSize: 11 }}
-                >✕</button>
-              </div>
-            ))}
-            <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
-              <input
-                value={newFollowUp}
-                onChange={(e) => setNewFollowUp(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newFollowUp.trim()) {
-                    onChange({ ...topic, follow_up_items: [...(topic.follow_up_items ?? []), newFollowUp.trim()] });
-                    setNewFollowUp("");
-                  }
-                }}
-                placeholder="Add follow-up…"
-                style={{ flex: 1, fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "3px 6px", fontFamily: "inherit" }}
-              />
-              <button
-                onClick={() => {
-                  if (newFollowUp.trim()) {
-                    onChange({ ...topic, follow_up_items: [...(topic.follow_up_items ?? []), newFollowUp.trim()] });
-                    setNewFollowUp("");
-                  }
-                }}
-                style={{ fontSize: 11, color: "#0052cc", background: "none", border: "1px solid #b3c6e8", borderRadius: 4, padding: "3px 10px", cursor: "pointer" }}
-              >
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
