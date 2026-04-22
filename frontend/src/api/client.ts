@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData } from "@/types";
+import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -183,7 +183,7 @@ export const filesAPI = {
 export const artifactTypesAPI = {
   list: (projectId: string) =>
     proxyFetch<ArtifactType[]>(`/api/projects/${projectId}/artifact-types`),
-  create: (projectId: string, data: { name: string; prompt: string }) =>
+  create: (projectId: string, data: { name: string; prompt: string; model?: string | null }) =>
     proxyFetch<ArtifactType>(`/api/projects/${projectId}/artifact-types`, {
       method: "POST",
       body: JSON.stringify(data),
@@ -191,12 +191,15 @@ export const artifactTypesAPI = {
   update: (
     projectId: string,
     typeId: string,
-    data: { name?: string; prompt?: string; llm?: LLMProvider | null; context_scope?: ContextScope; is_default?: boolean }
+    data: { name?: string; prompt?: string; llm?: LLMProvider | null; model?: string | null; context_scope?: ContextScope; is_default?: boolean }
   ) =>
     proxyFetch<ArtifactType>(`/api/projects/${projectId}/artifact-types/${typeId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+  getDefaults: async (category: ArtifactCategory): Promise<{ name: string; prompt: string; llm: LLMProvider | null; model: string | null; category: ArtifactCategory }> => {
+    return proxyFetch(`/api/artifact-types/defaults/${category}`);
+  },
   delete: (projectId: string, typeId: string) =>
     proxyFetch<void>(`/api/projects/${projectId}/artifact-types/${typeId}`, {
       method: "DELETE",

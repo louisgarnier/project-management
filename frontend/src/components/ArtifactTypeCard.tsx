@@ -2,23 +2,14 @@
 
 import { useState } from "react";
 import type { ArtifactType, LLMProvider, ContextScope } from "@/types";
-
-const LLM_OPTIONS: { value: LLMProvider; label: string }[] = [
-  { value: "groq",     label: "Groq – Llama 3.3 (free)" },
-  { value: "deepseek", label: "DeepSeek Chat (~free)" },
-  { value: "claude",   label: "Claude Haiku" },
-  { value: "openai",   label: "GPT-4o mini" },
-];
-
-const LLM_LABELS: Record<LLMProvider, string> = Object.fromEntries(
-  LLM_OPTIONS.map((o) => [o.value, o.label])
-) as Record<LLMProvider, string>;
+import { MODEL_RECOMMENDATIONS, PROVIDER_LABELS } from "@/constants/models";
+import { artifactTypesAPI } from "@/api/client";
 
 type Props = {
   type: ArtifactType;
   projectDefaultLlm: LLMProvider;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null; context_scope?: ContextScope; is_default?: boolean }) => Promise<void>;
+  onUpdate: (id: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null; model?: string | null; context_scope?: ContextScope; is_default?: boolean }) => Promise<void>;
   hideDelete?: boolean;
   hideDefaultToggle?: boolean;
 };
@@ -29,15 +20,18 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
   const [name, setName] = useState(type.name);
   const [prompt, setPrompt] = useState(type.prompt);
   const [llm, setLlm] = useState<LLMProvider | null>(type.llm);
+  const [model, setModel] = useState<string | null>(type.model ?? null);
   const [contextScope, setContextScope] = useState<ContextScope>(type.context_scope ?? "call");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [promptExpanded, setPromptExpanded] = useState(false);
 
   function handleCancelEdit() {
     setEditing(false);
     setName(type.name);
     setPrompt(type.prompt);
     setLlm(type.llm);
+    setModel(type.model ?? null);
     setContextScope(type.context_scope ?? "call");
     setSaveError(null);
   }
@@ -46,7 +40,7 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
     setSaving(true);
     setSaveError(null);
     try {
-      await onUpdate(type.id, { name, prompt, llm, context_scope: contextScope });
+      await onUpdate(type.id, { name, prompt, llm, model, context_scope: contextScope });
       setEditing(false);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");
@@ -88,19 +82,25 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
           )}
         </div>
 
-        {/* LLM + context scope — always visible in header */}
+        {/* Provider + context scope — always visible in header */}
         <div className="flex items-center gap-2 flex-shrink-0">
           {editing ? (
             <>
               <select
-                value={llm ?? ""}
-                onChange={(e) => setLlm((e.target.value as LLMProvider) || null)}
+                value={llm ?? "inherit"}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setLlm(val === "inherit" ? null : (val as LLMProvider));
+                  if (val !== "openrouter") setModel(null);
+                }}
                 className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
               >
-                <option value="">Default ({LLM_LABELS[projectDefaultLlm]})</option>
-                {LLM_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
+                <option value="inherit">{PROVIDER_LABELS.inherit}</option>
+                <option value="groq">{PROVIDER_LABELS.groq}</option>
+                <option value="deepseek">{PROVIDER_LABELS.deepseek}</option>
+                <option value="claude">{PROVIDER_LABELS.claude}</option>
+                <option value="openai">{PROVIDER_LABELS.openai}</option>
+                <option value="openrouter">{PROVIDER_LABELS.openrouter}</option>
               </select>
               <select
                 value={contextScope}
@@ -115,8 +115,8 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
             <>
               <span className="text-[11px] text-[#5e6c84] bg-[#f4f5f7] px-2 py-[3px] rounded">
                 {type.llm
-                  ? LLM_LABELS[type.llm]
-                  : `Default · ${LLM_LABELS[projectDefaultLlm]}`}
+                  ? PROVIDER_LABELS[type.llm]
+                  : `Inherit · ${PROVIDER_LABELS[projectDefaultLlm]}`}
               </span>
               <span
                 className="text-[10px] font-medium px-2 py-[3px] rounded"
@@ -189,15 +189,114 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
       {/* Prompt — read or edit */}
       {expanded &&
         (editing ? (
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            className="mt-2 w-full text-[12px] text-[#172b4d] bg-[#f4f5f7] border border-[#dfe1e6] rounded p-3 resize-none h-32 focus:outline-none focus:border-[#0052cc]"
-          />
+          <>
+            {/* OpenRouter model picker — only when provider=openrouter */}
+            {llm === "openrouter" && (
+              <div style={{ marginTop: 10, marginBottom: 8 }}>
+                <label style={{ fontSize: 11, color: "#5e6c84", display: "block", marginBottom: 4 }}>Model (OpenRouter)</label>
+                <select
+                  value={MODEL_RECOMMENDATIONS[type.category]?.some((m) => m.slug === model) ? model! : "custom"}
+                  onChange={(e) => {
+                    if (e.target.value === "custom") return;
+                    setModel(e.target.value);
+                  }}
+                  style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", fontFamily: "inherit", width: "100%" }}
+                >
+                  {(MODEL_RECOMMENDATIONS[type.category] ?? []).map((m) => (
+                    <option key={m.slug} value={m.slug}>
+                      {m.slug} — {m.label}{m.priceHint ? ` · ${m.priceHint}` : ""}
+                    </option>
+                  ))}
+                  <option value="custom">Custom…</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="Custom OpenRouter slug (e.g. mistralai/mistral-large)"
+                  value={model ?? ""}
+                  onChange={(e) => setModel(e.target.value)}
+                  style={{ fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "4px 6px", fontFamily: "inherit", width: "100%", marginTop: 4, boxSizing: "border-box" }}
+                />
+              </div>
+            )}
+
+            {/* Expandable prompt textarea */}
+            <div style={{ position: "relative", marginTop: 8 }}>
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                rows={promptExpanded ? 25 : 6}
+                style={{
+                  width: "100%", fontSize: 12, fontFamily: "ui-monospace, Menlo, monospace",
+                  color: "#172b4d", border: "1px solid #dfe1e6", borderRadius: 4,
+                  padding: "8px 10px", resize: "vertical", boxSizing: "border-box",
+                  minHeight: promptExpanded ? 500 : 120,
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setPromptExpanded((v) => !v)}
+                title={promptExpanded ? "Collapse" : "Expand for easier editing"}
+                style={{ position: "absolute", top: 6, right: 6, background: "rgba(255,255,255,.9)", border: "1px solid #dfe1e6", borderRadius: 3, padding: "2px 6px", fontSize: 10, cursor: "pointer" }}
+              >
+                {promptExpanded ? "⤡ Collapse" : "⤢ Expand"}
+              </button>
+            </div>
+
+            {/* Runtime context disclosure — call_topics only */}
+            {type.category === "call_topics" && (
+              <details style={{ marginTop: 8, fontSize: 11 }}>
+                <summary style={{ cursor: "pointer", color: "#5e6c84" }}>
+                  Show runtime context (appended automatically at extraction time)
+                </summary>
+                <pre style={{ fontSize: 10, background: "#fafbfc", padding: 8, borderRadius: 4, color: "#5e6c84", whiteSpace: "pre-wrap", marginTop: 6 }}>
+{`Project context: {projects.context}
+
+Existing project topic names (vocabulary alignment):
+  - {name 1}
+  - {name 2}
+  ...
+
+Response schema: { ... fixed JSON shape ... }
+
+Transcript:
+{full transcript}`}
+                </pre>
+                <p style={{ fontSize: 10, color: "#97a0af", marginTop: 4 }}>
+                  These blocks are added automatically by the extraction pipeline — they cannot be edited here.
+                </p>
+              </details>
+            )}
+
+            {/* Action row: Reset to default (left) + Cancel / Save (right) */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!confirm("Overwrite your current prompt and settings with the latest default? Your edits will be lost.")) return;
+                  try {
+                    const def = await artifactTypesAPI.getDefaults(type.category);
+                    setPrompt(def.prompt);
+                    setLlm(def.llm);
+                    setModel(def.model);
+                  } catch (err) {
+                    setSaveError(err instanceof Error ? err.message : "Failed to load defaults");
+                  }
+                }}
+                style={{ fontSize: 11, color: "#5e6c84", background: "none", border: "1px solid #dfe1e6", borderRadius: 4, padding: "4px 10px", cursor: "pointer", marginRight: "auto" }}
+              >
+                ⟲ Reset to default
+              </button>
+            </div>
+          </>
         ) : (
-          <p className="mt-2 text-[12px] text-[#5e6c84] leading-relaxed whitespace-pre-wrap bg-[#f4f5f7] rounded p-3">
-            {type.prompt}
-          </p>
+          <>
+            <p className="mt-2 text-[12px] text-[#5e6c84] leading-relaxed whitespace-pre-wrap bg-[#f4f5f7] rounded p-3">
+              {type.prompt}
+            </p>
+            {type.model && (
+              <p className="mt-1 text-[10px] text-[#97a0af]">Model: {type.model}</p>
+            )}
+          </>
         ))}
 
       {saveError && <p className="mt-2 text-[11px] text-red-600">{saveError}</p>}
