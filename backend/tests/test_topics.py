@@ -363,21 +363,22 @@ def test_get_project_topics_returns_non_archived(mock_gc):
 
 
 def test_get_topics_prompt_returns_stored_prompt():
-    """_get_topics_prompt returns (prompt, llm) when a row exists."""
+    """_get_topics_prompt returns (prompt, llm, model) when a row exists."""
     from backend.services.topics_service import _get_topics_prompt
     from unittest.mock import MagicMock
 
     mock_db = MagicMock()
     mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = [
-        {"prompt": "STORED PROMPT", "llm": "groq"}
+        {"prompt": "STORED PROMPT", "llm": "groq", "model": None}
     ]
-    prompt, llm = _get_topics_prompt("proj-1", mock_db)
+    prompt, llm, model = _get_topics_prompt("proj-1", mock_db)
     assert prompt == "STORED PROMPT"
     assert llm == "groq"
+    assert model is None
 
 
 def test_get_topics_prompt_falls_back_to_none():
-    """_get_topics_prompt returns (None, None) when no row exists."""
+    """_get_topics_prompt returns (None, None, None) when no row exists."""
     from backend.services.topics_service import _get_topics_prompt
     from unittest.mock import MagicMock
 
@@ -385,9 +386,10 @@ def test_get_topics_prompt_falls_back_to_none():
     mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = (
         []
     )
-    prompt, llm = _get_topics_prompt("proj-1", mock_db)
+    prompt, llm, model = _get_topics_prompt("proj-1", mock_db)
     assert prompt is None
     assert llm is None
+    assert model is None
 
 
 @patch("backend.services.topics_service.get_client")
@@ -451,7 +453,7 @@ class TestExtractCallTopics(unittest.TestCase):
             {"default_llm": "groq"}
         ]
 
-        async def fake_llm(prompt, llm):
+        async def fake_llm(prompt, llm, *, model=None):
             return [
                 {
                     "name": "Budget",
@@ -525,7 +527,7 @@ class TestAggregateTopics(unittest.TestCase):
         ):
             with patch(
                 "backend.services.topics_service._get_topics_prompt",
-                return_value=(None, "groq"),
+                return_value=(None, "groq", None),
             ):
                 call_topics = [
                     {
@@ -607,7 +609,7 @@ class TestAggregateTopics(unittest.TestCase):
         ):
             with patch(
                 "backend.services.topics_service._get_topics_prompt",
-                return_value=(None, "groq"),
+                return_value=(None, "groq", None),
             ):
                 result = self._run(aggregate_topics("call-1", call_topics))
 
@@ -1450,7 +1452,7 @@ def test_extract_call_topics_uses_new_default_prompt(monkeypatch):
 
     captured = {}
 
-    async def fake_call_llm(prompt, llm):
+    async def fake_call_llm(prompt, llm, *, model=None):
         captured["prompt"] = prompt
         return []
 
@@ -1485,7 +1487,7 @@ def test_extract_call_topics_uses_new_default_prompt(monkeypatch):
     monkeypatch.setattr("backend.services.topics_service._call_llm", fake_call_llm)
     monkeypatch.setattr(
         "backend.services.topics_service._get_topics_prompt",
-        lambda project_id, db, category="call_topics": (None, None),
+        lambda project_id, db, category="call_topics": (None, None, None),
     )
     monkeypatch.setattr(
         "backend.services.topics_service.get_client", lambda: mock_client

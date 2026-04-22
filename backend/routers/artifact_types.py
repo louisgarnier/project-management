@@ -122,14 +122,18 @@ def seed_defaults(project_id: str) -> None:
 class ArtifactTypeCreate(BaseModel):
     name: str = Field(min_length=1)
     prompt: str = Field(min_length=1)
-    llm: Literal["groq", "deepseek", "claude", "openai"] | None = None
+    llm: Literal["groq", "deepseek", "claude", "openai", "openrouter"] | None = None
+    model: str | None = None
     context_scope: Literal["call", "project"] = "call"
 
 
 class ArtifactTypeUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     prompt: str | None = Field(default=None, min_length=1)
-    llm: Literal["groq", "deepseek", "claude", "openai"] | None = Field(default=None)
+    llm: Literal["groq", "deepseek", "claude", "openai", "openrouter"] | None = Field(
+        default=None
+    )
+    model: str | None = Field(default=None)
     context_scope: Literal["call", "project"] | None = Field(default=None)
     is_default: bool | None = Field(default=None)
 
@@ -167,6 +171,7 @@ def create_artifact_type(project_id: str, payload: ArtifactTypeCreate):
                 "is_default": False,
                 "category": "artifacts",
                 "llm": payload.llm,
+                "model": payload.model,
                 "context_scope": payload.context_scope,
             }
         )
@@ -253,7 +258,7 @@ def import_artifact_types(project_id: str, payload: ArtifactTypeImport):
     # Auth is enforced at the API gateway layer; open reads across projects are acceptable.
     source = (
         client.table("artifact_types")
-        .select("name,prompt,llm")
+        .select("name,prompt,llm,model")
         .in_("id", payload.type_ids)
         .execute()
     )
@@ -267,6 +272,7 @@ def import_artifact_types(project_id: str, payload: ArtifactTypeImport):
             "is_default": False,
             "category": "artifacts",
             "llm": t.get("llm"),
+            "model": t.get("model"),
         }
         for t in source.data
     ]

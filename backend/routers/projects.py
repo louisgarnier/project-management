@@ -5,7 +5,7 @@ from backend.routers.artifact_types import seed_defaults
 from backend.utils.logger import db_logger, get_logger
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = get_logger("projects")
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -17,8 +17,11 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
-    default_llm: Optional[Literal["groq", "claude", "openai"]] = None
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
     context: Optional[str] = None
+    default_llm: Optional[Literal["groq", "claude", "openai", "openrouter"]] = None
+    default_model: str | None = None
 
 
 @router.get("")
@@ -60,10 +63,7 @@ def update_project(project_id: str, payload: ProjectUpdate):
         raise HTTPException(status_code=422, detail="No fields to update")
     try:
         result = (
-            client.table("projects")
-            .update(update_data)
-            .eq("id", project_id)
-            .execute()
+            client.table("projects").update(update_data).eq("id", project_id).execute()
         )
     except Exception as e:
         logger.error(f"❌ [DB] Failed to update project {project_id}: {e}")

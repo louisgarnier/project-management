@@ -516,7 +516,7 @@ def test_extraction_prompt_includes_vocabulary_hint_when_topics_exist():
 
     captured = {}
 
-    async def fake_llm(prompt, llm):
+    async def fake_llm(prompt, llm, *, model=None):
         captured["prompt"] = prompt
         return []
 
@@ -546,7 +546,7 @@ def test_extraction_prompt_has_no_vocabulary_hint_when_no_prior_topics():
 
     captured = {}
 
-    async def fake_llm(prompt, llm):
+    async def fake_llm(prompt, llm, *, model=None):
         captured["prompt"] = prompt
         return []
 
@@ -658,7 +658,7 @@ def test_merge_verification_prompt_includes_ancestor_lineage_block():
 
     captured = {}
 
-    async def fake_llm(prompt, llm):
+    async def fake_llm(prompt, llm, *, model=None):
         captured["prompt"] = prompt
         return {"name": "API", "summary": "ok", "follow_up_items": [],
                 "decisions": [], "status": "open", "owner": "Us",
@@ -711,7 +711,7 @@ def test_merge_verification_prompt_falls_back_to_flat_lists_when_no_topic_id():
 
     captured = {}
 
-    async def fake_llm(prompt, llm):
+    async def fake_llm(prompt, llm, *, model=None):
         captured["prompt"] = prompt
         return {"name": "New M:N", "summary": "ok", "follow_up_items": [],
                 "decisions": [], "status": "open", "owner": "Us",

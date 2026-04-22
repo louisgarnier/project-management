@@ -187,9 +187,9 @@ _TOPIC_SCHEMA = (
 )
 
 
-async def _call_llm(prompt: str, llm: str) -> list[dict] | dict:
+async def _call_llm(prompt: str, llm: str, *, model: str | None = None) -> list[dict] | dict:
     logger.info(f"🤖 [{llm}] Extracting topics")
-    raw = await call_llm_raw(_EXTRACT_SYSTEM, prompt, llm)
+    raw = await call_llm_raw(_EXTRACT_SYSTEM, prompt, llm, model=model)
     raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
@@ -326,11 +326,11 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
 
 def _get_topics_prompt(
     project_id: str, db, category: str = "call_topics"
-) -> tuple[str | None, str | None]:
-    """Return (prompt, llm) for the given workflow category, or (None, None) if not found."""
+) -> tuple[str | None, str | None, str | None]:
+    """Return (prompt, llm, model) for the given workflow category, or (None, None, None) if not found."""
     rows = (
         db.table("artifact_types")
-        .select("prompt, llm")
+        .select("prompt, llm, model")
         .eq("project_id", project_id)
         .eq("category", category)
         .order("created_at")
@@ -339,8 +339,8 @@ def _get_topics_prompt(
         .data
     )
     if not rows:
-        return None, None
-    return rows[0]["prompt"], rows[0].get("llm")
+        return None, None, None
+    return rows[0]["prompt"], rows[0].get("llm"), rows[0].get("model")
 
 
 async def extract_call_topics(call_id: str) -> list[dict]:
@@ -365,19 +365,22 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         raise ValueError("no_transcript")
 
     project_id = call_row[0]["project_id"]
-    stored_prompt, stored_llm = _get_topics_prompt(
+    stored_prompt, stored_llm, stored_model = _get_topics_prompt(
         project_id, db, category="call_topics"
     )
     proj_rows = (
         db.table("projects")
-        .select("default_llm, context")
+        .select("default_llm, default_model, context")
         .eq("id", project_id)
         .execute()
         .data
     )
     if stored_llm is None:
         stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
+    if stored_model is None:
+        stored_model = proj_rows[0].get("default_model") if proj_rows else None
     llm = stored_llm or "groq"
+    model = stored_model
     project_context = (proj_rows[0].get("context") or "").strip() if proj_rows else ""
 
     base_instruction = stored_prompt or CALL_TOPICS_DEFAULT_PROMPT
@@ -416,7 +419,7 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         + f"Transcript:\n{transcript}"
     )
 
-    raw = await _call_llm(prompt, llm)
+    raw = await _call_llm(prompt, llm, model=model)
     # Flatten if LLM returned a dict (shouldn't happen with flat-list prompt, but safe)
     if isinstance(raw, dict):
         flat: list[dict] = []
@@ -641,19 +644,22 @@ async def run_merge_preview(call_id: str) -> list[dict]:
     prev_by_id = {t["topic_id"]: t for t in previous}
 
     # Get LLM config
-    stored_prompt, stored_llm = _get_topics_prompt(
+    stored_prompt, stored_llm, stored_model = _get_topics_prompt(
         project_id, db, category="project_topics"
     )
     proj_rows = (
         db.table("projects")
-        .select("default_llm, context")
+        .select("default_llm, default_model, context")
         .eq("id", project_id)
         .execute()
         .data
     )
     if stored_llm is None:
         stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
+    if stored_model is None:
+        stored_model = proj_rows[0].get("default_model") if proj_rows else None
     llm = stored_llm or "groq"
+    model = stored_model
     project_context = (proj_rows[0].get("context") or "").strip() if proj_rows else ""
 
     base_merge_instructions = stored_prompt or (
@@ -725,7 +731,7 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                     f"The summary must cover ALL key points from ALL topics being merged.\n\n"
                     f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
                 )
-                merged = await _call_llm(prompt, llm)
+                merged = await _call_llm(prompt, llm, model=model)
                 if isinstance(merged, list):
                     merged = merged[0] if merged else {}
                 return [{**merged, "topic_id": None}]
@@ -781,7 +787,7 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                     f"The summary must include ALL key points from both historical and new discussion.\n\n"
                     f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
                 )
-                merged = await _call_llm(prompt, llm)
+                merged = await _call_llm(prompt, llm, model=model)
                 if isinstance(merged, list):
                     merged = merged[0] if merged else {}
                 return [{**merged, "topic_id": ptid}]
@@ -837,7 +843,7 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 f"The summary must include ALL key points from ALL topics being merged.\n\n"
                 f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
             )
-            merged = await _call_llm(prompt, llm)
+            merged = await _call_llm(prompt, llm, model=model)
             if isinstance(merged, list):
                 merged = merged[0] if merged else {}
             return [{**merged, "topic_id": None, "_source_topic_ids": ptids}]
@@ -894,13 +900,14 @@ async def _verify_merged_topics(call_id: str, merged_topics: list[dict]) -> list
         return merged_topics
 
     # Get the merge_verification prompt
-    stored_prompt, stored_llm = _get_topics_prompt(
+    stored_prompt, stored_llm, stored_model = _get_topics_prompt(
         project_id, db, category="merge_verification"
     )
     proj_rows = (
-        db.table("projects").select("default_llm").eq("id", project_id).execute().data
+        db.table("projects").select("default_llm, default_model").eq("id", project_id).execute().data
     )
-    llm = stored_llm or (proj_rows[0]["default_llm"] if proj_rows else "groq")
+    llm = stored_llm or (proj_rows[0].get("default_llm") if proj_rows else "groq") or "groq"
+    model = stored_model or (proj_rows[0].get("default_model") if proj_rows else None)
     verify_instructions = stored_prompt or (
         "You are a quality reviewer for project topic data. "
         "Verify that the merged topic did NOT lose any important information. "
@@ -1017,7 +1024,7 @@ async def _verify_merged_topics(call_id: str, merged_topics: list[dict]) -> list
                 f"Return the corrected topic JSON (same schema).\n"
                 f"{_TOPIC_SCHEMA}"
             )
-            corrected = await _call_llm(prompt, llm)
+            corrected = await _call_llm(prompt, llm, model=model)
             if isinstance(corrected, list):
                 corrected = corrected[0] if corrected else topic
             # Preserve internal fields
@@ -1106,13 +1113,14 @@ async def verify_not_discussed_topics(call_id: str) -> dict:
         return {}
 
     # Get the not_discussed_check prompt and LLM
-    stored_prompt, stored_llm = _get_topics_prompt(
+    stored_prompt, stored_llm, stored_model = _get_topics_prompt(
         project_id, db, category="not_discussed_check"
     )
     proj_rows = (
-        db.table("projects").select("default_llm").eq("id", project_id).execute().data
+        db.table("projects").select("default_llm, default_model").eq("id", project_id).execute().data
     )
-    llm = stored_llm or (proj_rows[0]["default_llm"] if proj_rows else "groq")
+    llm = stored_llm or (proj_rows[0].get("default_llm") if proj_rows else "groq") or "groq"
+    model = stored_model or (proj_rows[0].get("default_model") if proj_rows else None)
     check_instructions = stored_prompt or (
         "You are checking whether a project topic was actually discussed in a call transcript.\n"
         "Given the topic name, its latest summary, and the full call transcript, determine:\n"
@@ -1133,7 +1141,7 @@ async def verify_not_discussed_topics(call_id: str) -> dict:
                 f"Topic summary: {topic.get('summary', '(no summary)')}\n\n"
                 f"Call transcript:\n{transcript}"
             )
-            raw = await call_llm_raw(_EXTRACT_SYSTEM, prompt, llm)
+            raw = await call_llm_raw(_EXTRACT_SYSTEM, prompt, llm, model=model)
             raw = raw.strip()
             if raw.startswith("```"):
                 raw = raw.split("```")[1]

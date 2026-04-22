@@ -42,17 +42,18 @@ def create_artifact_selections(call_id: str, payload: ArtifactSelectionsPayload)
         raise HTTPException(status_code=404, detail="Call not found")
 
     # Delete any stale artifacts before creating fresh ones
-    client.table("artifacts").delete().eq("call_id", call_id).eq("status", "stale").execute()
+    client.table("artifacts").delete().eq("call_id", call_id).eq(
+        "status", "stale"
+    ).execute()
     db_logger.info(f"🗄️ [DB] Cleared stale artifacts for call: {call_id}")
 
-    db_logger.info(f"🗄️ [DB] Creating {len(payload.selections)} artifact selections for call: {call_id}")
+    db_logger.info(
+        f"🗄️ [DB] Creating {len(payload.selections)} artifact selections for call: {call_id}"
+    )
 
     type_ids = [s.artifact_type_id for s in payload.selections]
     types_result = (
-        client.table("artifact_types")
-        .select("id,prompt")
-        .in_("id", type_ids)
-        .execute()
+        client.table("artifact_types").select("id,prompt").in_("id", type_ids).execute()
     )
     prompt_map = {t["id"]: t["prompt"] for t in types_result.data}
 
@@ -73,7 +74,9 @@ def create_artifact_selections(call_id: str, payload: ArtifactSelectionsPayload)
         rows.append(row)
 
     result = client.table("artifacts").insert(rows).execute()
-    db_logger.info(f"✅ [DB] Created {len(result.data)} artifact rows for call: {call_id}")
+    db_logger.info(
+        f"✅ [DB] Created {len(result.data)} artifact rows for call: {call_id}"
+    )
     return result.data
 
 
@@ -160,11 +163,19 @@ async def stream_artifacts(call_id: str):
     transcript = call_result.data[0].get("transcript") or ""
     project_id = call_result.data[0].get("project_id", "")
 
-    # Load project context (best-effort)
+    # Load project context and defaults (best-effort)
     project_context = ""
+    project_default_model: str | None = None
     try:
-        proj_row = supabase.table("projects").select("context").eq("id", project_id).execute().data
+        proj_row = (
+            supabase.table("projects")
+            .select("context,default_model")
+            .eq("id", project_id)
+            .execute()
+            .data
+        )
         project_context = (proj_row[0].get("context") or "").strip() if proj_row else ""
+        project_default_model = proj_row[0].get("default_model") if proj_row else None
     except Exception:
         project_context = ""
 
@@ -173,7 +184,9 @@ async def stream_artifacts(call_id: str):
     try:
         topics_result = (
             supabase.table("topic_updates")
-            .select("summary, follow_up_items, decisions, status, owner, sentiment, topic_id")
+            .select(
+                "summary, follow_up_items, decisions, status, owner, sentiment, topic_id"
+            )
             .eq("call_id", call_id)
             .execute()
         )
@@ -224,19 +237,25 @@ async def stream_artifacts(call_id: str):
     )
     pending = artifacts_result.data
 
-    # Build context_scope map: artifact_type_id → "call" | "project"
+    # Build context_scope and model maps: artifact_type_id → value
     context_scope_map: dict[str, str] = {}
+    type_model_map: dict[str, str | None] = {}
     if pending:
-        type_ids = list({a["artifact_type_id"] for a in pending if a.get("artifact_type_id")})
+        type_ids = list(
+            {a["artifact_type_id"] for a in pending if a.get("artifact_type_id")}
+        )
         if type_ids:
             scope_rows = (
                 supabase.table("artifact_types")
-                .select("id,context_scope")
+                .select("id,context_scope,model")
                 .in_("id", type_ids)
                 .execute()
                 .data
             )
-            context_scope_map = {r["id"]: r.get("context_scope", "call") for r in scope_rows}
+            context_scope_map = {
+                r["id"]: r.get("context_scope", "call") for r in scope_rows
+            }
+            type_model_map = {r["id"]: r.get("model") for r in scope_rows}
 
     async def event_stream():
         if not pending:
@@ -248,29 +267,46 @@ async def stream_artifacts(call_id: str):
         async def gen_one(artifact: dict) -> None:
             artifact_id = artifact["id"]
             prompt_used = artifact["prompt_used"]
-            scope = context_scope_map.get(artifact.get("artifact_type_id", ""), "call")
-            await queue.put({"type": "status", "artifact_id": artifact_id, "status": "generating"})
-            supabase.table("artifacts").update({"status": "generating"}).eq("id", artifact_id).execute()
+            type_id = artifact.get("artifact_type_id", "")
+            scope = context_scope_map.get(type_id, "call")
+            effective_model = type_model_map.get(type_id) or project_default_model
+            await queue.put(
+                {"type": "status", "artifact_id": artifact_id, "status": "generating"}
+            )
+            supabase.table("artifacts").update({"status": "generating"}).eq(
+                "id", artifact_id
+            ).execute()
             try:
                 full_context = transcript
                 if scope == "project" and project_topics_context:
                     full_context = f"{transcript}\n\n{project_topics_context}"
                 effective_prompt = (
                     f"Project context:\n{project_context}\n\n{prompt_used}"
-                    if project_context else prompt_used
+                    if project_context
+                    else prompt_used
                 )
-                content = await generate_artifact(effective_prompt, full_context, artifact["mode"], topics=call_topics)
+                content = await generate_artifact(
+                    effective_prompt,
+                    full_context,
+                    artifact["mode"],
+                    topics=call_topics,
+                    model=effective_model,
+                )
                 supabase.table("artifacts").update(
                     {"status": "done", "content": content}
                 ).eq("id", artifact_id).execute()
-                await queue.put({"type": "done", "artifact_id": artifact_id, "content": content})
+                await queue.put(
+                    {"type": "done", "artifact_id": artifact_id, "content": content}
+                )
                 db_logger.info(f"✅ [DB] Artifact done: {artifact_id}")
             except Exception as exc:
                 msg = str(exc)
                 supabase.table("artifacts").update(
                     {"status": "error", "error_message": msg}
                 ).eq("id", artifact_id).execute()
-                await queue.put({"type": "error", "artifact_id": artifact_id, "message": msg})
+                await queue.put(
+                    {"type": "error", "artifact_id": artifact_id, "message": msg}
+                )
                 db_logger.error(f"❌ [DB] Artifact error: {artifact_id} — {msg}")
             finally:
                 await queue.put(None)

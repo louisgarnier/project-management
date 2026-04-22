@@ -241,3 +241,96 @@ def test_get_defaults_for_call_topics_returns_new_default():
 def test_get_defaults_for_unknown_category_returns_404():
     resp = client.get("/api/artifact-types/defaults/nonexistent")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Task 8: model field propagation tests
+# ---------------------------------------------------------------------------
+
+
+def test_artifact_type_create_schema_accepts_model():
+    """ArtifactTypeCreate Pydantic model accepts model and llm=openrouter."""
+    from backend.routers.artifact_types import ArtifactTypeCreate
+
+    a = ArtifactTypeCreate(
+        name="X", prompt="Y", llm="openrouter", model="openai/gpt-4o"
+    )
+    assert a.model == "openai/gpt-4o"
+    assert a.llm == "openrouter"
+
+
+def test_artifact_type_update_schema_accepts_model():
+    """ArtifactTypeUpdate Pydantic model accepts model."""
+    from backend.routers.artifact_types import ArtifactTypeUpdate
+
+    u = ArtifactTypeUpdate(llm="openrouter", model="google/gemini-2.5-pro")
+    assert u.model == "google/gemini-2.5-pro"
+    assert u.llm == "openrouter"
+
+
+@patch("backend.routers.artifact_types.get_client")
+def test_create_artifact_type_accepts_model(mock_gc):
+    """POST a new type with llm='openrouter' + model='openai/gpt-4o'; both round-trip."""
+    from uuid import uuid4
+
+    m = MagicMock()
+    created = {
+        "id": str(uuid4()),
+        "project_id": PROJECT_ID,
+        "name": "OpenRouter Type",
+        "prompt": "do something",
+        "is_default": False,
+        "llm": "openrouter",
+        "model": "openai/gpt-4o",
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+    m.table.return_value.insert.return_value.execute.return_value.data = [created]
+    mock_gc.return_value = m
+    r = client.post(
+        f"/api/projects/{PROJECT_ID}/artifact-types",
+        json={
+            "name": "OpenRouter Type",
+            "prompt": "do something",
+            "llm": "openrouter",
+            "model": "openai/gpt-4o",
+        },
+    )
+    assert r.status_code == 201
+    assert r.json()["llm"] == "openrouter"
+    assert r.json()["model"] == "openai/gpt-4o"
+    # Verify model was included in the insert payload
+    inserted = m.table.return_value.insert.call_args[0][0]
+    assert inserted["model"] == "openai/gpt-4o"
+    assert inserted["llm"] == "openrouter"
+
+
+@patch("backend.routers.artifact_types.get_client")
+def test_update_artifact_type_accepts_model(mock_gc):
+    """PATCH a type with model='google/gemini-2.5-pro'; model round-trips."""
+    from uuid import uuid4
+
+    type_id = str(uuid4())
+    m = MagicMock()
+    m.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {"id": type_id}
+    ]
+    updated = {
+        "id": type_id,
+        "project_id": PROJECT_ID,
+        "name": "My Type",
+        "prompt": "do x",
+        "is_default": False,
+        "llm": "openrouter",
+        "model": "google/gemini-2.5-pro",
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+    m.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [
+        updated
+    ]
+    mock_gc.return_value = m
+    r = client.patch(
+        f"/api/projects/{PROJECT_ID}/artifact-types/{type_id}",
+        json={"llm": "openrouter", "model": "google/gemini-2.5-pro"},
+    )
+    assert r.status_code == 200
+    assert r.json()["model"] == "google/gemini-2.5-pro"
