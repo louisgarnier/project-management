@@ -6,16 +6,18 @@ import type { ArtifactType, LLMProvider } from "@/types";
 export type SelectionMode = "generate" | "manual" | "skip";
 
 const LLM_LABEL: Record<string, string> = {
-  groq:     "Groq – Llama 3.3 (free)",
-  deepseek: "DeepSeek Chat (~free)",
-  claude:   "Claude Haiku",
-  openai:   "GPT-4o mini",
+  groq:       "Groq – Llama 3.3 (free)",
+  deepseek:   "DeepSeek Chat (~free)",
+  claude:     "Claude Haiku",
+  openai:     "GPT-4o mini",
+  openrouter: "OpenRouter",
 };
 
 type Props = {
   artifactTypes: ArtifactType[];
   selections: Record<string, SelectionMode>;
   projectDefaultLlm: LLMProvider;
+  projectDefaultModel?: string | null;
   onChange: (typeId: string, mode: SelectionMode) => void;
 };
 
@@ -23,13 +25,19 @@ export default function ArtifactSelector({
   artifactTypes,
   selections,
   projectDefaultLlm,
+  projectDefaultModel,
   onChange,
 }: Props) {
   return (
     <div className="flex flex-col gap-2">
       {artifactTypes.map((t) => {
         const sel = selections[t.id] ?? "generate";
-        const llmLabel = LLM_LABEL[t.llm ?? projectDefaultLlm] ?? "Groq (free)";
+        const effectiveLlm = t.llm ?? projectDefaultLlm;
+        const effectiveModel = t.llm === "openrouter"
+          ? t.model
+          : (effectiveLlm === "openrouter" ? (projectDefaultModel ?? null) : null);
+        const baseLlmLabel = LLM_LABEL[effectiveLlm] ?? "Groq (free)";
+        const llmLabel = effectiveModel ? `${baseLlmLabel} · ${effectiveModel}` : baseLlmLabel;
 
         return (
           <div

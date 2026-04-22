@@ -9,10 +9,11 @@ import ArtifactTypeCard from "@/components/ArtifactTypeCard";
 import AddArtifactTypeModal from "@/components/AddArtifactTypeModal";
 
 const LLM_OPTIONS: { value: LLMProvider; label: string }[] = [
-  { value: "groq",     label: "Groq – Llama 3.3 (free)" },
-  { value: "deepseek", label: "DeepSeek Chat (~free)" },
-  { value: "claude",   label: "Claude Haiku" },
-  { value: "openai",   label: "GPT-4o mini" },
+  { value: "groq",       label: "Groq – Llama 3.3 (free)" },
+  { value: "deepseek",   label: "DeepSeek Chat (~free)" },
+  { value: "claude",     label: "Claude Haiku" },
+  { value: "openai",     label: "GPT-4o mini" },
+  { value: "openrouter", label: "OpenRouter ⭐" },
 ];
 
 export default function ArtifactsPage() {
@@ -26,6 +27,7 @@ export default function ArtifactsPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [savingLlm, setSavingLlm] = useState(false);
   const [llmSaveError, setLlmSaveError] = useState<string | null>(null);
+  const [defaultModel, setDefaultModel] = useState<string>("");
   const [projectContext, setProjectContext] = useState<string>("");
   const [contextSaving, setContextSaving] = useState(false);
 
@@ -41,6 +43,7 @@ export default function ArtifactsPage() {
       setTypes(data);
       setProject(proj);
       setProjectContext(proj.context ?? "");
+      setDefaultModel(proj.default_model ?? "");
     } catch (err) {
       logger.error("Failed to load", { component: "ArtifactsPage", data: err });
       setError("Failed to load artifact types.");
@@ -61,14 +64,15 @@ export default function ArtifactsPage() {
     }
   }
 
-  async function handleUpdateDefaultLlm(llm: LLMProvider) {
+  async function handleUpdateDefaultLlm(llm: LLMProvider, model: string | null = null) {
     if (!project) return;
     setSavingLlm(true);
     setLlmSaveError(null);
     try {
-      const updated = await projectsAPI.update(projectId, { default_llm: llm });
+      const updated = await projectsAPI.updateDefaultLlm(projectId, llm, model);
       setProject(updated);
-      logger.info("Updated project default LLM", { component: "ArtifactsPage", data: { llm } });
+      setDefaultModel(updated.default_model ?? "");
+      logger.info("Updated project default LLM", { component: "ArtifactsPage", data: { llm, model } });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to save";
       setLlmSaveError(msg);
@@ -107,19 +111,38 @@ export default function ArtifactsPage() {
         <div className="flex items-center gap-3">
           {project && (
             <div className="flex flex-col items-end gap-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-[#5e6c84]">Project default:</span>
-                <select
-                  value={project.default_llm}
-                  onChange={(e) => handleUpdateDefaultLlm(e.target.value as LLMProvider)}
-                  disabled={savingLlm}
-                  className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc] disabled:opacity-50"
-                >
-                  {LLM_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-                {savingLlm && <span className="text-[11px] text-[#5e6c84]">Saving…</span>}
+              <div className="flex items-end gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[11px] text-[#5e6c84]">Project default provider</span>
+                  <select
+                    value={project.default_llm}
+                    onChange={(e) => {
+                      const v = e.target.value as LLMProvider;
+                      handleUpdateDefaultLlm(v, v === "openrouter" ? (project.default_model ?? defaultModel) : null);
+                    }}
+                    disabled={savingLlm}
+                    className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc] disabled:opacity-50"
+                  >
+                    {LLM_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {project.default_llm === "openrouter" && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[11px] text-[#5e6c84]">Default model</span>
+                    <input
+                      type="text"
+                      value={defaultModel}
+                      onChange={(e) => setDefaultModel(e.target.value)}
+                      onBlur={() => handleUpdateDefaultLlm("openrouter", defaultModel || null)}
+                      placeholder="anthropic/claude-sonnet-4.6"
+                      disabled={savingLlm}
+                      className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc] disabled:opacity-50 font-mono w-52"
+                    />
+                  </div>
+                )}
+                {savingLlm && <span className="text-[11px] text-[#5e6c84] pb-1.5">Saving…</span>}
               </div>
               {llmSaveError && (
                 <span className="text-[11px] text-red-600">{llmSaveError}</span>

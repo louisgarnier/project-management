@@ -23,6 +23,7 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
   const [selections, setSelections] = useState<Record<string, SelectionMode>>({});
   const [newTypeSelections, setNewTypeSelections] = useState<Record<string, SelectionMode>>({});
   const [projectDefaultLlm, setProjectDefaultLlm] = useState<LLMProvider>("groq");
+  const [projectDefaultModel, setProjectDefaultModel] = useState<string | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [phase, setPhase] = useState<Phase>("select");
   const [generating, setGenerating] = useState(false);
@@ -43,6 +44,7 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
       );
       setArtifactTypes(artifactTypes);
       setProjectDefaultLlm(project.default_llm);
+      setProjectDefaultModel(project.default_model ?? null);
 
       // Default all types to "generate"
       const defaultSels: Record<string, SelectionMode> = {};
@@ -68,6 +70,7 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
     if (phase === "reviewing") {
       projectsAPI.get(projectId).then((p) => {
         setProjectDefaultLlm(p.default_llm);
+        setProjectDefaultModel(p.default_model ?? null);
       }).catch(() => {});
     }
   }, [phase, projectId]);
@@ -284,6 +287,7 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
               artifactTypes={artifactTypes}
               selections={selections}
               projectDefaultLlm={projectDefaultLlm}
+              projectDefaultModel={projectDefaultModel}
               onChange={handleSelectionChange}
             />
           </>
@@ -349,6 +353,7 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
             artifactTypes={newTypes}
             selections={newTypeSelections}
             projectDefaultLlm={projectDefaultLlm}
+            projectDefaultModel={projectDefaultModel}
             onChange={(typeId, mode) =>
               setNewTypeSelections((prev) => ({ ...prev, [typeId]: mode }))
             }

@@ -53,11 +53,20 @@ export const projectsAPI = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  update: (id: string, data: { default_llm?: LLMProvider; context?: string }) =>
+  update: (id: string, data: { default_llm?: LLMProvider; default_model?: string | null; context?: string }) =>
     proxyFetch<Project>(`/api/projects/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+  updateDefaultLlm: async (projectId: string, llm: LLMProvider, model: string | null = null): Promise<Project> => {
+    const res = await fetch(`/api/proxy/api/projects/${projectId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ default_llm: llm, default_model: model }),
+    });
+    if (!res.ok) throw new Error("Failed to update project default LLM");
+    return res.json();
+  },
   delete: (id: string) => proxyFetch<void>(`/api/projects/${id}`, { method: "DELETE" }),
 };
 
