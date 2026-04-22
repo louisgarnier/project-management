@@ -1,7 +1,49 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality — COMPLETE (2026-04-21)**
+**EPIC-11 — Call Topics Extraction Overhaul — code complete 2026-04-22 (pending manual validation)**
+- All 6 stories done. Rubric-driven prompt, 4 new topic fields, OpenRouter provider, enriched tile UI, and model picker shipped.
+
+---
+
+### 2026-04-22 — EPIC-11: Call Topics Extraction Overhaul
+
+**Backend — prompt lifecycle:**
+- New `backend/prompts/` package with single-source-of-truth constants for all 4 workflow prompts (`call_topics`, `project_topics`, `merge_verification`, `not_discussed_check`) + `artifacts` bundle.
+- `CALL_TOPICS_DEFAULT_PROMPT` — new multi-section prompt (ROLE + RUBRIC + ANCHORS + FEW-SHOT + PROCESS) encoding the 3-of-4 rubric, splits/filters, parked items, 3 anchor types, and importance scoring.
+- Migration script `backend/scripts/migrate_call_topics_prompt.py` — replaces old-default prompts with new; preserves customized rows.
+- `GET /api/artifact-types/defaults/{category}` endpoint powers "Reset to default" button.
+
+**Backend — schema:**
+- Migration 019: `topic_updates` gets `open_questions JSONB`, `is_parked BOOL`, `importance TEXT`, `rationale TEXT`. `artifact_types.model TEXT`, `projects.default_model TEXT`.
+- `TopicIn` / `TopicOut` Pydantic models carry the 4 new fields with sensible defaults.
+- `_TOPIC_SCHEMA` describes the full new payload shape.
+
+**Backend — OpenRouter:**
+- 5th LLM provider via `AsyncOpenAI` + `https://openrouter.ai/api/v1`.
+- `generate_artifact(llm, *, model=None)` and `call_llm_raw(llm, *, model=None)` — model required when `llm='openrouter'`.
+- `artifact_types.model` + `projects.default_model` propagate through create/update APIs, `extract_call_topics`, `run_merge_preview`, `_verify_merged_topics`, `verify_not_discussed_topics`, and `routers/artifacts.py` call sites.
+- New projects seed `call_topics`, `merge_verification`, `not_discussed_check`, and all artifact types with OpenRouter + recommended model (per spec §4.4.4 table).
+
+**Frontend — tile rewrite:**
+- `CallTopicsStage.TopicRow` — 3 colour-coded sections (Decisions=grey, Actions=amber, Open questions=blue), importance dot + rationale tooltip, parked variant (⏸ chip, muted border, Un-park button), expand-to-edit affordances inline.
+- `SectionBlock` reusable component for the three anchor sections.
+- Ripple: `TopicEditor`, `TopicsDashboard`, `TopicsPanel`, `TopicEvidenceDrawer` render `open_questions` + surface `is_parked`.
+
+**Frontend — model picker + prompt editor:**
+- `MODEL_RECOMMENDATIONS` curated per category + `PROVIDER_LABELS`.
+- `ArtifactTypeCard` — Provider dropdown (6 options), conditional Model dropdown, Custom slug input, expandable textarea (120px ↔ 500px), "Show runtime context" disclosure, "Reset to default" button.
+- Project settings page (`/projects/{id}/artifacts`) — Provider + Model controls for `default_llm` / `default_model`.
+- `ArtifactSelector` label appends model slug when effective provider is OpenRouter.
+
+**Commits:** 13 `[EPIC-11]` commits landing the 14 plan tasks.
+**Tests:** 17 new backend tests; full suite passes (155 passed) minus 4 pre-existing failures. Frontend `tsc --noEmit` + `npm run lint` clean (0 errors, 6 pre-existing warnings).
+**Manual test doc:** `docs/project/config/2026-04-22-epic-11-manual-tests.md` — 5-phase walkthrough covering env setup, UI smoke, live extraction, quality spot-check, ripple surfaces.
+**Migration:** 019 (manual, Supabase dashboard) + `backend/scripts/migrate_call_topics_prompt.py` (one-shot, preserves customized rows).
+
+---
+
+### 2026-04-21 — EPIC-10: Topic Lineage + Full-Stage Traceability + Prompt Quality — COMPLETE (2026-04-21)**
 - All 9 stories done. Full Kanban-wide evidence traceability + Timeline item provenance & ancestor visualization shipped.
 
 ---

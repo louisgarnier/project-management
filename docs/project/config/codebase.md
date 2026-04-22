@@ -65,10 +65,23 @@ frontend/
         ├── ArtifactsStage.tsx     → three-phase orchestrator (select → generating → reviewing); SSE via ReadableStream + line buffer; AbortController cleanup; skips to reviewing if artifacts exist (EPIC-5 / Story 5.4)
         └── ProvenancePill.tsx     → compact pill showing origin call of a follow-up/decision item (EPIC-10 / Story 10.9)
 
+backend/prompts/
+├── call_topics.py                 → CALL_TOPICS_DEFAULT_PROMPT (ROLE/RUBRIC/ANCHORS/FEW-SHOT/PROCESS blocks) + OLD_DEFAULT_PROMPT_STRING snapshot (EPIC-11 / Story 11.1–11.2)
+├── project_topics.py              → PROJECT_TOPICS_DEFAULT_PROMPT constant (EPIC-11 / Story 11.2)
+├── merge_verification.py          → MERGE_VERIFICATION_DEFAULT_PROMPT constant (EPIC-11 / Story 11.2)
+├── not_discussed_check.py         → NOT_DISCUSSED_DEFAULT_PROMPT constant (EPIC-11 / Story 11.2)
+└── artifacts.py                   → DEFAULT_ARTIFACT_PROMPTS dict bundling all artifact-type default prompts (EPIC-11 / Story 11.2)
+
+backend/scripts/
+└── migrate_call_topics_prompt.py  → one-shot migration; replaces old-default call_topics prompts with new rubric-driven default; preserves customized rows; returns {migrated: N, preserved: M} (EPIC-11 / Story 11.2)
+
 backend/services/
-├── llm_service.py                 → generate_artifact(prompt_used, transcript, llm) → str; dispatches to Groq (llama-3.3-70b-versatile), Claude (claude-sonnet-4-6), OpenAI (gpt-4o); 3-retry backoff (EPIC-6)
+├── llm_service.py                 → generate_artifact(prompt_used, transcript, llm, *, model=None) + call_llm_raw(llm, *, model=None) → str; dispatches to Groq / Claude / OpenAI / DeepSeek / OpenRouter (5th provider via AsyncOpenAI + openrouter.ai/api/v1); model required for openrouter; 3-retry backoff (EPIC-6, EPIC-11 / Story 11.3)
 ├── topics_service.py              → topic extraction + aggregation + merge pipeline; uses topic_lineage for per-topic evidence blocks in merge prompts (EPIC-7/9/10)
 └── topic_lineage.py               → walks merged_into_topic_id backwards to assemble ancestor-aware per-topic history. Exports get_topic_lineage, get_lineage_topic_updates, get_lineage_match_groups, build_lineage_evidence_block. Single source of truth for M:N merge history — consumed by merge prompts today and by the future evidence API (EPIC-10 / Story 10.1)
+
+frontend/src/constants/
+└── models.ts                      → MODEL_RECOMMENDATIONS per ArtifactCategory (curated model slugs for each category) + PROVIDER_LABELS mapping provider keys to display strings including OpenRouter ⭐ (EPIC-11 / Story 11.4)
 
 transcription/
 ├── main.py                        → FastAPI local server: /health, /transcribe (EPIC-4 / Story 4.7)

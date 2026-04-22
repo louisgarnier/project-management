@@ -1,22 +1,20 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Epic:** EPIC-11 — Call Topics Extraction Overhaul — **in progress (started 2026-04-22)**
-- **Active story:** 11.1 — Schema & Prompt Foundation
+- **Epic:** EPIC-11 — Call Topics Extraction Overhaul — **code complete 2026-04-22 (pending manual validation)**
 - **Branch:** `epic-11-call-topics-overhaul`
-- **Spec:** `docs/project/config/2026-04-22-call-topics-extraction-overhaul-design.md`
-- **Plan:** `docs/project/config/2026-04-22-call-topics-extraction-overhaul-plan.md`
-- **Epic overview:** `docs/project/config/epics/epic-11/overview.md`
+- **Manual tests:** `docs/project/config/2026-04-22-epic-11-manual-tests.md`
+- **Next:** TBD — awaiting user manual validation of EPIC-11 before merging to main.
 
 ### EPIC-11 Stories
 | # | Story | Status |
 |---|---|---|
-| 11.1 | Schema & Prompt Foundation | in_progress |
-| 11.2 | Prompt Lifecycle | pending |
-| 11.3 | OpenRouter Provider + Model Propagation | pending |
-| 11.4 | Frontend Topic Tile Rewrite | pending |
-| 11.5 | Artifact Type Card + Project Settings | pending |
-| 11.6 | End-to-end Validation + Close | pending |
+| 11.1 | Schema & Prompt Foundation | done 2026-04-22 |
+| 11.2 | Prompt Lifecycle | done 2026-04-22 |
+| 11.3 | OpenRouter Provider + Model Propagation | done 2026-04-22 |
+| 11.4 | Frontend Topic Tile Rewrite | done 2026-04-22 |
+| 11.5 | Artifact Type Card + Project Settings | done 2026-04-22 |
+| 11.6 | End-to-end Validation + Close | done 2026-04-22 |
 
 ### EPIC-10 (previous)
 - **Epic:** EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality — **DONE 2026-04-21**

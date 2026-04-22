@@ -1,6 +1,6 @@
 # Epic 11 — Call Topics Extraction Overhaul
 
-**Status:** in progress — started 2026-04-22
+**Status:** done — 2026-04-22 (code complete; pending manual validation)
 **Spec:** [`2026-04-22-call-topics-extraction-overhaul-design.md`](../../2026-04-22-call-topics-extraction-overhaul-design.md)
 **Plan:** [`2026-04-22-call-topics-extraction-overhaul-plan.md`](../../2026-04-22-call-topics-extraction-overhaul-plan.md)
 **Branch:** `epic-11-call-topics-overhaul`
@@ -12,11 +12,11 @@ Call topic extraction produces fragmented, low-confidence, thin-summary output t
 
 | # | Story | Status |
 |---|---|---|
-| 11.1 | Schema & Prompt Foundation (Tasks 1–3) | in_progress |
-| 11.2 | Prompt Lifecycle (Tasks 4–6) | pending |
-| 11.3 | OpenRouter Provider + Model Propagation (Tasks 7–8) | pending |
-| 11.4 | Frontend Topic Tile Rewrite (Tasks 9–11) | pending |
-| 11.5 | Artifact Type Card + Project Settings (Tasks 12–13) | pending |
-| 11.6 | End-to-end Validation + Close (Task 14) | pending |
+| 11.1 | Schema & Prompt Foundation (Tasks 1–3) | done 2026-04-22 |
+| 11.2 | Prompt Lifecycle (Tasks 4–6) | done 2026-04-22 |
+| 11.3 | OpenRouter Provider + Model Propagation (Tasks 7–8) | done 2026-04-22 |
+| 11.4 | Frontend Topic Tile Rewrite (Tasks 9–11) | done 2026-04-22 |
+| 11.5 | Artifact Type Card + Project Settings (Tasks 12–13) | done 2026-04-22 |
+| 11.6 | End-to-end Validation + Close (Task 14) | done 2026-04-22 |
 
 Each story groups 1–3 tasks from the implementation plan. Stories close sequentially.
