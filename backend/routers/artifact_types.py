@@ -1,6 +1,7 @@
 from typing import Literal
 
 from backend.database.supabase_client import get_client
+from backend.prompts.call_topics import CALL_TOPICS_DEFAULT_PROMPT
 from backend.utils.logger import db_logger
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
@@ -75,21 +76,11 @@ DEFAULT_ARTIFACT_TYPES: list[dict] = [
 
 DEFAULT_CALL_TOPICS_PROMPT = {
     "name": "Call Topics Extraction",
-    "prompt": (
-        "You are an expert at analysing business call transcripts. Extract every distinct topic discussed — "
-        "be exhaustive, do not merge separate topics into one.\n\n"
-        "For each topic:\n"
-        "- name: short label (3–6 words)\n"
-        "- summary: 1–2 sentence recap of what was said\n"
-        "- follow_up_items: concrete next steps or open questions (empty array if none)\n"
-        "- decisions: anything explicitly agreed or decided (empty array if none)\n"
-        "- status: open (unresolved), in_progress (being worked on), resolved (closed/agreed)\n"
-        "- owner: Us (our team owns it), Client (client owns it), Both (shared)\n"
-        "- sentiment: positive (good news/progress), neutral (informational), concern (risk/problem/blocker)\n\n"
-        "Return ONLY a JSON array. No markdown, no explanation."
-    ),
+    "prompt": CALL_TOPICS_DEFAULT_PROMPT,
     "is_default": True,
     "category": "call_topics",
+    "llm": "openrouter",
+    "model": "anthropic/claude-sonnet-4.6",
 }
 
 DEFAULT_PROJECT_TOPICS_PROMPT = {
@@ -176,17 +167,33 @@ def seed_defaults(project_id: str) -> None:
             deduped.append(row)
 
     if deduped:
-        artifact_rows = [{"project_id": project_id, "category": "artifacts", "is_default": True, **r} for r in deduped]
+        artifact_rows = [
+            {"project_id": project_id, "category": "artifacts", "is_default": True, **r}
+            for r in deduped
+        ]
     else:
         # First project ever — seed from hardcoded defaults
-        artifact_rows = [{"project_id": project_id, "category": "artifacts", **t} for t in DEFAULT_ARTIFACT_TYPES]
+        artifact_rows = [
+            {"project_id": project_id, "category": "artifacts", **t}
+            for t in DEFAULT_ARTIFACT_TYPES
+        ]
 
     client.table("artifact_types").insert(artifact_rows).execute()
-    client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_CALL_TOPICS_PROMPT}).execute()
-    client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_PROJECT_TOPICS_PROMPT}).execute()
-    client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_MERGE_VERIFICATION_PROMPT}).execute()
-    client.table("artifact_types").insert({"project_id": project_id, **DEFAULT_NOT_DISCUSSED_CHECK_PROMPT}).execute()
-    db_logger.info(f"✅ [DB] Seeded {len(artifact_rows)} artifact types + 4 workflow prompts for project: {project_id}")
+    client.table("artifact_types").insert(
+        {"project_id": project_id, **DEFAULT_CALL_TOPICS_PROMPT}
+    ).execute()
+    client.table("artifact_types").insert(
+        {"project_id": project_id, **DEFAULT_PROJECT_TOPICS_PROMPT}
+    ).execute()
+    client.table("artifact_types").insert(
+        {"project_id": project_id, **DEFAULT_MERGE_VERIFICATION_PROMPT}
+    ).execute()
+    client.table("artifact_types").insert(
+        {"project_id": project_id, **DEFAULT_NOT_DISCUSSED_CHECK_PROMPT}
+    ).execute()
+    db_logger.info(
+        f"✅ [DB] Seeded {len(artifact_rows)} artifact types + 4 workflow prompts for project: {project_id}"
+    )
 
 
 class ArtifactTypeCreate(BaseModel):
@@ -229,15 +236,17 @@ def create_artifact_type(project_id: str, payload: ArtifactTypeCreate):
     db_logger.info(f"🗄️ [DB] Creating artifact type for project: {project_id}")
     result = (
         client.table("artifact_types")
-        .insert({
-            "project_id": project_id,
-            "name": payload.name,
-            "prompt": payload.prompt,
-            "is_default": False,
-            "category": "artifacts",
-            "llm": payload.llm,
-            "context_scope": payload.context_scope,
-        })
+        .insert(
+            {
+                "project_id": project_id,
+                "name": payload.name,
+                "prompt": payload.prompt,
+                "is_default": False,
+                "category": "artifacts",
+                "llm": payload.llm,
+                "context_scope": payload.context_scope,
+            }
+        )
         .execute()
     )
     db_logger.info(f"✅ [DB] Created artifact type: {result.data[0]['id']}")
@@ -262,10 +271,7 @@ def update_artifact_type(project_id: str, type_id: str, payload: ArtifactTypeUpd
         raise HTTPException(status_code=422, detail="No fields to update")
     try:
         result = (
-            client.table("artifact_types")
-            .update(update)
-            .eq("id", type_id)
-            .execute()
+            client.table("artifact_types").update(update).eq("id", type_id).execute()
         )
     except Exception as e:
         db_logger.error(f"❌ [DB] Failed to update artifact type {type_id}: {e}")
@@ -276,8 +282,14 @@ def update_artifact_type(project_id: str, type_id: str, payload: ArtifactTypeUpd
     if "is_default" in update and result.data:
         artifact_name = result.data[0].get("name", "")
         if artifact_name:
-            client.table("artifact_types").update({"is_default": update["is_default"]}).ilike("name", artifact_name).eq("category", "artifacts").neq("id", type_id).execute()
-            db_logger.info(f"🗄️ [DB] Cascaded is_default={update['is_default']} to all '{artifact_name}' artifact types")
+            client.table("artifact_types").update(
+                {"is_default": update["is_default"]}
+            ).ilike("name", artifact_name).eq("category", "artifacts").neq(
+                "id", type_id
+            ).execute()
+            db_logger.info(
+                f"🗄️ [DB] Cascaded is_default={update['is_default']} to all '{artifact_name}' artifact types"
+            )
 
     db_logger.info(f"✅ [DB] Updated artifact type: {type_id}")
     return result.data[0]
@@ -297,8 +309,12 @@ def delete_artifact_type(project_id: str, type_id: str):
     if not result.data:
         raise HTTPException(status_code=404, detail="Artifact type not found")
     # Delete all generated artifacts referencing this type (across all calls)
-    deleted = client.table("artifacts").delete().eq("artifact_type_id", type_id).execute()
-    db_logger.info(f"🗄️ [DB] Deleted {len(deleted.data)} artifacts referencing type: {type_id}")
+    deleted = (
+        client.table("artifacts").delete().eq("artifact_type_id", type_id).execute()
+    )
+    db_logger.info(
+        f"🗄️ [DB] Deleted {len(deleted.data)} artifacts referencing type: {type_id}"
+    )
     client.table("artifact_types").delete().eq("id", type_id).execute()
     db_logger.info(f"✅ [DB] Deleted artifact type: {type_id}")
     return Response(status_code=204)
@@ -307,7 +323,9 @@ def delete_artifact_type(project_id: str, type_id: str):
 @router.post("/projects/{project_id}/artifact-types/import", status_code=201)
 def import_artifact_types(project_id: str, payload: ArtifactTypeImport):
     client = get_client()
-    db_logger.info(f"🗄️ [DB] Importing {len(payload.type_ids)} artifact types into project: {project_id}")
+    db_logger.info(
+        f"🗄️ [DB] Importing {len(payload.type_ids)} artifact types into project: {project_id}"
+    )
     # Intentionally cross-project: fetch by ID only so users can import from any project.
     # Auth is enforced at the API gateway layer; open reads across projects are acceptable.
     source = (
@@ -332,3 +350,23 @@ def import_artifact_types(project_id: str, payload: ArtifactTypeImport):
     result = client.table("artifact_types").insert(copies).execute()
     db_logger.info(f"✅ [DB] Imported {len(result.data)} artifact types")
     return result.data
+
+
+_DEFAULTS_BY_CATEGORY = {
+    "call_topics": DEFAULT_CALL_TOPICS_PROMPT,
+    "project_topics": DEFAULT_PROJECT_TOPICS_PROMPT,
+    "merge_verification": DEFAULT_MERGE_VERIFICATION_PROMPT,
+    "not_discussed_check": DEFAULT_NOT_DISCUSSED_CHECK_PROMPT,
+}
+
+
+@router.get("/artifact-types/defaults/{category}")
+def get_default_for_category(category: str):
+    """Return the canonical default artifact-type payload for a workflow category.
+    Used by the 'Reset to default' button in the UI."""
+    if category not in _DEFAULTS_BY_CATEGORY:
+        raise HTTPException(status_code=404, detail=f"Unknown category: {category}")
+    payload = _DEFAULTS_BY_CATEGORY[category].copy()
+    payload.setdefault("llm", None)
+    payload.setdefault("model", None)
+    return payload
