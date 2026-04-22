@@ -1,8 +1,25 @@
 # Active Context — Call Tracker
 
 ## Current Story
+- **Epic:** EPIC-11 — Call Topics Extraction Overhaul — **in progress (started 2026-04-22)**
+- **Active story:** 11.1 — Schema & Prompt Foundation
+- **Branch:** `epic-11-call-topics-overhaul`
+- **Spec:** `docs/project/config/2026-04-22-call-topics-extraction-overhaul-design.md`
+- **Plan:** `docs/project/config/2026-04-22-call-topics-extraction-overhaul-plan.md`
+- **Epic overview:** `docs/project/config/epics/epic-11/overview.md`
+
+### EPIC-11 Stories
+| # | Story | Status |
+|---|---|---|
+| 11.1 | Schema & Prompt Foundation | in_progress |
+| 11.2 | Prompt Lifecycle | pending |
+| 11.3 | OpenRouter Provider + Model Propagation | pending |
+| 11.4 | Frontend Topic Tile Rewrite | pending |
+| 11.5 | Artifact Type Card + Project Settings | pending |
+| 11.6 | End-to-end Validation + Close | pending |
+
+### EPIC-10 (previous)
 - **Epic:** EPIC-10 — Topic Lineage + Full-Stage Traceability + Prompt Quality — **DONE 2026-04-21**
-- **Next:** TBD — all 9 stories complete.
 - **Spec:** `docs/project/config/2026-04-20-epic-10-topic-lineage-and-prompt-traceability-design.md` + `docs/project/config/2026-04-21-story-10.9-timeline-provenance-design.md`
 - **PRD:** `docs/project/config/prd-epic10-topic-lineage-and-prompt-traceability.md`
 
