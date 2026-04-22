@@ -1,7 +1,11 @@
 from typing import Literal
 
 from backend.database.supabase_client import get_client
+from backend.prompts.artifacts import DEFAULT_ARTIFACTS
 from backend.prompts.call_topics import CALL_TOPICS_DEFAULT_PROMPT
+from backend.prompts.merge_verification import MERGE_VERIFICATION_DEFAULT_PROMPT
+from backend.prompts.not_discussed_check import NOT_DISCUSSED_DEFAULT_PROMPT
+from backend.prompts.project_topics import PROJECT_TOPICS_DEFAULT_PROMPT
 from backend.utils.logger import db_logger
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
@@ -11,67 +15,12 @@ router = APIRouter(prefix="/api", tags=["artifact-types"])
 
 DEFAULT_ARTIFACT_TYPES: list[dict] = [
     {
-        "name": "Executive Summary",
-        "prompt": (
-            "Write a concise executive summary of this call in 3–5 bullet points. "
-            "Use the Topics section to structure your summary around the key themes discussed. "
-            "For each bullet: state the topic, what was decided or discussed, and its current status (open/resolved). "
-            "Focus on decisions made, key outcomes, and overall direction."
-        ),
+        **t,
         "is_default": True,
-    },
-    {
-        "name": "Next Steps & Action Items",
-        "prompt": (
-            "Extract all action items and next steps from this call. "
-            "Group them by topic (use the Topics section as your guide). "
-            "For each item state: the topic it belongs to, what needs to be done, "
-            "who is responsible (Us / Client / Both), and any deadline discussed. "
-            "Prioritise items from topics with sentiment=concern or status=open."
-        ),
-        "is_default": True,
-    },
-    {
-        "name": "Questions for Stakeholders",
-        "prompt": (
-            "List all open questions that remain unanswered after this call. "
-            "Group them by topic (use the Topics section). "
-            "For each question: state the topic, the question, and why it is blocking progress. "
-            "Prioritise questions from topics that are open or in_progress."
-        ),
-        "is_default": True,
-    },
-    {
-        "name": "Email Summary (1-pager)",
-        "prompt": (
-            "Write a professional 1-page email summarising this call for the client. "
-            "Structure it around the topics discussed (use the Topics section). "
-            "For each topic: briefly state what was discussed, any decisions made, and follow-up items. "
-            "Close with a consolidated next steps section. "
-            "Tone: clear and business-professional."
-        ),
-        "is_default": True,
-    },
-    {
-        "name": "Email Follow-up (pre-next-call)",
-        "prompt": (
-            "Write a short follow-up email to send before the next call. "
-            "For each open topic (from the Topics section), summarise: what was agreed, "
-            "what each party should have completed before the next session, and what remains open. "
-            "End with a proposed agenda for the next call based on in_progress and open topics."
-        ),
-        "is_default": True,
-    },
-    {
-        "name": "Next Call Meeting Invite Topics",
-        "prompt": (
-            "Generate a structured agenda for the next call. "
-            "Base it on the Topics section: include all open and in_progress topics, "
-            "ordered by priority (concern sentiment first, then by calls_open descending). "
-            "For each agenda item: topic name, brief context (1 sentence), and the specific question or decision needed."
-        ),
-        "is_default": True,
-    },
+        "llm": "openrouter",
+        "model": "anthropic/claude-sonnet-4.6",
+    }
+    for t in DEFAULT_ARTIFACTS
 ]
 
 DEFAULT_CALL_TOPICS_PROMPT = {
@@ -85,55 +34,29 @@ DEFAULT_CALL_TOPICS_PROMPT = {
 
 DEFAULT_PROJECT_TOPICS_PROMPT = {
     "name": "Project Topics Merge",
-    "prompt": (
-        "You are an expert at matching client call topics to an existing project topic backlog.\n\n"
-        "Given topics extracted from the current call and the existing project topic list, "
-        "classify each topic:\n"
-        '- "followed_up": call topics that match an existing project topic (same business subject, '
-        "possibly different wording). Use the existing topic name exactly. Update summary, status, "
-        "follow_up_items, and decisions with new information from this call.\n"
-        '- "not_discussed": existing project topics not covered by any call topic.\n'
-        '- "new_topics": call topics with no match in the existing project list.\n\n'
-        "Be generous with matching — slightly different wording for the same business subject "
-        "counts as a match."
-    ),
+    "prompt": PROJECT_TOPICS_DEFAULT_PROMPT,
     "is_default": True,
     "category": "project_topics",
+    "llm": None,
+    "model": None,
 }
 
 DEFAULT_MERGE_VERIFICATION_PROMPT = {
     "name": "Merge Verification",
-    "prompt": (
-        "You are a quality reviewer for project topic data. You are given:\n"
-        "1. A merged topic (the result of combining existing project data with new call data)\n"
-        "2. The full call transcript\n"
-        "3. The existing follow-up items and decisions from all source topics\n\n"
-        "Your job: verify that the merged topic did NOT lose any important information.\n\n"
-        "Check specifically:\n"
-        "- Are ALL follow-up items from the sources preserved? If any are missing, add them back.\n"
-        "- Are ALL decisions from the sources preserved? If any are missing, add them back.\n"
-        "- Does the summary cover all key points discussed in the transcript for this topic?\n"
-        "  If anything important was dropped, add it back.\n"
-        "- Are specific details (names, dates, numbers, commitments) preserved?\n\n"
-        "Return the corrected topic as JSON. If nothing was lost, return the topic unchanged.\n"
-        "Do NOT remove or shorten anything. Only ADD back what was lost."
-    ),
+    "prompt": MERGE_VERIFICATION_DEFAULT_PROMPT,
     "is_default": True,
     "category": "merge_verification",
+    "llm": "openrouter",
+    "model": "anthropic/claude-sonnet-4.6",
 }
 
 DEFAULT_NOT_DISCUSSED_CHECK_PROMPT = {
     "name": "Not-Discussed Verification",
-    "prompt": (
-        "You are checking whether a project topic was actually discussed in a call transcript.\n"
-        "Given the topic name, its latest summary, and the full call transcript, determine:\n"
-        "1. Was this topic mentioned or discussed in the call? (yes/no)\n"
-        "2. If yes, provide the relevant transcript excerpt.\n\n"
-        'Return JSON: {"discussed": true/false, "transcript_excerpt": "..." or null, '
-        '"reasoning": "one sentence explanation"}'
-    ),
+    "prompt": NOT_DISCUSSED_DEFAULT_PROMPT,
     "is_default": True,
     "category": "not_discussed_check",
+    "llm": "openrouter",
+    "model": "google/gemini-2.5-pro",
 }
 
 
