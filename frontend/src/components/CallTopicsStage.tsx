@@ -7,10 +7,11 @@ import type { Call, TopicData, TopicStatus, TopicOwner, TopicSentiment, LLMProvi
 import TopicEvidenceDrawer from "./TopicEvidenceDrawer";
 
 const LLM_LABELS: Record<LLMProvider, string> = {
-  groq:     "Groq – Llama 3.3",
-  deepseek: "DeepSeek Chat",
-  claude:   "Claude Haiku",
-  openai:   "GPT-4o mini",
+  groq:       "Groq – Llama 3.3",
+  deepseek:   "DeepSeek Chat",
+  claude:     "Claude Haiku",
+  openai:     "GPT-4o mini",
+  openrouter: "OpenRouter",
 };
 
 const STATUS_BADGE: Record<string, React.CSSProperties> = {

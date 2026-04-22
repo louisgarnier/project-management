@@ -102,9 +102,13 @@ export default function TopicsStage({ call, onAdvance }: Props) {
         summary: t.summary,
         follow_up_items: t.follow_up_items,
         decisions: t.decisions,
+        open_questions: t.open_questions ?? [],
         status: t.status,
         owner: t.owner,
         sentiment: t.sentiment,
+        is_parked: t.is_parked ?? false,
+        importance: t.importance ?? "medium",
+        rationale: t.rationale ?? "",
         calls_open: t.calls_open,
         disposition: t._disposition,
       }));

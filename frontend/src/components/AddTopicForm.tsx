@@ -23,9 +23,13 @@ export default function AddTopicForm({ onAdd }: Props) {
       summary: summary.trim(),
       follow_up_items: [],
       decisions: [],
+      open_questions: [],
       status,
       owner,
       sentiment,
+      is_parked: false,
+      importance: "medium",
+      rationale: "",
       calls_open: 0,
     });
     setName(""); setSummary(""); setStatus("open"); setOwner("Us"); setSentiment("neutral");

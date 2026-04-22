@@ -1,13 +1,14 @@
 // Call Tracker — TypeScript types
 // Mirrors the Supabase schema defined in backend/database/migrations/001_initial_schema.sql
 
-export type LLMProvider = "groq" | "deepseek" | "claude" | "openai";
+export type LLMProvider = "groq" | "deepseek" | "claude" | "openai" | "openrouter";
 
 export interface Project {
   id: string;
   name: string;
   description: string | null;
   default_llm: LLMProvider;
+  default_model: string | null;
   context: string | null;
   created_at: string;
 }
@@ -41,7 +42,7 @@ export interface Call {
 export type ArtifactMode = LLMProvider | "manual";
 export type ArtifactStatus = "pending" | "generating" | "done" | "error" | "stale";
 
-export type ArtifactCategory = "artifacts" | "topics" | "call_topics" | "project_topics";
+export type ArtifactCategory = "artifacts" | "topics" | "call_topics" | "project_topics" | "merge_verification" | "not_discussed_check";
 
 export type ContextScope = "call" | "project";
 
@@ -53,6 +54,7 @@ export interface ArtifactType {
   is_default: boolean;
   category: ArtifactCategory;
   llm: LLMProvider | null;
+  model: string | null;
   context_scope: ContextScope;
   created_at: string;
 }
@@ -83,9 +85,13 @@ export interface TopicData {
   summary: string;
   follow_up_items: string[];
   decisions: string[];
+  open_questions: string[];
   status: TopicStatus;
   owner: TopicOwner;
   sentiment: TopicSentiment;
+  is_parked: boolean;
+  importance: "high" | "medium" | "low";
+  rationale: string;
   calls_open?: number;
   not_discussed?: boolean;
   pending_merge?: boolean;
