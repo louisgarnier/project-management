@@ -3,7 +3,15 @@ from pydantic import ValidationError
 import unittest
 import asyncio
 from unittest.mock import patch, MagicMock
-from backend.services.topics_service import TopicIn, TopicUpdate, TopicOut, BriefItem, BriefOut, extract_call_topics, aggregate_topics
+from backend.services.topics_service import (
+    TopicIn,
+    TopicUpdate,
+    TopicOut,
+    BriefItem,
+    BriefOut,
+    extract_call_topics,
+    aggregate_topics,
+)
 
 
 def test_topic_in_valid():
@@ -23,8 +31,13 @@ def test_topic_in_valid():
 def test_topic_in_normalizes_status():
     """Unknown status values fall back to 'open' rather than raising."""
     t = TopicIn(
-        name="X", summary="y", follow_up_items=[], decisions=[],
-        status="invalid", owner="Us", sentiment="neutral",
+        name="X",
+        summary="y",
+        follow_up_items=[],
+        decisions=[],
+        status="invalid",
+        owner="Us",
+        sentiment="neutral",
     )
     assert t.status == "open"
 
@@ -32,14 +45,24 @@ def test_topic_in_normalizes_status():
 def test_topic_in_normalizes_sentiment():
     """Known sentiment synonyms are mapped; truly unknown values fall back to 'neutral'."""
     t_bad = TopicIn(
-        name="X", summary="y", follow_up_items=[], decisions=[],
-        status="open", owner="Us", sentiment="bad",
+        name="X",
+        summary="y",
+        follow_up_items=[],
+        decisions=[],
+        status="open",
+        owner="Us",
+        sentiment="bad",
     )
     assert t_bad.sentiment == "concern"  # "bad" → concern
 
     t_unknown = TopicIn(
-        name="X", summary="y", follow_up_items=[], decisions=[],
-        status="open", owner="Us", sentiment="unknown_xyz",
+        name="X",
+        summary="y",
+        follow_up_items=[],
+        decisions=[],
+        status="open",
+        owner="Us",
+        sentiment="unknown_xyz",
     )
     assert t_unknown.sentiment == "neutral"  # truly unknown → neutral
 
@@ -67,8 +90,13 @@ def test_brief_out_shape():
 def test_topic_in_normalizes_owner():
     """Unknown owner values fall back to 'Us' rather than raising."""
     t = TopicIn(
-        name="X", summary="y", follow_up_items=[], decisions=[],
-        status="open", owner="BadValue", sentiment="neutral",
+        name="X",
+        summary="y",
+        follow_up_items=[],
+        decisions=[],
+        status="open",
+        owner="BadValue",
+        sentiment="neutral",
     )
     assert t.owner == "Us"
 
@@ -110,7 +138,7 @@ from fastapi.testclient import TestClient
 
 http = TestClient(app)
 
-CALL_ID    = "aaaaaaaa-0000-0000-0000-000000000001"
+CALL_ID = "aaaaaaaa-0000-0000-0000-000000000001"
 PROJECT_ID = "bbbbbbbb-0000-0000-0000-000000000001"
 
 SAMPLE_TOPIC = {
@@ -124,8 +152,7 @@ SAMPLE_TOPIC = {
 }
 
 
-
-TOPIC_ID  = "cccccccc-0000-0000-0000-000000000001"
+TOPIC_ID = "cccccccc-0000-0000-0000-000000000001"
 TOPIC_ID2 = "cccccccc-0000-0000-0000-000000000002"
 
 
@@ -171,17 +198,19 @@ def test_save_topics_keep_as_is_disposition(mock_save, mock_gc):
     mock_gc.return_value = MagicMock()
     mock_save.return_value = {"saved": 1}
 
-    payload = [{
-        "topic_id": TOPIC_ID2,
-        "name": "Pricing",
-        "summary": "Not discussed.",
-        "follow_up_items": [],
-        "decisions": [],
-        "status": "open",
-        "owner": "Client",
-        "sentiment": "concern",
-        "disposition": "keep_as_is",
-    }]
+    payload = [
+        {
+            "topic_id": TOPIC_ID2,
+            "name": "Pricing",
+            "summary": "Not discussed.",
+            "follow_up_items": [],
+            "decisions": [],
+            "status": "open",
+            "owner": "Client",
+            "sentiment": "concern",
+            "disposition": "keep_as_is",
+        }
+    ]
     r = http.post(f"/api/calls/{CALL_ID}/topics", json=payload)
     assert r.status_code == 200
     mock_save.assert_called_once()
@@ -248,15 +277,33 @@ def test_brief_call2_returns_sorted_topics(mock_brief, mock_gc):
     mock_gc.return_value = MagicMock()
     mock_brief.return_value = {
         "priority_topics": [
-            {"topic_id": TOPIC_ID, "name": "Pricing", "calls_open": 3,
-             "sentiment": "concern", "last_summary": "Monthly pref.", "last_follow_up_items": []},
-            {"topic_id": TOPIC_ID2, "name": "SLA", "calls_open": 1,
-             "sentiment": "neutral", "last_summary": "In progress.", "last_follow_up_items": []},
+            {
+                "topic_id": TOPIC_ID,
+                "name": "Pricing",
+                "calls_open": 3,
+                "sentiment": "concern",
+                "last_summary": "Monthly pref.",
+                "last_follow_up_items": [],
+            },
+            {
+                "topic_id": TOPIC_ID2,
+                "name": "SLA",
+                "calls_open": 1,
+                "sentiment": "neutral",
+                "last_summary": "In progress.",
+                "last_follow_up_items": [],
+            },
         ],
         "decisions_to_confirm": [{"text": "DPA signed", "topic_name": "Legal"}],
         "watch_list": [
-            {"topic_id": TOPIC_ID, "name": "Pricing", "calls_open": 3,
-             "sentiment": "concern", "last_summary": "Monthly pref.", "last_follow_up_items": []},
+            {
+                "topic_id": TOPIC_ID,
+                "name": "Pricing",
+                "calls_open": 3,
+                "sentiment": "concern",
+                "last_summary": "Monthly pref.",
+                "last_follow_up_items": [],
+            },
         ],
     }
 
@@ -276,20 +323,34 @@ def test_get_project_topics_returns_non_archived(mock_gc):
     # Mock: topics query (non-archived topics)
     topics_mock = MagicMock()
     topics_mock.data = [
-        {"id": TOPIC_ID, "name": "Pricing", "calls_open": 2,
-         "first_raised_call_id": CALL_ID},
+        {
+            "id": TOPIC_ID,
+            "name": "Pricing",
+            "calls_open": 2,
+            "first_raised_call_id": CALL_ID,
+        },
     ]
     # Mock: topic_updates query (latest update per topic)
     updates_mock = MagicMock()
     updates_mock.data = [
-        {"summary": "Monthly pref.", "follow_up_items": ["Send breakdown"],
-         "decisions": [], "status": "open", "owner": "Client", "sentiment": "concern"},
+        {
+            "summary": "Monthly pref.",
+            "follow_up_items": ["Send breakdown"],
+            "decisions": [],
+            "status": "open",
+            "owner": "Client",
+            "sentiment": "concern",
+        },
     ]
 
     # Chain the mocks: topics select → eq(project_id) → eq(archived) → execute
-    m.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = topics_mock
+    m.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = (
+        topics_mock
+    )
     # topic_updates: select → eq(topic_id) → order → limit → execute
-    m.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = updates_mock
+    m.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = (
+        updates_mock
+    )
     mock_gc.return_value = m
 
     r = http.get(f"/api/projects/{PROJECT_ID}/topics")
@@ -305,11 +366,11 @@ def test_get_topics_prompt_returns_stored_prompt():
     """_get_topics_prompt returns (prompt, llm) when a row exists."""
     from backend.services.topics_service import _get_topics_prompt
     from unittest.mock import MagicMock
+
     mock_db = MagicMock()
-    mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value \
-        .order.return_value.limit.return_value.execute.return_value.data = [
-            {"prompt": "STORED PROMPT", "llm": "groq"}
-        ]
+    mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = [
+        {"prompt": "STORED PROMPT", "llm": "groq"}
+    ]
     prompt, llm = _get_topics_prompt("proj-1", mock_db)
     assert prompt == "STORED PROMPT"
     assert llm == "groq"
@@ -319,9 +380,11 @@ def test_get_topics_prompt_falls_back_to_none():
     """_get_topics_prompt returns (None, None) when no row exists."""
     from backend.services.topics_service import _get_topics_prompt
     from unittest.mock import MagicMock
+
     mock_db = MagicMock()
-    mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value \
-        .order.return_value.limit.return_value.execute.return_value.data = []
+    mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = (
+        []
+    )
     prompt, llm = _get_topics_prompt("proj-1", mock_db)
     assert prompt is None
     assert llm is None
@@ -338,12 +401,20 @@ def test_validate_call_advances_to_artifacts(mock_gc):
     def table_side(name):
         m = MagicMock()
         if name == "topic_updates":
-            m.select.return_value.eq.return_value.execute.return_value.data = [{"topic_id": "topic-1"}]
+            m.select.return_value.eq.return_value.execute.return_value.data = [
+                {"topic_id": "topic-1"}
+            ]
         elif name == "calls":
-            m.select.return_value.eq.return_value.execute.return_value.data = [{"project_id": "proj-1"}]
-            m.update.return_value.eq.return_value.execute.return_value.data = [{"kanban_stage": "artifacts"}]
+            m.select.return_value.eq.return_value.execute.return_value.data = [
+                {"project_id": "proj-1"}
+            ]
+            m.update.return_value.eq.return_value.execute.return_value.data = [
+                {"kanban_stage": "artifacts"}
+            ]
         elif name == "topics":
-            m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+            m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                []
+            )
         return m
 
     mock_db.table.side_effect = table_side
@@ -365,17 +436,34 @@ class TestExtractCallTopics(unittest.TestCase):
         db = MagicMock()
         mock_gc.return_value = db
         db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            {"project_id": "proj-1", "transcript": "We discussed the budget and timeline."}
+            {
+                "project_id": "proj-1",
+                "transcript": "We discussed the budget and timeline.",
+            }
         ]
-        db.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
-        db.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
-        db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [{"default_llm": "groq"}]
+        db.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
+        db.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
+        db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+            {"default_llm": "groq"}
+        ]
 
         async def fake_llm(prompt, llm):
             return [
-                {"name": "Budget", "summary": "Discussed Q2 budget", "follow_up_items": [],
-                 "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral"}
+                {
+                    "name": "Budget",
+                    "summary": "Discussed Q2 budget",
+                    "follow_up_items": [],
+                    "decisions": [],
+                    "status": "open",
+                    "owner": "Us",
+                    "sentiment": "neutral",
+                }
             ]
+
         mock_llm.side_effect = fake_llm
 
         result = self._run(extract_call_topics("call-1"))
@@ -411,8 +499,12 @@ class TestAggregateTopics(unittest.TestCase):
         def table_side_effect(table_name):
             m = MagicMock()
             if table_name == "calls":
-                m.select.return_value.eq.return_value.execute.return_value.data = [{"project_id": "proj-1"}]
-                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+                m.select.return_value.eq.return_value.execute.return_value.data = [
+                    {"project_id": "proj-1"}
+                ]
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                    []
+                )
                 m.update.return_value.eq.return_value.execute.return_value.data = [{}]
             elif table_name == "topic_updates":
                 m.select.return_value.eq.return_value.execute.return_value.data = []
@@ -420,16 +512,32 @@ class TestAggregateTopics(unittest.TestCase):
             else:
                 m.select.return_value.eq.return_value.execute.return_value.data = []
             return m
+
         db.table.side_effect = table_side_effect
 
         async def fake_save(call_id, topics):
             return {"saved": len(topics)}
+
         mock_save.side_effect = fake_save
 
-        with patch("backend.services.topics_service.list_topics_prior_to_call", return_value=[]):
-            with patch("backend.services.topics_service._get_topics_prompt", return_value=(None, "groq")):
-                call_topics = [{"name": "Budget", "summary": "Q2 budget", "follow_up_items": [],
-                                "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral"}]
+        with patch(
+            "backend.services.topics_service.list_topics_prior_to_call", return_value=[]
+        ):
+            with patch(
+                "backend.services.topics_service._get_topics_prompt",
+                return_value=(None, "groq"),
+            ):
+                call_topics = [
+                    {
+                        "name": "Budget",
+                        "summary": "Q2 budget",
+                        "follow_up_items": [],
+                        "decisions": [],
+                        "status": "open",
+                        "owner": "Us",
+                        "sentiment": "neutral",
+                    }
+                ]
                 result = self._run(aggregate_topics("call-1", call_topics))
 
         self.assertTrue(result.get("auto_advanced"))
@@ -441,31 +549,66 @@ class TestAggregateTopics(unittest.TestCase):
         db = MagicMock()
         mock_gc.return_value = db
 
-        prev_topic = {"topic_id": "t-1", "name": "Budget", "calls_open": 1,
-                      "summary": "old summary", "follow_up_items": [], "decisions": [],
-                      "status": "open", "owner": "Us", "sentiment": "neutral"}
+        prev_topic = {
+            "topic_id": "t-1",
+            "name": "Budget",
+            "calls_open": 1,
+            "summary": "old summary",
+            "follow_up_items": [],
+            "decisions": [],
+            "status": "open",
+            "owner": "Us",
+            "sentiment": "neutral",
+        }
 
         def table_side_effect(table_name):
             m = MagicMock()
             if table_name == "calls":
-                m.select.return_value.eq.return_value.execute.return_value.data = [{"project_id": "proj-1"}]
-                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{"id": "call-0"}]
+                m.select.return_value.eq.return_value.execute.return_value.data = [
+                    {"project_id": "proj-1"}
+                ]
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+                    {"id": "call-0"}
+                ]
                 m.update.return_value.eq.return_value.execute.return_value.data = [{}]
             elif table_name == "topics":
-                m.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [{"id": "t-1"}]
+                m.select.return_value.eq.return_value.eq.return_value.neq.return_value.execute.return_value.data = [
+                    {"id": "t-1"}
+                ]
             else:
                 m.select.return_value.eq.return_value.execute.return_value.data = []
             return m
+
         db.table.side_effect = table_side_effect
 
         call_topics = [
-            {"name": "Budget", "summary": "Budget discussed", "follow_up_items": [],
-             "decisions": [], "status": "in_progress", "owner": "Us", "sentiment": "neutral"},
-            {"name": "Timeline", "summary": "New topic", "follow_up_items": [],
-             "decisions": [], "status": "open", "owner": "Client", "sentiment": "concern"},
+            {
+                "name": "Budget",
+                "summary": "Budget discussed",
+                "follow_up_items": [],
+                "decisions": [],
+                "status": "in_progress",
+                "owner": "Us",
+                "sentiment": "neutral",
+            },
+            {
+                "name": "Timeline",
+                "summary": "New topic",
+                "follow_up_items": [],
+                "decisions": [],
+                "status": "open",
+                "owner": "Client",
+                "sentiment": "concern",
+            },
         ]
-        with patch("backend.services.topics_service.list_topics_prior_to_call", return_value=[prev_topic]):
-            with patch("backend.services.topics_service._get_topics_prompt", return_value=(None, "groq")):
+        with patch(
+            "backend.services.topics_service.list_topics_prior_to_call",
+            return_value=[prev_topic],
+        ):
+            with patch(
+                "backend.services.topics_service._get_topics_prompt",
+                return_value=(None, "groq"),
+            ):
                 result = self._run(aggregate_topics("call-1", call_topics))
 
         self.assertEqual(result["advanced_to"], "project_matching")
@@ -478,10 +621,17 @@ class TestTopicsTimeline(unittest.TestCase):
     def test_timeline_no_topics(self, mock_gc):
         """Empty project returns empty topics list and empty calls list."""
         from backend.services.topics_service import list_topics_timeline
+
         db = MagicMock()
-        db.table.return_value.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = []
-        db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
-        db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+        db.table.return_value.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = (
+            []
+        )
+        db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = (
+            []
+        )
+        db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
+            []
+        )
         result = list_topics_timeline("proj-1", db)
         self.assertEqual(result["calls"], [])
         self.assertEqual(result["topics"], [])
@@ -490,19 +640,30 @@ class TestTopicsTimeline(unittest.TestCase):
     def test_timeline_new_and_not_discussed(self, mock_gc):
         """Topic raised in call 2 appears as new in call 2, not_discussed in call 3, absent in call 1."""
         from backend.services.topics_service import list_topics_timeline
+
         db = MagicMock()
 
         calls = [
             {"id": "c1", "title": "Kickoff", "call_number": 1, "kanban_stage": "done"},
             {"id": "c2", "title": "Review", "call_number": 2, "kanban_stage": "done"},
-            {"id": "c3", "title": "Follow-up", "call_number": 3, "kanban_stage": "done"},
+            {
+                "id": "c3",
+                "title": "Follow-up",
+                "call_number": 3,
+                "kanban_stage": "done",
+            },
         ]
         topics = [{"id": "t1", "name": "Risk Model", "first_raised_call_id": "c2"}]
         updates = [
             {
-                "topic_id": "t1", "call_id": "c2",
-                "summary": "First discussion", "follow_up_items": ["item1"],
-                "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral",
+                "topic_id": "t1",
+                "call_id": "c2",
+                "summary": "First discussion",
+                "follow_up_items": ["item1"],
+                "decisions": [],
+                "status": "open",
+                "owner": "Us",
+                "sentiment": "neutral",
             }
         ]
         latest = [{"id": "t1", "status": "open", "owner": "Us", "sentiment": "neutral"}]
@@ -512,20 +673,33 @@ class TestTopicsTimeline(unittest.TestCase):
         def table_side_effect(name):
             m = MagicMock()
             if name == "calls":
-                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = (
+                    calls
+                )
             elif name == "topics":
                 # First call: active topics (archived=False), Second call: archived (archived=True)
                 topics_call_count["n"] += 1
                 if topics_call_count["n"] == 1:
-                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = topics
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                        topics
+                    )
                 elif topics_call_count["n"] == 2:
-                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                        []
+                    )
                 else:
-                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
-                m.select.return_value.in_.return_value.execute.return_value.data = latest
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                        []
+                    )
+                m.select.return_value.in_.return_value.execute.return_value.data = (
+                    latest
+                )
             elif name == "topic_updates":
-                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = updates
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = (
+                    updates
+                )
             return m
+
         db.table.side_effect = table_side_effect
 
         result = list_topics_timeline("proj-1", db)
@@ -544,6 +718,7 @@ class TestTopicsTimeline(unittest.TestCase):
         pointing to it via merged_into_topic_id) gets has_sources=True and
         source_names populated. Powers the '+ new (merged)' cell label."""
         from backend.services.topics_service import list_topics_timeline
+
         db = MagicMock()
 
         calls = [
@@ -551,21 +726,62 @@ class TestTopicsTimeline(unittest.TestCase):
             {"id": "c2", "title": "Review", "call_number": 2, "kanban_stage": "done"},
         ]
         # Active topic 'c' is the merge target; archived 'a' and 'b' point to it.
-        active = [{"id": "c", "name": "API strategy", "first_raised_call_id": "c2",
-                   "archived": False, "merged_into_topic_id": None}]
+        active = [
+            {
+                "id": "c",
+                "name": "API strategy",
+                "first_raised_call_id": "c2",
+                "archived": False,
+                "merged_into_topic_id": None,
+            }
+        ]
         archived = [
-            {"id": "a", "name": "REST API", "first_raised_call_id": "c1",
-             "archived": True, "merged_into_topic_id": "c"},
-            {"id": "b", "name": "GraphQL API", "first_raised_call_id": "c1",
-             "archived": True, "merged_into_topic_id": "c"},
+            {
+                "id": "a",
+                "name": "REST API",
+                "first_raised_call_id": "c1",
+                "archived": True,
+                "merged_into_topic_id": "c",
+            },
+            {
+                "id": "b",
+                "name": "GraphQL API",
+                "first_raised_call_id": "c1",
+                "archived": True,
+                "merged_into_topic_id": "c",
+            },
         ]
         updates = [
-            {"topic_id": "c", "call_id": "c2", "summary": "merged", "follow_up_items": [],
-             "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral"},
-            {"topic_id": "a", "call_id": "c1", "summary": "REST raised", "follow_up_items": [],
-             "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral"},
-            {"topic_id": "b", "call_id": "c1", "summary": "GraphQL raised", "follow_up_items": [],
-             "decisions": [], "status": "open", "owner": "Us", "sentiment": "neutral"},
+            {
+                "topic_id": "c",
+                "call_id": "c2",
+                "summary": "merged",
+                "follow_up_items": [],
+                "decisions": [],
+                "status": "open",
+                "owner": "Us",
+                "sentiment": "neutral",
+            },
+            {
+                "topic_id": "a",
+                "call_id": "c1",
+                "summary": "REST raised",
+                "follow_up_items": [],
+                "decisions": [],
+                "status": "open",
+                "owner": "Us",
+                "sentiment": "neutral",
+            },
+            {
+                "topic_id": "b",
+                "call_id": "c1",
+                "summary": "GraphQL raised",
+                "follow_up_items": [],
+                "decisions": [],
+                "status": "open",
+                "owner": "Us",
+                "sentiment": "neutral",
+            },
         ]
         latest = [
             {"id": "c", "status": "open", "owner": "Us", "sentiment": "neutral"},
@@ -578,35 +794,64 @@ class TestTopicsTimeline(unittest.TestCase):
         def table_side_effect(name):
             m = MagicMock()
             if name == "calls":
-                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = (
+                    calls
+                )
             elif name == "topics":
                 topics_call_count["n"] += 1
                 if topics_call_count["n"] == 1:
                     # active
-                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = active
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                        active
+                    )
                 elif topics_call_count["n"] == 2:
                     # archived
-                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = archived
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                        archived
+                    )
                 # .select("id, name").in_("id", [...]).execute().data → merged-name lookup
                 m.select.return_value.in_.return_value.execute.return_value.data = [
                     {"id": "c", "name": "API strategy"},
                 ]
             elif name == "topic_updates":
                 # updates query: .select(...).in_().in_().execute()
-                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = updates
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = (
+                    updates
+                )
                 # latest_updates query: .select(...).in_().order().execute()
                 m.select.return_value.in_.return_value.order.return_value.execute.return_value.data = [
-                    {"topic_id": "c", "status": "open", "owner": "Us", "sentiment": "neutral", "created_at": "2026-04-08"},
-                    {"topic_id": "a", "status": "open", "owner": "Us", "sentiment": "neutral", "created_at": "2026-04-01"},
-                    {"topic_id": "b", "status": "open", "owner": "Us", "sentiment": "neutral", "created_at": "2026-04-01"},
+                    {
+                        "topic_id": "c",
+                        "status": "open",
+                        "owner": "Us",
+                        "sentiment": "neutral",
+                        "created_at": "2026-04-08",
+                    },
+                    {
+                        "topic_id": "a",
+                        "status": "open",
+                        "owner": "Us",
+                        "sentiment": "neutral",
+                        "created_at": "2026-04-01",
+                    },
+                    {
+                        "topic_id": "b",
+                        "status": "open",
+                        "owner": "Us",
+                        "sentiment": "neutral",
+                        "created_at": "2026-04-01",
+                    },
                 ]
             return m
+
         db.table.side_effect = table_side_effect
 
         result = list_topics_timeline("proj-1", db)
         merged_target = next(t for t in result["topics"] if t["topic_id"] == "c")
         self.assertTrue(merged_target["has_sources"])
-        self.assertEqual(sorted(merged_target["source_names"]), ["GraphQL API", "REST API"])
+        self.assertEqual(
+            sorted(merged_target["source_names"]), ["GraphQL API", "REST API"]
+        )
         # Archived sources have has_sources=False (they're leaves, not targets)
         for tid in ("a", "b"):
             src = next(t for t in result["topics"] if t["topic_id"] == tid)
@@ -619,30 +864,69 @@ class TestTopicsTimeline(unittest.TestCase):
         first_raised_call_id); archived rows expose merge_call_id (the call where
         they were folded in). Powers Story 10.9 chevron + indented rendering."""
         from backend.services.topics_service import list_topics_timeline
+
         db = MagicMock()
 
         calls = [
             {"id": "c1", "title": "Kickoff", "call_number": 1, "kanban_stage": "done"},
             {"id": "c2", "title": "Review", "call_number": 2, "kanban_stage": "done"},
         ]
-        active = [{"id": "merged", "name": "API Strategy", "first_raised_call_id": "c2",
-                   "archived": False, "merged_into_topic_id": None}]
+        active = [
+            {
+                "id": "merged",
+                "name": "API Strategy",
+                "first_raised_call_id": "c2",
+                "archived": False,
+                "merged_into_topic_id": None,
+            }
+        ]
         archived = [
-            {"id": "a", "name": "REST API", "first_raised_call_id": "c1",
-             "archived": True, "merged_into_topic_id": "merged"},
-            {"id": "b", "name": "GraphQL API", "first_raised_call_id": "c1",
-             "archived": True, "merged_into_topic_id": "merged"},
+            {
+                "id": "a",
+                "name": "REST API",
+                "first_raised_call_id": "c1",
+                "archived": True,
+                "merged_into_topic_id": "merged",
+            },
+            {
+                "id": "b",
+                "name": "GraphQL API",
+                "first_raised_call_id": "c1",
+                "archived": True,
+                "merged_into_topic_id": "merged",
+            },
         ]
         updates = [
-            {"topic_id": "merged", "call_id": "c2", "summary": "Unified API",
-             "follow_up_items": [], "decisions": [], "status": "open",
-             "owner": "Us", "sentiment": "neutral"},
-            {"topic_id": "a", "call_id": "c1", "summary": "REST discussed",
-             "follow_up_items": [], "decisions": [], "status": "open",
-             "owner": "Us", "sentiment": "neutral"},
-            {"topic_id": "b", "call_id": "c1", "summary": "GraphQL discussed",
-             "follow_up_items": [], "decisions": [], "status": "open",
-             "owner": "Us", "sentiment": "neutral"},
+            {
+                "topic_id": "merged",
+                "call_id": "c2",
+                "summary": "Unified API",
+                "follow_up_items": [],
+                "decisions": [],
+                "status": "open",
+                "owner": "Us",
+                "sentiment": "neutral",
+            },
+            {
+                "topic_id": "a",
+                "call_id": "c1",
+                "summary": "REST discussed",
+                "follow_up_items": [],
+                "decisions": [],
+                "status": "open",
+                "owner": "Us",
+                "sentiment": "neutral",
+            },
+            {
+                "topic_id": "b",
+                "call_id": "c1",
+                "summary": "GraphQL discussed",
+                "follow_up_items": [],
+                "decisions": [],
+                "status": "open",
+                "owner": "Us",
+                "sentiment": "neutral",
+            },
         ]
 
         topics_call_count = {"n": 0}
@@ -650,28 +934,52 @@ class TestTopicsTimeline(unittest.TestCase):
         def table_side_effect(name):
             m = MagicMock()
             if name == "calls":
-                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = (
+                    calls
+                )
             elif name == "topics":
                 topics_call_count["n"] += 1
                 if topics_call_count["n"] == 1:
-                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = active
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                        active
+                    )
                 elif topics_call_count["n"] == 2:
-                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = archived
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                        archived
+                    )
                 # merged-name lookup
                 m.select.return_value.in_.return_value.execute.return_value.data = [
                     {"id": "merged", "name": "API Strategy"}
                 ]
             elif name == "topic_updates":
-                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = updates
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = (
+                    updates
+                )
                 m.select.return_value.in_.return_value.order.return_value.execute.return_value.data = [
-                    {"topic_id": "merged", "status": "open", "owner": "Us",
-                     "sentiment": "neutral", "created_at": "2026-04-08"},
-                    {"topic_id": "a", "status": "open", "owner": "Us",
-                     "sentiment": "neutral", "created_at": "2026-04-01"},
-                    {"topic_id": "b", "status": "open", "owner": "Us",
-                     "sentiment": "neutral", "created_at": "2026-04-01"},
+                    {
+                        "topic_id": "merged",
+                        "status": "open",
+                        "owner": "Us",
+                        "sentiment": "neutral",
+                        "created_at": "2026-04-08",
+                    },
+                    {
+                        "topic_id": "a",
+                        "status": "open",
+                        "owner": "Us",
+                        "sentiment": "neutral",
+                        "created_at": "2026-04-01",
+                    },
+                    {
+                        "topic_id": "b",
+                        "status": "open",
+                        "owner": "Us",
+                        "sentiment": "neutral",
+                        "created_at": "2026-04-01",
+                    },
                 ]
             return m
+
         db.table.side_effect = table_side_effect
 
         result = list_topics_timeline("proj-1", db)
@@ -685,6 +993,7 @@ class TestTopicsTimeline(unittest.TestCase):
     def test_timeline_followed_up_and_absent(self, mock_gc):
         """Topic raised in call 1 and followed up in call 2."""
         from backend.services.topics_service import list_topics_timeline
+
         db = MagicMock()
 
         calls = [
@@ -694,34 +1003,57 @@ class TestTopicsTimeline(unittest.TestCase):
         topics = [{"id": "t1", "name": "Dashboard", "first_raised_call_id": "c1"}]
         updates = [
             {
-                "topic_id": "t1", "call_id": "c1",
-                "summary": "Raised", "follow_up_items": [], "decisions": [],
-                "status": "open", "owner": "Us", "sentiment": "neutral",
+                "topic_id": "t1",
+                "call_id": "c1",
+                "summary": "Raised",
+                "follow_up_items": [],
+                "decisions": [],
+                "status": "open",
+                "owner": "Us",
+                "sentiment": "neutral",
             },
             {
-                "topic_id": "t1", "call_id": "c2",
-                "summary": "Resolved now", "follow_up_items": [], "decisions": [],
-                "status": "resolved", "owner": "Us", "sentiment": "positive",
+                "topic_id": "t1",
+                "call_id": "c2",
+                "summary": "Resolved now",
+                "follow_up_items": [],
+                "decisions": [],
+                "status": "resolved",
+                "owner": "Us",
+                "sentiment": "positive",
             },
         ]
-        latest = [{"id": "t1", "status": "resolved", "owner": "Us", "sentiment": "positive"}]
+        latest = [
+            {"id": "t1", "status": "resolved", "owner": "Us", "sentiment": "positive"}
+        ]
 
         topics_call_count = {"n": 0}
 
         def table_side_effect(name):
             m = MagicMock()
             if name == "calls":
-                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = (
+                    calls
+                )
             elif name == "topics":
                 topics_call_count["n"] += 1
                 if topics_call_count["n"] == 1:
-                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = topics
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                        topics
+                    )
                 else:
-                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
-                m.select.return_value.in_.return_value.execute.return_value.data = latest
+                    m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                        []
+                    )
+                m.select.return_value.in_.return_value.execute.return_value.data = (
+                    latest
+                )
             elif name == "topic_updates":
-                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = updates
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = (
+                    updates
+                )
             return m
+
         db.table.side_effect = table_side_effect
 
         result = list_topics_timeline("proj-1", db)
@@ -735,6 +1067,7 @@ class TestTopicsTimeline(unittest.TestCase):
         """When calls exist but project has no topics and no extraction_cache,
         returns calls list with empty topics."""
         from backend.services.topics_service import list_topics_timeline
+
         db = MagicMock()
 
         calls = [
@@ -745,18 +1078,27 @@ class TestTopicsTimeline(unittest.TestCase):
             m = MagicMock()
             if name == "calls":
                 # First query: list calls for project
-                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = (
+                    calls
+                )
                 # Second query: fetch pending_topics/extraction_cache for calls without updates
                 m.select.return_value.in_.return_value.execute.return_value.data = [
                     {"id": "c1", "pending_topics": None, "extraction_cache": None}
                 ]
             elif name == "topics":
-                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                    []
+                )
                 m.select.return_value.in_.return_value.execute.return_value.data = []
             elif name == "topic_updates":
-                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = []
-                m.select.return_value.in_.return_value.order.return_value.execute.return_value.data = []
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = (
+                    []
+                )
+                m.select.return_value.in_.return_value.order.return_value.execute.return_value.data = (
+                    []
+                )
             return m
+
         db.table.side_effect = table_side_effect
 
         result = list_topics_timeline("proj-1", db)
@@ -764,14 +1106,22 @@ class TestTopicsTimeline(unittest.TestCase):
         self.assertEqual(result["topics"], [])
 
     @patch("backend.services.topics_service.get_client")
-    def test_timeline_includes_pending_rows_for_calls_without_topic_updates(self, mock_gc):
+    def test_timeline_includes_pending_rows_for_calls_without_topic_updates(
+        self, mock_gc
+    ):
         """Calls at call_topics stage with extraction_cache but no topic_updates
         appear in the timeline as pending rows with type='pending'."""
         from backend.services.topics_service import list_topics_timeline
+
         db = MagicMock()
 
         calls = [
-            {"id": "c1", "title": "Kickoff", "call_number": 1, "kanban_stage": "call_topics"},
+            {
+                "id": "c1",
+                "title": "Kickoff",
+                "call_number": 1,
+                "kanban_stage": "call_topics",
+            },
         ]
         extraction_cache = [
             {
@@ -798,19 +1148,32 @@ class TestTopicsTimeline(unittest.TestCase):
             m = MagicMock()
             if name == "calls":
                 # First query: list calls for project (with .in_ for kanban stages + .order)
-                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = calls
+                m.select.return_value.eq.return_value.in_.return_value.order.return_value.execute.return_value.data = (
+                    calls
+                )
                 # Second query: fetch pending_topics/extraction_cache for calls without updates
                 m.select.return_value.in_.return_value.execute.return_value.data = [
-                    {"id": "c1", "pending_topics": None, "extraction_cache": extraction_cache}
+                    {
+                        "id": "c1",
+                        "pending_topics": None,
+                        "extraction_cache": extraction_cache,
+                    }
                 ]
             elif name == "topics":
                 # No committed topics
-                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+                    []
+                )
                 m.select.return_value.in_.return_value.execute.return_value.data = []
             elif name == "topic_updates":
-                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = []
-                m.select.return_value.in_.return_value.order.return_value.execute.return_value.data = []
+                m.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = (
+                    []
+                )
+                m.select.return_value.in_.return_value.order.return_value.execute.return_value.data = (
+                    []
+                )
             return m
+
         db.table.side_effect = table_side_effect
 
         result = list_topics_timeline("proj-1", db)
@@ -822,7 +1185,7 @@ class TestTopicsTimeline(unittest.TestCase):
         for topic in result["topics"]:
             self.assertTrue(
                 topic["topic_id"].startswith("pending:"),
-                f"Expected topic_id to start with 'pending:', got {topic['topic_id']}"
+                f"Expected topic_id to start with 'pending:', got {topic['topic_id']}",
             )
 
         # Each should have a call_updates entry for c1 with type="pending"
@@ -831,13 +1194,19 @@ class TestTopicsTimeline(unittest.TestCase):
             self.assertEqual(topic["call_updates"]["c1"]["type"], "pending")
 
         # Summaries should be preserved from extraction_cache
-        summaries = {t["name"]: t["call_updates"]["c1"]["summary"] for t in result["topics"]}
+        summaries = {
+            t["name"]: t["call_updates"]["c1"]["summary"] for t in result["topics"]
+        }
         self.assertEqual(summaries["Pricing"], "Client prefers monthly billing.")
         self.assertEqual(summaries["Timeline"], "Q3 deadline confirmed.")
 
         # call_updates must have exactly one key (no not_discussed for other calls)
         for topic in result["topics"]:
-            self.assertEqual(len(topic["call_updates"]), 1, "pending row must have exactly one call_updates entry")
+            self.assertEqual(
+                len(topic["call_updates"]),
+                1,
+                "pending row must have exactly one call_updates entry",
+            )
 
         # Verify field mapping for Pricing topic
         pricing = next(t for t in result["topics"] if t["name"] == "Pricing")
@@ -869,7 +1238,9 @@ def test_promote_not_discussed_inserts_ptid_only_match_group(mock_gc):
     mock_db = MagicMock()
     mock_gc.return_value = mock_db
     # No pre-existing group for this topic
-    mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+    mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
+        []
+    )
 
     r = http.post(
         f"/api/calls/{CALL_ID}/topics/promote-not-discussed",
@@ -882,7 +1253,8 @@ def test_promote_not_discussed_inserts_ptid_only_match_group(mock_gc):
 
     # Verify insert was called on topic_match_groups with the correct payload
     insert_calls = [
-        call for call in mock_db.table.return_value.insert.call_args_list
+        call
+        for call in mock_db.table.return_value.insert.call_args_list
         if call.args and call.args[0].get("call_id") == CALL_ID
     ]
     assert len(insert_calls) == 1
@@ -936,6 +1308,7 @@ def test_list_topics_prior_to_call_includes_archived_later():
             m.select.return_value.eq.return_value.lt.return_value.execute.return_value.data = [
                 {"id": "call-1"}
             ]
+
             # Chain 3: all_call_rows — .select("id, created_at").eq("project_id", …).execute()
             # Needs to overwrite the first chain's default .select.return_value.eq.return_value
             # — use a side_effect on .eq so we can branch on the selected columns.
@@ -946,12 +1319,15 @@ def test_list_topics_prior_to_call_includes_archived_later():
                 elif col == "project_id":
                     # Chained as prior_calls OR all_call_rows.
                     # The prior_calls chain adds .lt(...), all_call_rows goes direct to .execute().
-                    result.lt.return_value.execute.return_value.data = [{"id": "call-1"}]
+                    result.lt.return_value.execute.return_value.data = [
+                        {"id": "call-1"}
+                    ]
                     result.execute.return_value.data = [
                         {"id": "call-1", "created_at": call1_at},
                         {"id": "call-2", "created_at": call2_at},
                     ]
                 return result
+
             m.select.return_value.eq.side_effect = eq_side
         elif name == "topics":
             topics_call_count["n"] += 1
@@ -959,24 +1335,43 @@ def test_list_topics_prior_to_call_includes_archived_later():
                 # Main query: .select(...).eq("project_id").in_("first_raised_call_id") — returns all topics raised by prior calls
                 m.select.return_value.eq.return_value.in_.return_value.execute.return_value.data = [
                     # Active Call-1 topic still alive
-                    {"id": "survivor", "name": "Survivor", "calls_open": 1,
-                     "first_raised_call_id": "call-1", "archived": False,
-                     "merged_into_topic_id": None},
+                    {
+                        "id": "survivor",
+                        "name": "Survivor",
+                        "calls_open": 1,
+                        "first_raised_call_id": "call-1",
+                        "archived": False,
+                        "merged_into_topic_id": None,
+                    },
                     # Call-1 topic archived via M:N merge in Call 2
-                    {"id": "archived-via-call-2", "name": "Old REST", "calls_open": 1,
-                     "first_raised_call_id": "call-1", "archived": True,
-                     "merged_into_topic_id": "merge-target-c2"},
+                    {
+                        "id": "archived-via-call-2",
+                        "name": "Old REST",
+                        "calls_open": 1,
+                        "first_raised_call_id": "call-1",
+                        "archived": True,
+                        "merged_into_topic_id": "merge-target-c2",
+                    },
                 ]
             else:
                 # merge-target lookup: .select("id, name, first_raised_call_id").in_("id", [...])
                 m.select.return_value.in_.return_value.execute.return_value.data = [
-                    {"id": "merge-target-c2", "name": "API Strategy",
-                     "first_raised_call_id": "call-2"},
+                    {
+                        "id": "merge-target-c2",
+                        "name": "API Strategy",
+                        "first_raised_call_id": "call-2",
+                    },
                 ]
         elif name == "topic_updates":
             m.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = [
-                {"summary": "s", "follow_up_items": [], "decisions": [],
-                 "status": "open", "owner": "Us", "sentiment": "neutral"}
+                {
+                    "summary": "s",
+                    "follow_up_items": [],
+                    "decisions": [],
+                    "status": "open",
+                    "owner": "Us",
+                    "sentiment": "neutral",
+                }
             ]
         return m
 
@@ -995,3 +1390,109 @@ def test_list_topics_prior_to_call_includes_archived_later():
     archived_later = next(t for t in result if t["name"] == "Old REST")
     assert archived_later["archived_later"] is True
     assert archived_later["merged_into_name"] == "API Strategy"
+
+
+def test_topic_in_accepts_new_fields():
+    t = TopicIn(
+        name="Risk model selection",
+        summary="Benchmark gates Phase 2 kickoff.",
+        follow_up_items=["Nick: run benchmark"],
+        decisions=["Phase 2 gated on benchmark."],
+        open_questions=["Does MC Mac's ceiling apply with caching?"],
+        status="open",
+        owner="Us",
+        sentiment="concern",
+        is_parked=False,
+        importance="high",
+        rationale="All 4 criteria met.",
+    )
+    assert t.open_questions == ["Does MC Mac's ceiling apply with caching?"]
+    assert t.is_parked is False
+    assert t.importance == "high"
+    assert t.rationale == "All 4 criteria met."
+
+
+def test_topic_in_defaults_for_new_fields():
+    """New fields are optional with sensible defaults — backwards compat for old callers."""
+    t = TopicIn(
+        name="X",
+        summary="y",
+        follow_up_items=[],
+        decisions=[],
+        status="open",
+        owner="Us",
+        sentiment="neutral",
+    )
+    assert t.open_questions == []
+    assert t.is_parked is False
+    assert t.importance == "medium"
+    assert t.rationale == ""
+
+
+def test_topic_in_importance_validation():
+    """Importance is restricted to high/medium/low."""
+    with pytest.raises(ValidationError):
+        TopicIn(
+            name="X",
+            summary="y",
+            follow_up_items=[],
+            decisions=[],
+            status="open",
+            owner="Us",
+            sentiment="neutral",
+            importance="critical",  # invalid — must raise
+        )
+
+
+def test_extract_call_topics_uses_new_default_prompt(monkeypatch):
+    """When no stored prompt is set, extract_call_topics uses CALL_TOPICS_DEFAULT_PROMPT."""
+    from backend.prompts.call_topics import CALL_TOPICS_DEFAULT_PROMPT
+
+    captured = {}
+
+    async def fake_call_llm(prompt, llm):
+        captured["prompt"] = prompt
+        return []
+
+    mock_client = MagicMock()
+    # Stub first query: calls table → returns one row with project_id + transcript
+    calls_select = MagicMock()
+    calls_select.execute.return_value.data = [
+        {"project_id": "p1", "transcript": "Some call transcript text."}
+    ]
+    # Stub second query: projects table → returns default_llm + context
+    projects_select = MagicMock()
+    projects_select.execute.return_value.data = [{"default_llm": "groq", "context": ""}]
+    # Stub third query: topics vocabulary — empty
+    topics_select = MagicMock()
+    topics_select.execute.return_value.data = []
+
+    # table('calls').select('project_id, transcript').eq('id', call_id).execute()
+    # table('projects').select('default_llm, context').eq('id', project_id).execute()
+    # table('topics').select('name').eq('project_id', project_id).eq('archived', False).execute()
+    def table_side_effect(name):
+        tbl = MagicMock()
+        if name == "calls":
+            tbl.select.return_value.eq.return_value = calls_select
+        elif name == "projects":
+            tbl.select.return_value.eq.return_value = projects_select
+        elif name == "topics":
+            tbl.select.return_value.eq.return_value.eq.return_value = topics_select
+        return tbl
+
+    mock_client.table.side_effect = table_side_effect
+
+    monkeypatch.setattr("backend.services.topics_service._call_llm", fake_call_llm)
+    monkeypatch.setattr(
+        "backend.services.topics_service._get_topics_prompt",
+        lambda project_id, db, category="call_topics": (None, None),
+    )
+    monkeypatch.setattr(
+        "backend.services.topics_service.get_client", lambda: mock_client
+    )
+
+    asyncio.run(extract_call_topics("call1"))
+
+    assert "[ROLE]" in captured["prompt"]
+    assert "[RUBRIC]" in captured["prompt"]
+    assert CALL_TOPICS_DEFAULT_PROMPT in captured["prompt"]

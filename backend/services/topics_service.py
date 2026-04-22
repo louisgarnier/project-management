@@ -3,48 +3,95 @@ from __future__ import annotations
 from typing import Literal, Optional
 from pydantic import BaseModel, field_validator
 
+
 def _normalize_status(v: str) -> str:
     key = v.lower().replace("-", "_").replace(" ", "_")
     return {
         "open": "open",
-        "in_progress": "in_progress", "in progress": "in_progress", "inprogress": "in_progress",
-        "pending": "open", "active": "open", "ongoing": "open", "new": "open",
-        "resolved": "resolved", "closed": "resolved", "done": "resolved", "complete": "resolved",
-    }.get(key, "open")  # default: open
+        "in_progress": "in_progress",
+        "in progress": "in_progress",
+        "inprogress": "in_progress",
+        "pending": "open",
+        "active": "open",
+        "ongoing": "open",
+        "new": "open",
+        "resolved": "resolved",
+        "closed": "resolved",
+        "done": "resolved",
+        "complete": "resolved",
+    }.get(
+        key, "open"
+    )  # default: open
 
 
 def _normalize_owner(v: str) -> str:
     key = v.lower().strip()
     return {
-        "us": "Us", "we": "Us", "our": "Us", "ours": "Us", "our team": "Us",
-        "internal": "Us", "our side": "Us", "team": "Us",
-        "client": "Client", "them": "Client", "their": "Client", "they": "Client",
-        "the client": "Client", "customer": "Client", "external": "Client",
-        "both": "Both", "shared": "Both", "joint": "Both", "mutual": "Both",
-        "both parties": "Both", "all": "Both",
-    }.get(key, "Us")  # default: Us
+        "us": "Us",
+        "we": "Us",
+        "our": "Us",
+        "ours": "Us",
+        "our team": "Us",
+        "internal": "Us",
+        "our side": "Us",
+        "team": "Us",
+        "client": "Client",
+        "them": "Client",
+        "their": "Client",
+        "they": "Client",
+        "the client": "Client",
+        "customer": "Client",
+        "external": "Client",
+        "both": "Both",
+        "shared": "Both",
+        "joint": "Both",
+        "mutual": "Both",
+        "both parties": "Both",
+        "all": "Both",
+    }.get(
+        key, "Us"
+    )  # default: Us
 
 
 def _normalize_sentiment(v: str) -> str:
     key = v.lower().strip()
     return {
-        "positive": "positive", "good": "positive", "great": "positive", "optimistic": "positive",
-        "neutral": "neutral", "mixed": "neutral", "unclear": "neutral", "n/a": "neutral",
-        "concern": "concern", "negative": "concern", "bad": "concern", "risk": "concern",
-        "at risk": "concern", "issue": "concern", "problem": "concern", "critical": "concern",
-    }.get(key, "neutral")  # default: neutral
+        "positive": "positive",
+        "good": "positive",
+        "great": "positive",
+        "optimistic": "positive",
+        "neutral": "neutral",
+        "mixed": "neutral",
+        "unclear": "neutral",
+        "n/a": "neutral",
+        "concern": "concern",
+        "negative": "concern",
+        "bad": "concern",
+        "risk": "concern",
+        "at risk": "concern",
+        "issue": "concern",
+        "problem": "concern",
+        "critical": "concern",
+    }.get(
+        key, "neutral"
+    )  # default: neutral
 
 
 class TopicIn(BaseModel):
     """One topic as submitted by the frontend (save endpoint)."""
+
     name: str
     summary: str
     follow_up_items: list[str]
     decisions: list[str]
+    open_questions: list[str] = []
     status: Literal["open", "in_progress", "resolved"]
     owner: Literal["Us", "Client", "Both"]
     sentiment: Literal["positive", "neutral", "concern"]
     transcript_excerpt: Optional[str] = None
+    is_parked: bool = False
+    importance: Literal["high", "medium", "low"] = "medium"
+    rationale: str = ""
 
     @field_validator("status", mode="before")
     @classmethod
@@ -64,12 +111,14 @@ class TopicIn(BaseModel):
 
 class TopicUpdate(TopicIn):
     """TopicIn extended with DB identity + disposition for not-discussed topics."""
-    topic_id: Optional[str] = None          # None → brand new topic
+
+    topic_id: Optional[str] = None  # None → brand new topic
     disposition: Optional[Literal["keep_as_is", "archive"]] = None
 
 
 class TopicOut(BaseModel):
     """One topic row as returned from DB queries."""
+
     id: str
     project_id: str
     name: str
@@ -81,9 +130,13 @@ class TopicOut(BaseModel):
     summary: Optional[str] = None
     follow_up_items: list[str] = []
     decisions: list[str] = []
+    open_questions: list[str] = []
     status: Optional[Literal["open", "in_progress", "resolved"]] = None
     owner: Optional[Literal["Us", "Client", "Both"]] = None
     sentiment: Optional[Literal["positive", "neutral", "concern"]] = None
+    is_parked: bool = False
+    importance: Literal["high", "medium", "low"] = "medium"
+    rationale: str = ""
 
 
 class BriefItem(BaseModel):
@@ -106,6 +159,7 @@ import json
 import os
 
 from backend.database.supabase_client import get_client
+from backend.prompts.call_topics import CALL_TOPICS_DEFAULT_PROMPT
 from backend.services.llm_service import call_llm_raw
 from backend.services.topic_lineage import build_lineage_evidence_block
 from backend.utils.logger import get_logger
@@ -118,10 +172,18 @@ _EXTRACT_SYSTEM = (
 )
 
 _TOPIC_SCHEMA = (
-    '{"name":"string","summary":"string","transcript_excerpt":"string — verbatim relevant section of the transcript",'
-    '"follow_up_items":["string"],'
-    '"decisions":["string"],"status":"open|in_progress|resolved",'
-    '"owner":"Us|Client|Both","sentiment":"positive|neutral|concern"}'
+    '{"name":"string",'
+    '"summary":"string — 3–6 sentences covering every concrete detail",'
+    '"transcript_excerpt":"string — verbatim relevant section of the transcript, 2–8 sentences",'
+    '"decisions":["string"],'
+    '"follow_up_items":["string — action, with owner as prefix when named"],'
+    '"open_questions":["string — phrased as a question"],'
+    '"status":"open|in_progress|resolved",'
+    '"owner":"Us|Client|Both",'
+    '"sentiment":"positive|neutral|concern",'
+    '"is_parked":false,'
+    '"importance":"high|medium|low",'
+    '"rationale":"one sentence — which rubric criteria were met"}'
 )
 
 
@@ -138,7 +200,9 @@ async def _call_llm(prompt: str, llm: str) -> list[dict] | dict:
         logger.info(f"🔍 [{llm}] Topics raw keys sample: {_sample_keys(parsed)}")
         return _normalize_topic_keys(parsed)
     except json.JSONDecodeError as e:
-        logger.error(f"❌ [{llm}] Invalid JSON in topics response: {e}\nRaw: {raw[:200]}")
+        logger.error(
+            f"❌ [{llm}] Invalid JSON in topics response: {e}\nRaw: {raw[:200]}"
+        )
         raise ValueError(f"LLM returned invalid JSON: {e}") from e
 
 
@@ -154,8 +218,24 @@ def _sample_keys(parsed: list | dict) -> str:
 
 
 _NAME_ALIASES = {"topic_name", "title", "topic", "subject", "heading"}
-_SUMMARY_ALIASES = {"context", "description", "details", "detail", "overview", "content", "text", "body"}
-_FOLLOW_UP_ALIASES = {"follow_ups", "action_items", "actions", "followups", "follow_up", "next_steps"}
+_SUMMARY_ALIASES = {
+    "context",
+    "description",
+    "details",
+    "detail",
+    "overview",
+    "content",
+    "text",
+    "body",
+}
+_FOLLOW_UP_ALIASES = {
+    "follow_ups",
+    "action_items",
+    "actions",
+    "followups",
+    "follow_up",
+    "next_steps",
+}
 _DECISIONS_ALIASES = {"decision", "key_decisions", "agreed", "agreements"}
 
 
@@ -186,9 +266,13 @@ def _normalize_topic(t: dict) -> dict:
     out.setdefault("transcript_excerpt", None)
     out.setdefault("follow_up_items", [])
     out.setdefault("decisions", [])
+    out.setdefault("open_questions", [])
     out.setdefault("status", "open")
     out.setdefault("owner", "Us")
     out.setdefault("sentiment", "neutral")
+    out.setdefault("is_parked", False)
+    out.setdefault("importance", "medium")
+    out.setdefault("rationale", "")
     return out
 
 
@@ -224,21 +308,25 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
             .data
         )
         latest = updates[0] if updates else {}
-        result.append({
-            "topic_id": t["id"],
-            "name": t["name"],
-            "calls_open": t["calls_open"],
-            "summary": latest.get("summary", ""),
-            "follow_up_items": latest.get("follow_up_items", []),
-            "decisions": latest.get("decisions", []),
-            "status": latest.get("status", "open"),
-            "owner": latest.get("owner", "Us"),
-            "sentiment": latest.get("sentiment", "neutral"),
-        })
+        result.append(
+            {
+                "topic_id": t["id"],
+                "name": t["name"],
+                "calls_open": t["calls_open"],
+                "summary": latest.get("summary", ""),
+                "follow_up_items": latest.get("follow_up_items", []),
+                "decisions": latest.get("decisions", []),
+                "status": latest.get("status", "open"),
+                "owner": latest.get("owner", "Us"),
+                "sentiment": latest.get("sentiment", "neutral"),
+            }
+        )
     return result
 
 
-def _get_topics_prompt(project_id: str, db, category: str = "call_topics") -> tuple[str | None, str | None]:
+def _get_topics_prompt(
+    project_id: str, db, category: str = "call_topics"
+) -> tuple[str | None, str | None]:
     """Return (prompt, llm) for the given workflow category, or (None, None) if not found."""
     rows = (
         db.table("artifact_types")
@@ -255,9 +343,6 @@ def _get_topics_prompt(project_id: str, db, category: str = "call_topics") -> tu
     return rows[0]["prompt"], rows[0].get("llm")
 
 
-
-
-
 async def extract_call_topics(call_id: str) -> list[dict]:
     """
     Step 1 of two-step extraction: extract topics from this call's transcript ONLY.
@@ -266,7 +351,13 @@ async def extract_call_topics(call_id: str) -> list[dict]:
     """
     db = get_client()
 
-    call_row = db.table("calls").select("project_id, transcript").eq("id", call_id).execute().data
+    call_row = (
+        db.table("calls")
+        .select("project_id, transcript")
+        .eq("id", call_id)
+        .execute()
+        .data
+    )
     if not call_row:
         raise ValueError(f"Call {call_id} not found")
     transcript = (call_row[0]["transcript"] or "").strip()
@@ -274,30 +365,25 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         raise ValueError("no_transcript")
 
     project_id = call_row[0]["project_id"]
-    stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="call_topics")
-    proj_rows = db.table("projects").select("default_llm, context").eq("id", project_id).execute().data
+    stored_prompt, stored_llm = _get_topics_prompt(
+        project_id, db, category="call_topics"
+    )
+    proj_rows = (
+        db.table("projects")
+        .select("default_llm, context")
+        .eq("id", project_id)
+        .execute()
+        .data
+    )
     if stored_llm is None:
         stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
     llm = stored_llm or "groq"
     project_context = (proj_rows[0].get("context") or "").strip() if proj_rows else ""
 
-    base_instruction = stored_prompt or (
-        "You are an expert at analysing business call transcripts. Extract every distinct topic discussed — "
-        "be exhaustive, do not merge separate topics into one.\n\n"
-        "For each topic:\n"
-        "- name: short label (3–6 words)\n"
-        "- summary: 1–2 sentence recap of what was said\n"
-        "- transcript_excerpt: the verbatim relevant section of the transcript where this topic was discussed. "
-        "Include enough context to understand the discussion (typically 2–8 sentences). "
-        "Copy the exact words from the transcript.\n"
-        "- follow_up_items: concrete next steps or open questions (empty array if none)\n"
-        "- decisions: anything explicitly agreed or decided (empty array if none)\n"
-        "- status: open (unresolved), in_progress (being worked on), resolved (closed/agreed)\n"
-        "- owner: Us (our team owns it), Client (client owns it), Both (shared)\n"
-        "- sentiment: positive (good news/progress), neutral (informational), concern (risk/problem/blocker)\n\n"
-        "Return ONLY a JSON array. No markdown, no explanation."
+    base_instruction = stored_prompt or CALL_TOPICS_DEFAULT_PROMPT
+    context_prefix = (
+        f"Project context:\n{project_context}\n\n" if project_context else ""
     )
-    context_prefix = f"Project context:\n{project_context}\n\n" if project_context else ""
 
     # Vocabulary hint: pass existing project topic names so the LLM aligns the
     # new call topic `name` fields with prior naming conventions. Names only —
@@ -349,16 +435,24 @@ async def run_extraction_background(call_id: str) -> None:
     db = get_client()
     try:
         topics = await extract_call_topics(call_id)
-        db.table("calls").update({
-            "extraction_cache": topics,
-            "extraction_status": "done",
-        }).eq("id", call_id).execute()
-        logger.info(f"✅ [Topics] Background extraction complete: {len(topics)} topics saved for call {call_id}")
+        db.table("calls").update(
+            {
+                "extraction_cache": topics,
+                "extraction_status": "done",
+            }
+        ).eq("id", call_id).execute()
+        logger.info(
+            f"✅ [Topics] Background extraction complete: {len(topics)} topics saved for call {call_id}"
+        )
     except ValueError as e:
-        db.table("calls").update({"extraction_status": "failed"}).eq("id", call_id).execute()
+        db.table("calls").update({"extraction_status": "failed"}).eq(
+            "id", call_id
+        ).execute()
         logger.warning(f"⚠️ [Topics] Background extraction failed (ValueError): {e}")
     except Exception as e:
-        db.table("calls").update({"extraction_status": "failed"}).eq("id", call_id).execute()
+        db.table("calls").update({"extraction_status": "failed"}).eq(
+            "id", call_id
+        ).execute()
         logger.exception(f"❌ [Topics] Background extraction failed: {e}")
 
 
@@ -386,9 +480,12 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
     project_id = call_row[0]["project_id"]
 
     done_calls = (
-        db.table("calls").select("id")
-        .eq("project_id", project_id).eq("kanban_stage", "done")
-        .execute().data
+        db.table("calls")
+        .select("id")
+        .eq("project_id", project_id)
+        .eq("kanban_stage", "done")
+        .execute()
+        .data
     )
     call_number = len(done_calls) + 1
 
@@ -402,19 +499,31 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
         # orphan-clean topics that have no remaining updates. This ensures re-running
         # aggregate after a rollback doesn't stack duplicate topic rows.
         prior_updates = (
-            db.table("topic_updates").select("topic_id").eq("call_id", call_id).execute().data
+            db.table("topic_updates")
+            .select("topic_id")
+            .eq("call_id", call_id)
+            .execute()
+            .data
         )
         affected_ids = list({r["topic_id"] for r in prior_updates})
         if affected_ids:
             db.table("topic_updates").delete().eq("call_id", call_id).execute()
             for topic_id in affected_ids:
                 remaining = (
-                    db.table("topic_updates").select("id").eq("topic_id", topic_id).execute().data
+                    db.table("topic_updates")
+                    .select("id")
+                    .eq("topic_id", topic_id)
+                    .execute()
+                    .data
                 )
                 if not remaining:
                     db.table("topics").delete().eq("id", topic_id).execute()
-                    logger.info(f"🗄️ [Aggregate] Cleaned up orphan topic on re-run: {topic_id}")
-            logger.info(f"🗄️ [Aggregate] Cleaned {len(affected_ids)} stale topics before re-save for call {call_id}")
+                    logger.info(
+                        f"🗄️ [Aggregate] Cleaned up orphan topic on re-run: {topic_id}"
+                    )
+            logger.info(
+                f"🗄️ [Aggregate] Cleaned {len(affected_ids)} stale topics before re-save for call {call_id}"
+            )
 
         # Call 1: auto-advance — save all as new topics and jump to artifacts
         new_topics_to_save = [
@@ -422,23 +531,33 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
             for t in call_topics
         ]
         await save_topics(call_id, new_topics_to_save)
-        db.table("calls").update({"kanban_stage": "artifacts"}).eq("id", call_id).execute()
-        db.table("calls").update({
-            "extraction_cache": None,
-            "extraction_status": "idle",
-        }).eq("id", call_id).execute()
-        logger.info(f"✅ [Topics] Call 1 auto-advanced: saved {len(new_topics_to_save)} topics → artifacts")
+        db.table("calls").update({"kanban_stage": "artifacts"}).eq(
+            "id", call_id
+        ).execute()
+        db.table("calls").update(
+            {
+                "extraction_cache": None,
+                "extraction_status": "idle",
+            }
+        ).eq("id", call_id).execute()
+        logger.info(
+            f"✅ [Topics] Call 1 auto-advanced: saved {len(new_topics_to_save)} topics → artifacts"
+        )
         return {"auto_advanced": True, "call_number": call_number}
 
     # Call 2+: save pending topics and advance to project_matching for manual matching
-    db.table("calls").update({
-        "pending_topics": call_topics,
-        "kanban_stage": "project_matching",
-    }).eq("id", call_id).execute()
-    db.table("calls").update({
-        "extraction_cache": None,
-        "extraction_status": "idle",
-    }).eq("id", call_id).execute()
+    db.table("calls").update(
+        {
+            "pending_topics": call_topics,
+            "kanban_stage": "project_matching",
+        }
+    ).eq("id", call_id).execute()
+    db.table("calls").update(
+        {
+            "extraction_cache": None,
+            "extraction_status": "idle",
+        }
+    ).eq("id", call_id).execute()
     logger.info(
         f"✅ [Topics] Step-2 saved {len(call_topics)} pending topics → project_matching"
     )
@@ -466,13 +585,19 @@ async def save_match_groups(call_id: str, groups: list[dict]) -> dict:
     db.table("topic_match_groups").delete().eq("call_id", call_id).execute()
 
     for g in groups:
-        db.table("topic_match_groups").insert({
-            "call_id": call_id,
-            "project_topic_ids": g.get("project_topic_ids", []),
-            "call_topic_names": [n.lower().strip() for n in g.get("call_topic_names", [])],
-        }).execute()
+        db.table("topic_match_groups").insert(
+            {
+                "call_id": call_id,
+                "project_topic_ids": g.get("project_topic_ids", []),
+                "call_topic_names": [
+                    n.lower().strip() for n in g.get("call_topic_names", [])
+                ],
+            }
+        ).execute()
 
-    db.table("calls").update({"kanban_stage": "project_updates"}).eq("id", call_id).execute()
+    db.table("calls").update({"kanban_stage": "project_updates"}).eq(
+        "id", call_id
+    ).execute()
     logger.info(f"✅ [Topics] Saved {len(groups)} match groups → project_updates")
     return {"saved": len(groups)}
 
@@ -488,7 +613,13 @@ async def run_merge_preview(call_id: str) -> list[dict]:
     """
     db = get_client()
 
-    call_row = db.table("calls").select("project_id, pending_topics").eq("id", call_id).execute().data
+    call_row = (
+        db.table("calls")
+        .select("project_id, pending_topics")
+        .eq("id", call_id)
+        .execute()
+        .data
+    )
     if not call_row:
         raise ValueError(f"Call {call_id} not found")
     project_id = call_row[0]["project_id"]
@@ -510,8 +641,16 @@ async def run_merge_preview(call_id: str) -> list[dict]:
     prev_by_id = {t["topic_id"]: t for t in previous}
 
     # Get LLM config
-    stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="project_topics")
-    proj_rows = db.table("projects").select("default_llm, context").eq("id", project_id).execute().data
+    stored_prompt, stored_llm = _get_topics_prompt(
+        project_id, db, category="project_topics"
+    )
+    proj_rows = (
+        db.table("projects")
+        .select("default_llm, context")
+        .eq("id", project_id)
+        .execute()
+        .data
+    )
     if stored_llm is None:
         stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
     llm = stored_llm or "groq"
@@ -532,7 +671,8 @@ async def run_merge_preview(call_id: str) -> list[dict]:
     )
     merge_instructions = (
         f"Project context:\n{project_context}\n\n{base_merge_instructions}"
-        if project_context else base_merge_instructions
+        if project_context
+        else base_merge_instructions
     )
 
     async def merge_one(group: dict) -> list[dict]:
@@ -545,12 +685,18 @@ async def run_merge_preview(call_id: str) -> list[dict]:
         """
         ptids = group.get("project_topic_ids") or []
         call_names = group.get("call_topic_names", [])
-        call_matches = [pending_by_name[n.lower().strip()] for n in call_names if n.lower().strip() in pending_by_name]
+        call_matches = [
+            pending_by_name[n.lower().strip()]
+            for n in call_names
+            if n.lower().strip() in pending_by_name
+        ]
 
         if not ptids:
             # New topic(s) from call
             if not call_matches:
-                logger.warning("⚠️ [Topics] match group has empty project_topic_ids but no matching call topics — skipping")
+                logger.warning(
+                    "⚠️ [Topics] match group has empty project_topic_ids but no matching call topics — skipping"
+                )
                 return []
             if len(call_matches) == 1:
                 return [{**call_matches[0], "topic_id": None}]
@@ -584,7 +730,9 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                     merged = merged[0] if merged else {}
                 return [{**merged, "topic_id": None}]
             except Exception as e:
-                logger.error(f"❌ [Topics] New-topic merge failed: {e} — returning first topic")
+                logger.error(
+                    f"❌ [Topics] New-topic merge failed: {e} — returning first topic"
+                )
                 return [{**call_matches[0], "topic_id": None}]
 
         if len(ptids) == 1:
@@ -599,7 +747,9 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 return [{**existing, "topic_id": ptid}]
 
             # Build RAG context from historical transcript excerpts
-            excerpt_context = build_lineage_evidence_block(existing.get("name", ""), ptid, db)
+            excerpt_context = build_lineage_evidence_block(
+                existing.get("name", ""), ptid, db
+            )
             call_excerpts_parts = []
             for m in call_matches:
                 part = f'New from this call: "{m.get("name", "")}"\n'
@@ -607,10 +757,14 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 part += f'Summary: {m.get("summary", "")}'
                 fups = m.get("follow_up_items") or []
                 if fups:
-                    part += "\nFollow-ups from this call:\n" + "\n".join(f"  - {f}" for f in fups)
+                    part += "\nFollow-ups from this call:\n" + "\n".join(
+                        f"  - {f}" for f in fups
+                    )
                 decs = m.get("decisions") or []
                 if decs:
-                    part += "\nDecisions from this call:\n" + "\n".join(f"  - {d}" for d in decs)
+                    part += "\nDecisions from this call:\n" + "\n".join(
+                        f"  - {d}" for d in decs
+                    )
                 call_excerpts_parts.append(part)
             call_excerpts = "\n\n".join(call_excerpts_parts)
 
@@ -632,7 +786,9 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                     merged = merged[0] if merged else {}
                 return [{**merged, "topic_id": ptid}]
             except Exception as e:
-                logger.error(f"❌ [Topics] LLM merge failed for topic {ptid}: {e} — returning existing unchanged")
+                logger.error(
+                    f"❌ [Topics] LLM merge failed for topic {ptid}: {e} — returning existing unchanged"
+                )
                 return [{**existing, "topic_id": ptid}]
 
         # M:N merge — multiple existing topics + call topics → one new topic
@@ -645,7 +801,8 @@ async def run_merge_preview(call_id: str) -> list[dict]:
         # Build RAG context for each source topic
         excerpt_sections = "\n\n".join(
             build_lineage_evidence_block(prev_by_id[pid].get("name", ""), pid, db)
-            for pid in ptids if pid in prev_by_id
+            for pid in ptids
+            if pid in prev_by_id
         )
         call_excerpts_parts = []
         for m in call_matches:
@@ -654,10 +811,14 @@ async def run_merge_preview(call_id: str) -> list[dict]:
             part += f'Summary: {m.get("summary", "")}'
             fups = m.get("follow_up_items") or []
             if fups:
-                part += "\nFollow-ups from this call:\n" + "\n".join(f"  - {f}" for f in fups)
+                part += "\nFollow-ups from this call:\n" + "\n".join(
+                    f"  - {f}" for f in fups
+                )
             decs = m.get("decisions") or []
             if decs:
-                part += "\nDecisions from this call:\n" + "\n".join(f"  - {d}" for d in decs)
+                part += "\nDecisions from this call:\n" + "\n".join(
+                    f"  - {d}" for d in decs
+                )
             call_excerpts_parts.append(part)
         call_excerpts = "\n\n".join(call_excerpts_parts)
 
@@ -681,8 +842,12 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 merged = merged[0] if merged else {}
             return [{**merged, "topic_id": None, "_source_topic_ids": ptids}]
         except Exception as e:
-            logger.error(f"❌ [Topics] M:N merge failed: {e} — returning first existing unchanged")
-            return [{**existing_topics[0], "topic_id": None, "_source_topic_ids": ptids}]
+            logger.error(
+                f"❌ [Topics] M:N merge failed: {e} — returning first existing unchanged"
+            )
+            return [
+                {**existing_topics[0], "topic_id": None, "_source_topic_ids": ptids}
+            ]
 
     per_group = await asyncio.gather(*[merge_one(g) for g in groups])
     # Flatten: each merge_one returns a list (1 item for matched/M:N groups, N for new groups)
@@ -691,7 +856,7 @@ async def run_merge_preview(call_id: str) -> list[dict]:
     # Collect all project_topic_ids that are in match groups
     matched_project_ids: set[str] = set()
     for g in groups:
-        for pid in (g.get("project_topic_ids") or []):
+        for pid in g.get("project_topic_ids") or []:
             matched_project_ids.add(pid)
 
     # Build not-discussed entries for project topics NOT in any match group
@@ -723,12 +888,18 @@ async def _verify_merged_topics(call_id: str, merged_topics: list[dict]) -> list
     project_id = call_row[0]["project_id"]
     transcript = call_row[0].get("transcript") or ""
     if not transcript:
-        logger.info(f"⚠️ [MergeVerify] No transcript for call {call_id} — skipping verification")
+        logger.info(
+            f"⚠️ [MergeVerify] No transcript for call {call_id} — skipping verification"
+        )
         return merged_topics
 
     # Get the merge_verification prompt
-    stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="merge_verification")
-    proj_rows = db.table("projects").select("default_llm").eq("id", project_id).execute().data
+    stored_prompt, stored_llm = _get_topics_prompt(
+        project_id, db, category="merge_verification"
+    )
+    proj_rows = (
+        db.table("projects").select("default_llm").eq("id", project_id).execute().data
+    )
     llm = stored_llm or (proj_rows[0]["default_llm"] if proj_rows else "groq")
     verify_instructions = stored_prompt or (
         "You are a quality reviewer for project topic data. "
@@ -746,8 +917,12 @@ async def _verify_merged_topics(call_id: str, merged_topics: list[dict]) -> list
         .execute()
         .data
     )
-    pending_row = db.table("calls").select("pending_topics").eq("id", call_id).execute().data
-    pending: list[dict] = (pending_row[0].get("pending_topics") or []) if pending_row else []
+    pending_row = (
+        db.table("calls").select("pending_topics").eq("id", call_id).execute().data
+    )
+    pending: list[dict] = (
+        (pending_row[0].get("pending_topics") or []) if pending_row else []
+    )
     pending_by_name = {t["name"].lower().strip(): t for t in pending}
 
     previous = _get_previous_topics(project_id, db)
@@ -778,12 +953,12 @@ async def _verify_merged_topics(call_id: str, merged_topics: list[dict]) -> list
 
         if matched_group:
             # Collect from existing project topics
-            for pid in (matched_group.get("project_topic_ids") or []):
+            for pid in matched_group.get("project_topic_ids") or []:
                 existing = prev_by_id.get(pid, {})
                 all_follow_ups.extend(existing.get("follow_up_items") or [])
                 all_decisions.extend(existing.get("decisions") or [])
             # Collect from call topics
-            for cname in (matched_group.get("call_topic_names") or []):
+            for cname in matched_group.get("call_topic_names") or []:
                 ct = pending_by_name.get(cname.lower().strip(), {})
                 all_follow_ups.extend(ct.get("follow_up_items") or [])
                 all_decisions.extend(ct.get("decisions") or [])
@@ -852,7 +1027,9 @@ async def _verify_merged_topics(call_id: str, merged_topics: list[dict]) -> list
             verified[idx] = corrected
             logger.info(f"✅ [MergeVerify] Verified topic: {topic.get('name', '?')}")
         except Exception as e:
-            logger.error(f"❌ [MergeVerify] Verification failed for '{topic.get('name', '?')}': {e} — keeping original")
+            logger.error(
+                f"❌ [MergeVerify] Verification failed for '{topic.get('name', '?')}': {e} — keeping original"
+            )
 
     return verified
 
@@ -868,11 +1045,15 @@ async def run_merge_background(call_id: str) -> None:
         result = await run_merge_preview(call_id)
         # Post-merge verification pass: check each topic against transcript
         result = await _verify_merged_topics(call_id, result)
-        db.table("calls").update({
-            "merge_cache": result,
-            "merge_status": "done",
-        }).eq("id", call_id).execute()
-        logger.info(f"✅ [Topics] Background merge+verify complete: {len(result)} topics saved for call {call_id}")
+        db.table("calls").update(
+            {
+                "merge_cache": result,
+                "merge_status": "done",
+            }
+        ).eq("id", call_id).execute()
+        logger.info(
+            f"✅ [Topics] Background merge+verify complete: {len(result)} topics saved for call {call_id}"
+        )
     except ValueError as e:
         db.table("calls").update({"merge_status": "failed"}).eq("id", call_id).execute()
         logger.warning(f"⚠️ [Topics] Background merge failed (ValueError): {e}")
@@ -914,7 +1095,7 @@ async def verify_not_discussed_topics(call_id: str) -> dict:
     )
     matched_ids: set[str] = set()
     for g in groups:
-        for pid in (g.get("project_topic_ids") or []):
+        for pid in g.get("project_topic_ids") or []:
             matched_ids.add(pid)
 
     previous = _get_previous_topics(project_id, db)
@@ -925,8 +1106,12 @@ async def verify_not_discussed_topics(call_id: str) -> dict:
         return {}
 
     # Get the not_discussed_check prompt and LLM
-    stored_prompt, stored_llm = _get_topics_prompt(project_id, db, category="not_discussed_check")
-    proj_rows = db.table("projects").select("default_llm").eq("id", project_id).execute().data
+    stored_prompt, stored_llm = _get_topics_prompt(
+        project_id, db, category="not_discussed_check"
+    )
+    proj_rows = (
+        db.table("projects").select("default_llm").eq("id", project_id).execute().data
+    )
     llm = stored_llm or (proj_rows[0]["default_llm"] if proj_rows else "groq")
     check_instructions = stored_prompt or (
         "You are checking whether a project topic was actually discussed in a call transcript.\n"
@@ -979,13 +1164,19 @@ async def run_verification_background(call_id: str) -> None:
     db = get_client()
     try:
         result = await verify_not_discussed_topics(call_id)
-        db.table("calls").update({
-            "verification_cache": result,
-            "verification_status": "done",
-        }).eq("id", call_id).execute()
-        logger.info(f"✅ [Verification] Background verification complete for call {call_id}")
+        db.table("calls").update(
+            {
+                "verification_cache": result,
+                "verification_status": "done",
+            }
+        ).eq("id", call_id).execute()
+        logger.info(
+            f"✅ [Verification] Background verification complete for call {call_id}"
+        )
     except Exception as e:
-        db.table("calls").update({"verification_status": "failed"}).eq("id", call_id).execute()
+        db.table("calls").update({"verification_status": "failed"}).eq(
+            "id", call_id
+        ).execute()
         logger.exception(f"❌ [Verification] Background verification failed: {e}")
 
 
@@ -1002,26 +1193,45 @@ async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
     # This prevents duplicate rows if validate_project_updates is called more than once
     # (e.g. after rolling back to project_updates and re-confirming).
     prior_updates = (
-        db.table("topic_updates").select("topic_id").eq("call_id", call_id).execute().data
+        db.table("topic_updates")
+        .select("topic_id")
+        .eq("call_id", call_id)
+        .execute()
+        .data
     )
     affected_ids = list({r["topic_id"] for r in prior_updates})
     if affected_ids:
         db.table("topic_updates").delete().eq("call_id", call_id).execute()
         for topic_id in affected_ids:
             remaining = (
-                db.table("topic_updates").select("id").eq("topic_id", topic_id).execute().data
+                db.table("topic_updates")
+                .select("id")
+                .eq("topic_id", topic_id)
+                .execute()
+                .data
             )
             if not remaining:
                 db.table("topics").delete().eq("id", topic_id).execute()
-                logger.info(f"🗄️ [ValidateUpdates] Cleaned orphan topic on re-run: {topic_id}")
-        logger.info(f"🗄️ [ValidateUpdates] Cleaned {len(affected_ids)} stale topic_updates before re-save for call {call_id}")
+                logger.info(
+                    f"🗄️ [ValidateUpdates] Cleaned orphan topic on re-run: {topic_id}"
+                )
+        logger.info(
+            f"🗄️ [ValidateUpdates] Cleaned {len(affected_ids)} stale topic_updates before re-save for call {call_id}"
+        )
 
     # Skip not_discussed topics — they have no topic_update for this call
     topics_to_save = [t for t in topics if not t.get("not_discussed")]
 
     # Strip internal fields before building TopicUpdate models
-    clean_fields = {"_source_topic_ids", "not_discussed", "pending_merge", "calls_open",
-                    "verification_status", "topic_id", "disposition"}
+    clean_fields = {
+        "_source_topic_ids",
+        "not_discussed",
+        "pending_merge",
+        "calls_open",
+        "verification_status",
+        "topic_id",
+        "disposition",
+    }
     topic_updates = []
     for t in topics_to_save:
         model_data = {k: v for k, v in t.items() if k not in clean_fields}
@@ -1051,16 +1261,22 @@ async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
             if new_topic_rows:
                 new_topic_id = new_topic_rows[0]["id"]
                 for source_id in source_ids:
-                    db.table("topics").update({
-                        "archived": True,
-                        "merged_into_topic_id": new_topic_id,
-                    }).eq("id", source_id).execute()
-                    logger.info(f"🗄️ [Merge] Archived topic {source_id} → merged into {new_topic_id}")
+                    db.table("topics").update(
+                        {
+                            "archived": True,
+                            "merged_into_topic_id": new_topic_id,
+                        }
+                    ).eq("id", source_id).execute()
+                    logger.info(
+                        f"🗄️ [Merge] Archived topic {source_id} → merged into {new_topic_id}"
+                    )
 
     # Advance to artifacts — match groups and pending_topics are kept as permanent records
-    db.table("calls").update({
-        "kanban_stage": "artifacts",
-    }).eq("id", call_id).execute()
+    db.table("calls").update(
+        {
+            "kanban_stage": "artifacts",
+        }
+    ).eq("id", call_id).execute()
 
     logger.info(f"✅ [Topics] project_updates validated → artifacts: {call_id}")
     return {"status": "ok"}
@@ -1085,13 +1301,15 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
         if t.topic_id is None:
             inserted = (
                 db.table("topics")
-                .insert({
-                    "project_id": project_id,
-                    "name": t.name,
-                    "first_raised_call_id": call_id,
-                    "calls_open": 0 if t.status == "resolved" else 1,
-                    "archived": False,
-                })
+                .insert(
+                    {
+                        "project_id": project_id,
+                        "name": t.name,
+                        "first_raised_call_id": call_id,
+                        "calls_open": 0 if t.status == "resolved" else 1,
+                        "archived": False,
+                    }
+                )
                 .execute()
                 .data
             )
@@ -1100,19 +1318,29 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
         else:
             topic_id = t.topic_id
             if t.disposition == "archive":
-                db.table("topics").update({"archived": True}).eq("id", topic_id).execute()
+                db.table("topics").update({"archived": True}).eq(
+                    "id", topic_id
+                ).execute()
                 logger.info(f"🗄️ [DB] Archived topic: {topic_id}")
                 saved += 1
                 continue
             if t.status == "resolved":
-                db.table("topics").update({"calls_open": 0}).eq("id", topic_id).execute()
+                db.table("topics").update({"calls_open": 0}).eq(
+                    "id", topic_id
+                ).execute()
             else:
                 # Fetch-then-increment: not atomic, but safe for single-user app (no concurrent writes)
                 current = (
-                    db.table("topics").select("calls_open").eq("id", topic_id).execute().data
+                    db.table("topics")
+                    .select("calls_open")
+                    .eq("id", topic_id)
+                    .execute()
+                    .data
                 )
                 current_open = current[0]["calls_open"] if current else 0
-                db.table("topics").update({"calls_open": current_open + 1}).eq("id", topic_id).execute()
+                db.table("topics").update({"calls_open": current_open + 1}).eq(
+                    "id", topic_id
+                ).execute()
 
         update_row = {
             "topic_id": topic_id,
@@ -1144,7 +1372,11 @@ async def validate_call(call_id: str) -> dict:
 
     # 1. At least one topic for this call
     this_call_updates = (
-        db.table("topic_updates").select("topic_id").eq("call_id", call_id).execute().data
+        db.table("topic_updates")
+        .select("topic_id")
+        .eq("call_id", call_id)
+        .execute()
+        .data
     )
     if not this_call_updates:
         raise ValueError("no_topics")
@@ -1159,8 +1391,7 @@ async def validate_call(call_id: str) -> dict:
     previous_topics = _get_previous_topics(project_id, db)
     # Only topics whose LATEST update is still open or in_progress
     open_topic_ids = {
-        t["topic_id"] for t in previous_topics
-        if t["status"] in ("open", "in_progress")
+        t["topic_id"] for t in previous_topics if t["status"] in ("open", "in_progress")
     }
     unacknowledged = open_topic_ids - acknowledged_ids
 
@@ -1246,7 +1477,7 @@ async def generate_brief(call_id: str) -> dict:
                 db.table("topics").select("name").eq("id", u["topic_id"]).execute().data
             )
             topic_name = topic_rows[0]["name"] if topic_rows else "Unknown"
-            for d in (u.get("decisions") or []):
+            for d in u.get("decisions") or []:
                 decisions_to_confirm.append({"text": d, "topic_name": topic_name})
 
     watch_list = [i for i in priority_items if i["sentiment"] == "concern"]
@@ -1286,16 +1517,26 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
     db = get_client()
 
     def _mark_artifacts_stale() -> None:
-        artifacts = db.table("artifacts").select("id").eq("call_id", call_id).execute().data
+        artifacts = (
+            db.table("artifacts").select("id").eq("call_id", call_id).execute().data
+        )
         artifact_ids = [a["id"] for a in artifacts]
         if artifact_ids:
-            db.table("artifacts").update({"status": "stale"}).in_("id", artifact_ids).execute()
-            logger.info(f"⚠️ [Rollback] Marked {len(artifact_ids)} artifacts stale for call {call_id}")
+            db.table("artifacts").update({"status": "stale"}).in_(
+                "id", artifact_ids
+            ).execute()
+            logger.info(
+                f"⚠️ [Rollback] Marked {len(artifact_ids)} artifacts stale for call {call_id}"
+            )
 
     def _delete_topic_updates() -> None:
         # Collect affected topic_ids before deletion
         updates_before = (
-            db.table("topic_updates").select("topic_id").eq("call_id", call_id).execute().data
+            db.table("topic_updates")
+            .select("topic_id")
+            .eq("call_id", call_id)
+            .execute()
+            .data
         )
         affected_topic_ids = list({r["topic_id"] for r in updates_before})
 
@@ -1306,15 +1547,25 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         # Orphan-cleanup + calls_open recalc
         for topic_id in affected_topic_ids:
             remaining = (
-                db.table("topic_updates").select("status").eq("topic_id", topic_id).execute().data
+                db.table("topic_updates")
+                .select("status")
+                .eq("topic_id", topic_id)
+                .execute()
+                .data
             )
             if not remaining:
                 db.table("topics").delete().eq("id", topic_id).execute()
                 logger.info(f"🗄️ [Rollback] Deleted orphan topic {topic_id}")
             else:
-                calls_open = sum(1 for r in remaining if r["status"] in ("open", "in_progress"))
-                db.table("topics").update({"calls_open": calls_open}).eq("id", topic_id).execute()
-                logger.info(f"🗄️ [Rollback] Recalculated calls_open={calls_open} for topic {topic_id}")
+                calls_open = sum(
+                    1 for r in remaining if r["status"] in ("open", "in_progress")
+                )
+                db.table("topics").update({"calls_open": calls_open}).eq(
+                    "id", topic_id
+                ).execute()
+                logger.info(
+                    f"🗄️ [Rollback] Recalculated calls_open={calls_open} for topic {topic_id}"
+                )
 
     def _delete_match_groups() -> None:
         db.table("topic_match_groups").delete().eq("call_id", call_id).execute()
@@ -1322,15 +1573,20 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
 
     def _clear_extraction_fields() -> None:
         """Clear pending_topics, extraction_cache, extraction_status via raw HTTP (None-safe)."""
-        payload = json.dumps({
-            "pending_topics": None,
-            "extraction_cache": None,
-            "extraction_status": "idle",
-        })
+        payload = json.dumps(
+            {
+                "pending_topics": None,
+                "extraction_cache": None,
+                "extraction_status": "idle",
+            }
+        )
         response = db.postgrest.session.patch(
             f"/calls?id=eq.{call_id}",
             content=payload,
-            headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+            headers={
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            },
         )
         data = response.json()
         if not data:
@@ -1344,27 +1600,41 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
             response = db.postgrest.session.patch(
                 f"/calls?id=eq.{call_id}",
                 content=payload,
-                headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation",
+                },
             )
             if response.json():
                 logger.info(f"🗄️ [Rollback] Cleared merge fields for call {call_id}")
             else:
-                logger.warning(f"⚠️ [Rollback] merge fields clear returned empty — migration 016 not applied?")
+                logger.warning(
+                    f"⚠️ [Rollback] merge fields clear returned empty — migration 016 not applied?"
+                )
         except Exception as e:
-            logger.warning(f"⚠️ [Rollback] Could not clear merge fields (non-fatal): {e}")
+            logger.warning(
+                f"⚠️ [Rollback] Could not clear merge fields (non-fatal): {e}"
+            )
 
     def _clear_verification_fields() -> None:
         """Reset verification_cache and verification_status to idle."""
         try:
-            payload = json.dumps({"verification_cache": None, "verification_status": "idle"})
+            payload = json.dumps(
+                {"verification_cache": None, "verification_status": "idle"}
+            )
             db.postgrest.session.patch(
                 f"/calls?id=eq.{call_id}",
                 content=payload,
-                headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation",
+                },
             )
             logger.info(f"🗄️ [Rollback] Cleared verification fields for call {call_id}")
         except Exception as e:
-            logger.warning(f"⚠️ [Rollback] Could not clear verification fields (non-fatal): {e}")
+            logger.warning(
+                f"⚠️ [Rollback] Could not clear verification fields (non-fatal): {e}"
+            )
 
     def _un_merge_topics() -> None:
         """Reverse M:N merge: un-archive source topics, delete merged-into topics created at this call."""
@@ -1396,26 +1666,38 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
                 db.postgrest.session.patch(
                     f"/topics?id=eq.{src['id']}",
                     content=payload,
-                    headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+                    headers={
+                        "Content-Type": "application/json",
+                        "Prefer": "return=representation",
+                    },
                 )
-                logger.info(f"🗄️ [Rollback] Un-archived source topic {src['id']} (was merged into {tid})")
+                logger.info(
+                    f"🗄️ [Rollback] Un-archived source topic {src['id']} (was merged into {tid})"
+                )
 
         # Delete topic_updates for merged targets, then delete the target topics themselves
         for tid in target_ids:
             db.table("topic_updates").delete().eq("topic_id", tid).execute()
             db.table("topics").delete().eq("id", tid).execute()
-            logger.info(f"🗄️ [Rollback] Deleted merged-into topic {tid} and its updates")
+            logger.info(
+                f"🗄️ [Rollback] Deleted merged-into topic {tid} and its updates"
+            )
 
     def _clear_transcript_fields() -> None:
         """Clear transcript and transcript_source via raw HTTP (None-safe)."""
-        payload = json.dumps({
-            "transcript": None,
-            "transcript_source": None,
-        })
+        payload = json.dumps(
+            {
+                "transcript": None,
+                "transcript_source": None,
+            }
+        )
         response = db.postgrest.session.patch(
             f"/calls?id=eq.{call_id}",
             content=payload,
-            headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+            headers={
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            },
         )
         data = response.json()
         if not data:
@@ -1429,7 +1711,13 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         Rolling back to project_matching or project_updates must restore it from topic_updates
         BEFORE those updates are deleted, so the page has data to show.
         """
-        call_data = db.table("calls").select("pending_topics, extraction_cache").eq("id", call_id).execute().data
+        call_data = (
+            db.table("calls")
+            .select("pending_topics, extraction_cache")
+            .eq("id", call_id)
+            .execute()
+            .data
+        )
         if not call_data:
             return
         row = call_data[0]
@@ -1441,20 +1729,35 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         if not restore_data:
             updates = (
                 db.table("topic_updates")
-                .select("topic_id, summary, follow_up_items, decisions, status, owner, sentiment")
+                .select(
+                    "topic_id, summary, follow_up_items, decisions, status, owner, sentiment"
+                )
                 .eq("call_id", call_id)
                 .execute()
                 .data
             )
             if updates:
                 topic_ids = [u["topic_id"] for u in updates]
-                names_rows = db.table("topics").select("id, name").in_("id", topic_ids).execute().data
+                names_rows = (
+                    db.table("topics")
+                    .select("id, name")
+                    .in_("id", topic_ids)
+                    .execute()
+                    .data
+                )
                 name_map = {r["id"]: r["name"] for r in names_rows}
-                restore_data = [{**u, "name": name_map.get(u["topic_id"], "Unknown")} for u in updates]
-                logger.info(f"🗄️ [Rollback] Rebuilt pending_topics from topic_updates for call {call_id} ({len(restore_data)} topics)")
+                restore_data = [
+                    {**u, "name": name_map.get(u["topic_id"], "Unknown")}
+                    for u in updates
+                ]
+                logger.info(
+                    f"🗄️ [Rollback] Rebuilt pending_topics from topic_updates for call {call_id} ({len(restore_data)} topics)"
+                )
 
         if restore_data:
-            db.table("calls").update({"pending_topics": restore_data}).eq("id", call_id).execute()
+            db.table("calls").update({"pending_topics": restore_data}).eq(
+                "id", call_id
+            ).execute()
             logger.info(f"🗄️ [Rollback] Restored pending_topics for call {call_id}")
 
     # --- Execute cascade based on target_stage ---
@@ -1488,7 +1791,13 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         # Restore extraction_cache FIRST — topic_updates may be the only source (Call 1 auto-advance
         # path), so we must read them before deleting them below.
         # Priority: existing extraction_cache → pending_topics → rebuild from topic_updates
-        call_data = db.table("calls").select("extraction_cache, pending_topics").eq("id", call_id).execute().data
+        call_data = (
+            db.table("calls")
+            .select("extraction_cache, pending_topics")
+            .eq("id", call_id)
+            .execute()
+            .data
+        )
         if call_data:
             row = call_data[0]
             if not row.get("extraction_cache"):
@@ -1497,7 +1806,9 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
                     # Fallback: rebuild from topic_updates (Call 1 auto-advance case)
                     updates = (
                         db.table("topic_updates")
-                        .select("topic_id, summary, follow_up_items, decisions, status, owner, sentiment")
+                        .select(
+                            "topic_id, summary, follow_up_items, decisions, status, owner, sentiment"
+                        )
                         .eq("call_id", call_id)
                         .execute()
                         .data
@@ -1516,19 +1827,28 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
                             {**u, "name": name_map.get(u["topic_id"], "Unknown")}
                             for u in updates
                         ]
-                        logger.info(f"🗄️ [Rollback] Rebuilt extraction_cache from topic_updates for call {call_id} ({len(restore_data)} topics)")
+                        logger.info(
+                            f"🗄️ [Rollback] Rebuilt extraction_cache from topic_updates for call {call_id} ({len(restore_data)} topics)"
+                        )
                 if restore_data:
-                    db.table("calls").update({
-                        "extraction_cache": restore_data,
-                        "extraction_status": "done",
-                    }).eq("id", call_id).execute()
-                    logger.info(f"🗄️ [Rollback] Restored extraction_cache for call {call_id}")
+                    db.table("calls").update(
+                        {
+                            "extraction_cache": restore_data,
+                            "extraction_status": "done",
+                        }
+                    ).eq("id", call_id).execute()
+                    logger.info(
+                        f"🗄️ [Rollback] Restored extraction_cache for call {call_id}"
+                    )
 
         # Clear pending_topics — belongs to project_matching, not call_topics.
         db.postgrest.session.patch(
             f"/calls?id=eq.{call_id}",
             content=json.dumps({"pending_topics": None}),
-            headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+            headers={
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            },
         )
 
         # Delete everything downstream: topic_updates (created at project_updates), match_groups, merge, verification.
@@ -1566,7 +1886,9 @@ async def list_call_topics(call_id: str) -> list[dict]:
 
     updates = (
         db.table("topic_updates")
-        .select("topic_id, summary, follow_up_items, decisions, status, owner, sentiment, created_at")
+        .select(
+            "topic_id, summary, follow_up_items, decisions, status, owner, sentiment, created_at"
+        )
         .eq("call_id", call_id)
         .order("created_at", desc=True)
         .execute()
@@ -1593,17 +1915,19 @@ async def list_call_topics(call_id: str) -> list[dict]:
         )
         if topic_rows:
             t = topic_rows[0]
-            result.append({
-                "topic_id": t["id"],
-                "name": t["name"],
-                "calls_open": t["calls_open"],
-                "summary": u.get("summary") or "",
-                "follow_up_items": u.get("follow_up_items") or [],
-                "decisions": u.get("decisions") or [],
-                "status": u.get("status") or "open",
-                "owner": u.get("owner") or "Us",
-                "sentiment": u.get("sentiment") or "neutral",
-            })
+            result.append(
+                {
+                    "topic_id": t["id"],
+                    "name": t["name"],
+                    "calls_open": t["calls_open"],
+                    "summary": u.get("summary") or "",
+                    "follow_up_items": u.get("follow_up_items") or [],
+                    "decisions": u.get("decisions") or [],
+                    "status": u.get("status") or "open",
+                    "owner": u.get("owner") or "Us",
+                    "sentiment": u.get("sentiment") or "neutral",
+                }
+            )
 
     return result
 
@@ -1654,7 +1978,9 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
     # We'll filter archived ones afterwards based on when they were archived.
     topics = (
         db.table("topics")
-        .select("id, name, calls_open, first_raised_call_id, archived, merged_into_topic_id")
+        .select(
+            "id, name, calls_open, first_raised_call_id, archived, merged_into_topic_id"
+        )
         .eq("project_id", project_id)
         .in_("first_raised_call_id", prior_call_ids)
         .execute()
@@ -1673,8 +1999,9 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
     call_created_map = {c["id"]: c["created_at"] for c in all_call_rows}
 
     # Resolve merge-target ids to get their first_raised_call_id + name
-    target_ids = list({t["merged_into_topic_id"] for t in topics
-                       if t.get("merged_into_topic_id")})
+    target_ids = list(
+        {t["merged_into_topic_id"] for t in topics if t.get("merged_into_topic_id")}
+    )
     target_map: dict[str, dict] = {}
     if target_ids:
         target_rows = (
@@ -1686,7 +2013,9 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
         )
         target_map = {r["id"]: r for r in target_rows}
 
-    def _archival_happened_at_or_after_current_call(topic: dict) -> tuple[bool, str | None]:
+    def _archival_happened_at_or_after_current_call(
+        topic: dict,
+    ) -> tuple[bool, str | None]:
         """Return (include_it, merge_target_name). A topic archived via merge
         is included iff the merge happened in the current call or later — i.e.,
         it was still active at current-call matching time.
@@ -1728,19 +2057,21 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
             .data
         )
         latest = updates[0] if updates else {}
-        result.append({
-            "topic_id": t["id"],
-            "name": t["name"],
-            "calls_open": t["calls_open"],
-            "summary": latest.get("summary", ""),
-            "follow_up_items": latest.get("follow_up_items", []),
-            "decisions": latest.get("decisions", []),
-            "status": latest.get("status", "open"),
-            "owner": latest.get("owner", "Us"),
-            "sentiment": latest.get("sentiment", "neutral"),
-            "archived_later": archived_later,
-            "merged_into_name": merged_into_name,
-        })
+        result.append(
+            {
+                "topic_id": t["id"],
+                "name": t["name"],
+                "calls_open": t["calls_open"],
+                "summary": latest.get("summary", ""),
+                "follow_up_items": latest.get("follow_up_items", []),
+                "decisions": latest.get("decisions", []),
+                "status": latest.get("status", "open"),
+                "owner": latest.get("owner", "Us"),
+                "sentiment": latest.get("sentiment", "neutral"),
+                "archived_later": archived_later,
+                "merged_into_name": merged_into_name,
+            }
+        )
     return result
 
 
@@ -1777,7 +2108,13 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
     if db is None:
         db = get_client()
 
-    COMPLETED_STAGES = ("call_topics", "project_matching", "project_updates", "artifacts", "done")
+    COMPLETED_STAGES = (
+        "call_topics",
+        "project_matching",
+        "project_updates",
+        "artifacts",
+        "done",
+    )
     raw_calls = (
         db.table("calls")
         .select("id, title, kanban_stage, created_at")
@@ -1791,10 +2128,7 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
         return {"calls": [], "topics": []}
 
     # call_number is not a DB column — assign it from chronological position
-    all_calls = [
-        {**c, "call_number": i + 1}
-        for i, c in enumerate(raw_calls)
-    ]
+    all_calls = [{**c, "call_number": i + 1} for i, c in enumerate(raw_calls)]
 
     call_ids = [c["id"] for c in all_calls]
     call_order = {c["id"]: i for i, c in enumerate(all_calls)}
@@ -1823,10 +2157,22 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
         topic_ids = [t["id"] for t in topics]
 
     # Build merged-into name lookup for archived topics
-    merged_target_ids = list({t["merged_into_topic_id"] for t in archived_topics if t.get("merged_into_topic_id")})
+    merged_target_ids = list(
+        {
+            t["merged_into_topic_id"]
+            for t in archived_topics
+            if t.get("merged_into_topic_id")
+        }
+    )
     merged_name_map: dict[str, str] = {}
     if merged_target_ids:
-        target_rows = db.table("topics").select("id, name").in_("id", merged_target_ids).execute().data
+        target_rows = (
+            db.table("topics")
+            .select("id, name")
+            .in_("id", merged_target_ids)
+            .execute()
+            .data
+        )
         merged_name_map = {r["id"]: r["name"] for r in target_rows}
 
     # Build source-names AND source-ids lookup for active topics that are merge results.
@@ -1848,13 +2194,19 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
             ancestor_ids_by_target.setdefault(target_id, []).append(src["id"])
 
     updates = (
-        db.table("topic_updates")
-        .select("topic_id, call_id, summary, follow_up_items, decisions, status, owner, sentiment")
-        .in_("topic_id", topic_ids)
-        .in_("call_id", call_ids)
-        .execute()
-        .data
-    ) if topic_ids else []
+        (
+            db.table("topic_updates")
+            .select(
+                "topic_id, call_id, summary, follow_up_items, decisions, status, owner, sentiment"
+            )
+            .in_("topic_id", topic_ids)
+            .in_("call_id", call_ids)
+            .execute()
+            .data
+        )
+        if topic_ids
+        else []
+    )
     updates_index: dict[str, dict[str, dict]] = {}
     for u in updates:
         tid = u["topic_id"]
@@ -1865,13 +2217,17 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
 
     # status/owner/sentiment live on topic_updates (not topics — dropped in migration 002)
     latest_updates = (
-        db.table("topic_updates")
-        .select("topic_id, status, owner, sentiment, created_at")
-        .in_("topic_id", topic_ids)
-        .order("created_at", desc=True)
-        .execute()
-        .data
-    ) if topic_ids else []
+        (
+            db.table("topic_updates")
+            .select("topic_id, status, owner, sentiment, created_at")
+            .in_("topic_id", topic_ids)
+            .order("created_at", desc=True)
+            .execute()
+            .data
+        )
+        if topic_ids
+        else []
+    )
     latest_state: dict = {}
     for u in latest_updates:
         tid = u["topic_id"]
@@ -1938,22 +2294,26 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
                 if other["id"] == merged_into_id:
                     merge_call_id = other.get("first_raised_call_id")
                     break
-        result_topics.append({
-            "topic_id": tid,
-            "name": t["name"],
-            "status": ls.get("status", "open"),
-            "owner": ls.get("owner", "Us"),
-            "sentiment": ls.get("sentiment", "neutral"),
-            "first_raised_call_id": first_call_id,
-            "call_updates": call_updates,
-            "archived": is_archived,
-            "merged_into_topic_id": merged_into_id,
-            "merged_into_name": merged_name_map.get(merged_into_id, "") if merged_into_id else None,
-            "has_sources": len(source_names) > 0,
-            "source_names": source_names,
-            "ancestor_topic_ids": ancestor_ids,
-            "merge_call_id": merge_call_id,
-        })
+        result_topics.append(
+            {
+                "topic_id": tid,
+                "name": t["name"],
+                "status": ls.get("status", "open"),
+                "owner": ls.get("owner", "Us"),
+                "sentiment": ls.get("sentiment", "neutral"),
+                "first_raised_call_id": first_call_id,
+                "call_updates": call_updates,
+                "archived": is_archived,
+                "merged_into_topic_id": merged_into_id,
+                "merged_into_name": (
+                    merged_name_map.get(merged_into_id, "") if merged_into_id else None
+                ),
+                "has_sources": len(source_names) > 0,
+                "source_names": source_names,
+                "ancestor_topic_ids": ancestor_ids,
+                "merge_call_id": merge_call_id,
+            }
+        )
 
     # ── Pending rows for calls with no committed topic_updates ──────────────
     calls_with_updates: set[str] = {u["call_id"] for u in updates}
@@ -1972,25 +2332,27 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
             cid = row["id"]
             raw_topics = row.get("pending_topics") or row.get("extraction_cache") or []
             for i, rt in enumerate(raw_topics):
-                result_topics.append({
-                    "topic_id": f"pending:{cid}:{i}",
-                    "name": rt.get("name", ""),
-                    "status": rt.get("status", "open"),
-                    "owner": rt.get("owner", "Us"),
-                    "sentiment": rt.get("sentiment", "neutral"),
-                    "first_raised_call_id": cid,
-                    "call_updates": {
-                        cid: {
-                            "type": "pending",
-                            "summary": rt.get("summary", ""),
-                            "follow_up_items": rt.get("follow_up_items") or [],
-                            "decisions": rt.get("decisions") or [],
-                            "status": rt.get("status", "open"),
-                            "owner": rt.get("owner", "Us"),
-                            "sentiment": rt.get("sentiment", "neutral"),
-                        }
-                    },
-                })
+                result_topics.append(
+                    {
+                        "topic_id": f"pending:{cid}:{i}",
+                        "name": rt.get("name", ""),
+                        "status": rt.get("status", "open"),
+                        "owner": rt.get("owner", "Us"),
+                        "sentiment": rt.get("sentiment", "neutral"),
+                        "first_raised_call_id": cid,
+                        "call_updates": {
+                            cid: {
+                                "type": "pending",
+                                "summary": rt.get("summary", ""),
+                                "follow_up_items": rt.get("follow_up_items") or [],
+                                "decisions": rt.get("decisions") or [],
+                                "status": rt.get("status", "open"),
+                                "owner": rt.get("owner", "Us"),
+                                "sentiment": rt.get("sentiment", "neutral"),
+                            }
+                        },
+                    }
+                )
 
     return {"calls": all_calls, "topics": result_topics}
 
