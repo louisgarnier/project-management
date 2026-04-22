@@ -61,7 +61,18 @@ cd frontend
 npm run dev
 ```
 
-### 3. Verify Setup
+### 3. Configure Environment Variables
+
+Copy `backend/.env.example` to `backend/.env` and fill in the keys you need:
+
+| Variable | Source |
+|---|---|
+| `ANTHROPIC_API_KEY` | https://console.anthropic.com/ |
+| `GROQ_API_KEY` | https://console.groq.com/ |
+| `OPENAI_API_KEY` | https://platform.openai.com/api-keys |
+| `OPENROUTER_API_KEY` | https://openrouter.ai/keys — enables per-prompt model selection |
+
+### 4. Verify Setup
 - Backend health check: `http://localhost:8000/health`
 - Frontend: `http://localhost:3000`
 

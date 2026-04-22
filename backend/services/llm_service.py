@@ -12,11 +12,19 @@ logger = get_logger("llm_service")
 _MAX_RETRIES = 3  # 3 retries = 4 total attempts
 
 
-async def call_llm_raw(system: str, user_message: str, llm: str, max_tokens: int = 4096) -> str:
+async def call_llm_raw(
+    system: str,
+    user_message: str,
+    llm: str,
+    max_tokens: int = 4096,
+    *,
+    model: str | None = None,
+) -> str:
     """
     Call any supported LLM with an explicit system prompt and user message.
     Returns the raw text response (no transcript/task wrapping).
-    llm must be one of: "groq", "deepseek", "claude", "openai".
+    llm must be one of: "groq", "deepseek", "claude", "openai", "openrouter".
+    For llm="openrouter", `model` is required (OpenRouter model slug, e.g. "anthropic/claude-sonnet-4.6").
     """
     if llm == "claude":
         client = anthropic.AsyncAnthropic()
@@ -39,15 +47,30 @@ async def call_llm_raw(system: str, user_message: str, llm: str, max_tokens: int
                 if attempt == _MAX_RETRIES:
                     logger.error("❌ [Claude] Rate limit exhausted after 3 retries")
                     raise
-                wait = 2 ** attempt
+                wait = 2**attempt
                 logger.warning(f"⚠️ [Claude] Rate limited — retrying in {wait}s")
                 await asyncio.sleep(wait)
         raise RuntimeError("unreachable")  # pragma: no cover
     elif llm in ("groq", "deepseek", "openai"):
         configs = {
-            "groq":     dict(api_key=os.environ.get("GROQ_API_KEY", ""),     base_url="https://api.groq.com/openai/v1", model="llama-3.3-70b-versatile", provider="Groq"),
-            "deepseek": dict(api_key=os.environ.get("DEEPSEEK_API_KEY", ""), base_url="https://api.deepseek.com",        model="deepseek-chat",             provider="DeepSeek"),
-            "openai":   dict(api_key=os.environ.get("OPENAI_API_KEY", ""),   base_url=None,                              model="gpt-4o-mini",               provider="OpenAI"),
+            "groq": dict(
+                api_key=os.environ.get("GROQ_API_KEY", ""),
+                base_url="https://api.groq.com/openai/v1",
+                model="llama-3.3-70b-versatile",
+                provider="Groq",
+            ),
+            "deepseek": dict(
+                api_key=os.environ.get("DEEPSEEK_API_KEY", ""),
+                base_url="https://api.deepseek.com",
+                model="deepseek-chat",
+                provider="DeepSeek",
+            ),
+            "openai": dict(
+                api_key=os.environ.get("OPENAI_API_KEY", ""),
+                base_url=None,
+                model="gpt-4o-mini",
+                provider="OpenAI",
+            ),
         }
         cfg = configs[llm]
         kwargs: dict = {"api_key": cfg["api_key"]}
@@ -56,13 +79,15 @@ async def call_llm_raw(system: str, user_message: str, llm: str, max_tokens: int
         client_oa = AsyncOpenAI(**kwargs)
         for attempt in range(_MAX_RETRIES + 1):
             try:
-                logger.info(f"🤖 [{cfg['provider']}] Calling LLM (attempt {attempt + 1})")
+                logger.info(
+                    f"🤖 [{cfg['provider']}] Calling LLM (attempt {attempt + 1})"
+                )
                 response = await client_oa.chat.completions.create(
                     model=cfg["model"],
                     max_tokens=max_tokens,
                     messages=[
                         {"role": "system", "content": system},
-                        {"role": "user",   "content": user_message},
+                        {"role": "user", "content": user_message},
                     ],
                 )
                 content = response.choices[0].message.content or ""
@@ -73,14 +98,58 @@ async def call_llm_raw(system: str, user_message: str, llm: str, max_tokens: int
                 return content
             except OpenAIRateLimitError:
                 if attempt == _MAX_RETRIES:
-                    logger.error(f"❌ [{cfg['provider']}] Rate limit exhausted after 3 retries")
+                    logger.error(
+                        f"❌ [{cfg['provider']}] Rate limit exhausted after 3 retries"
+                    )
                     raise
-                wait = 2 ** attempt
-                logger.warning(f"⚠️ [{cfg['provider']}] Rate limited — retrying in {wait}s")
+                wait = 2**attempt
+                logger.warning(
+                    f"⚠️ [{cfg['provider']}] Rate limited — retrying in {wait}s"
+                )
+                await asyncio.sleep(wait)
+        raise RuntimeError("unreachable")  # pragma: no cover
+    elif llm == "openrouter":
+        if not model:
+            raise ValueError("llm='openrouter' requires a non-empty `model` slug.")
+        client_oa = AsyncOpenAI(
+            api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+            base_url="https://openrouter.ai/api/v1",
+        )
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                logger.info(
+                    f"🤖 [OpenRouter/{model}] Calling LLM (attempt {attempt + 1})"
+                )
+                response = await client_oa.chat.completions.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user_message},
+                    ],
+                )
+                content = response.choices[0].message.content or ""
+                logger.info(
+                    f"✅ [OpenRouter/{model}] Done — "
+                    f"input={response.usage.prompt_tokens} output={response.usage.completion_tokens}"
+                )
+                return content
+            except OpenAIRateLimitError:
+                if attempt == _MAX_RETRIES:
+                    logger.error(
+                        f"❌ [OpenRouter/{model}] Rate limit exhausted after 3 retries"
+                    )
+                    raise
+                wait = 2**attempt
+                logger.warning(
+                    f"⚠️ [OpenRouter/{model}] Rate limited — retrying in {wait}s"
+                )
                 await asyncio.sleep(wait)
         raise RuntimeError("unreachable")  # pragma: no cover
     else:
-        raise ValueError(f"Unknown LLM provider: {llm!r}. Must be 'groq', 'deepseek', 'claude', or 'openai'.")
+        raise ValueError(
+            f"Unknown LLM provider: {llm!r}. Must be 'groq', 'deepseek', 'claude', 'openai', or 'openrouter'."
+        )
 
 
 async def generate_artifact(
@@ -88,23 +157,22 @@ async def generate_artifact(
     transcript: str,
     llm: str,
     topics: list[dict] | None = None,
+    *,
+    model: str | None = None,
 ) -> str:
     """
     Generate an artifact using the specified LLM provider.
-    llm must be one of: "groq", "deepseek", "claude", "openai".
+    llm must be one of: "groq", "deepseek", "claude", "openai", "openrouter".
+    For llm="openrouter", `model` is required (OpenRouter model slug, e.g. "anthropic/claude-sonnet-4.6").
     If topics are provided, they are injected between transcript and task prompt.
     Retries up to 3 times with exponential backoff on rate-limit errors.
     """
     topics_block = ""
     if topics:
-        topics_block = (
-            f"\n\nTopics from this call:\n{json.dumps(topics, indent=2)}"
-        )
+        topics_block = f"\n\nTopics from this call:\n{json.dumps(topics, indent=2)}"
 
     user_message = (
-        f"Transcript:\n{transcript}"
-        f"{topics_block}"
-        f"\n\nTask:\n{prompt_used}"
+        f"Transcript:\n{transcript}" f"{topics_block}" f"\n\nTask:\n{prompt_used}"
     )
 
     if llm == "claude":
@@ -133,8 +201,20 @@ async def generate_artifact(
             model="gpt-4o-mini",
             provider="OpenAI",
         )
+    elif llm == "openrouter":
+        if not model:
+            raise ValueError("llm='openrouter' requires a non-empty `model` slug.")
+        return await _generate_openai_compat(
+            user_message,
+            api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+            base_url="https://openrouter.ai/api/v1",
+            model=model,
+            provider="OpenRouter",
+        )
     else:
-        raise ValueError(f"Unknown LLM provider: {llm!r}. Must be 'groq', 'deepseek', 'claude', or 'openai'.")
+        raise ValueError(
+            f"Unknown LLM provider: {llm!r}. Must be 'groq', 'deepseek', 'claude', 'openai', or 'openrouter'."
+        )
 
 
 async def _generate_claude(user_message: str) -> str:
@@ -158,7 +238,7 @@ async def _generate_claude(user_message: str) -> str:
             if attempt == _MAX_RETRIES:
                 logger.error("❌ [Claude] Rate limit exhausted after 3 retries")
                 raise
-            wait = 2 ** attempt
+            wait = 2**attempt
             logger.warning(f"⚠️ [Claude] Rate limited — retrying in {wait}s")
             await asyncio.sleep(wait)
 
@@ -195,7 +275,7 @@ async def _generate_openai_compat(
             if attempt == _MAX_RETRIES:
                 logger.error(f"❌ [{provider}] Rate limit exhausted after 3 retries")
                 raise
-            wait = 2 ** attempt
+            wait = 2**attempt
             logger.warning(f"⚠️ [{provider}] Rate limited — retrying in {wait}s")
             await asyncio.sleep(wait)
 
