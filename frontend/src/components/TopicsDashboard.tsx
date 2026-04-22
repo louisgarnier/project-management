@@ -160,13 +160,26 @@ export default function TopicsDashboard({ projectId }: Props) {
                     )}
                   </td>
                   <td style={{ padding: "9px 12px", verticalAlign: "top" }}>
-                    {(t.decisions ?? []).length > 0 ? (
-                      <span style={{ fontSize: 10, color: "#36b37e" }}>
-                        ✓ {t.decisions!.length}
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 10, color: "#97a0af" }}>—</span>
-                    )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      {(t.decisions ?? []).length > 0 ? (
+                        <span style={{ fontSize: 10, color: "#36b37e" }}>
+                          ✓ {t.decisions!.length}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 10, color: "#97a0af" }}>—</span>
+                      )}
+                      {(t.open_questions?.length ?? 0) > 0 && (
+                        <span style={{ fontSize: 10, color: "#0052cc" }}>
+                          {t.open_questions!.length} open Q
+                        </span>
+                      )}
+                      {t.is_parked && (
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", background: "#f4f5f7",
+                          color: "#5e6c84", borderRadius: 3, alignSelf: "flex-start" }}>
+                          ⏸ PARKED
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td style={{ padding: "9px 12px", verticalAlign: "top" }}>
                     <span style={{ fontSize: 9, color: "#97a0af", background: "#f4f5f7",

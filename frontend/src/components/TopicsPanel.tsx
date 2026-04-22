@@ -204,6 +204,7 @@ function TopicRow({ topic, callId, onSaved, callIsLocked, hideCallsOpen, callSco
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [newFollowUp, setNewFollowUp] = useState("");
+  const [newOpenQuestion, setNewOpenQuestion] = useState("");
 
   function set<K extends keyof TopicData>(key: K, val: TopicData[K]) {
     setDraft((prev) => ({ ...prev, [key]: val }));
@@ -333,6 +334,54 @@ function TopicRow({ topic, callId, onSaved, callIsLocked, hideCallsOpen, callSco
             </button>
           </div>
         </div>
+        {/* Open Questions */}
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#0052cc", marginBottom: 4 }}>
+            Open questions
+          </div>
+          {(draft.open_questions ?? []).map((item, i) => (
+            <div key={i} style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 2 }}>
+              <input value={item}
+                onChange={(e) => {
+                  const items = [...(draft.open_questions ?? [])];
+                  items[i] = e.target.value;
+                  set("open_questions", items);
+                }}
+                style={{ flex: 1, fontSize: 10, border: "1px solid #b3c6e8", borderRadius: 4, padding: "1px 6px" }}
+              />
+              <button onClick={() => set("open_questions", (draft.open_questions ?? []).filter((_, idx) => idx !== i))}
+                style={{ fontSize: 10, color: "#0052cc", background: "none", border: "none", cursor: "pointer" }}>✕</button>
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
+            <input value={newOpenQuestion} onChange={(e) => setNewOpenQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newOpenQuestion.trim()) {
+                  set("open_questions", [...(draft.open_questions ?? []), newOpenQuestion.trim()]);
+                  setNewOpenQuestion("");
+                }
+              }}
+              placeholder="Add open question…"
+              style={{ flex: 1, fontSize: 10, border: "1px solid #b3c6e8", borderRadius: 4, padding: "2px 6px" }}
+            />
+            <button
+              onClick={() => { if (newOpenQuestion.trim()) { set("open_questions", [...(draft.open_questions ?? []), newOpenQuestion.trim()]); setNewOpenQuestion(""); } }}
+              style={{ fontSize: 10, color: "#0052cc", background: "none", border: "1px solid #b3c6e8", borderRadius: 4, padding: "2px 8px", cursor: "pointer" }}>
+              Add
+            </button>
+          </div>
+        </div>
+        {/* Parked */}
+        <div style={{ marginBottom: 6 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#5e6c84" }}>
+            <input
+              type="checkbox"
+              checked={draft.is_parked ?? false}
+              onChange={(e) => set("is_parked", e.target.checked)}
+            />
+            Parked
+          </label>
+        </div>
         {/* Actions */}
         {saveError && <p style={{ fontSize: 10, color: "#ae2a19", margin: "4px 0" }}>{saveError}</p>}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
@@ -364,6 +413,17 @@ function TopicRow({ topic, callId, onSaved, callIsLocked, hideCallsOpen, callSco
             <span style={{ fontSize: 9, fontWeight: 700, background: "#fff4e6",
               color: "#974f0c", padding: "1px 5px", borderRadius: 3 }}>
               Open · {topic.calls_open} calls
+            </span>
+          )}
+          {(topic.open_questions?.length ?? 0) > 0 && (
+            <span style={{ fontSize: 9, color: "#0052cc" }}>
+              {topic.open_questions!.length} open Q
+            </span>
+          )}
+          {topic.is_parked && (
+            <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", background: "#f4f5f7",
+              color: "#5e6c84", borderRadius: 3 }}>
+              ⏸ PARKED
             </span>
           )}
         </div>

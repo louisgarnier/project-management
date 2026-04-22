@@ -392,6 +392,34 @@ function CallCard({
           )}
         </div>
 
+        {/* Open Questions */}
+        {(call.open_questions?.length ?? 0) > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                color: "#0052cc",
+                letterSpacing: ".04em",
+                marginBottom: 3,
+              }}
+            >
+              Open questions
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
+              {call.open_questions!.map((q, i) => (
+                <li key={i} style={{ fontSize: 12, color: "#0052cc", lineHeight: 1.5,
+                  display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 2,
+                  background: "#eef5ff", borderRadius: 3, padding: "2px 6px" }}>
+                  <span>?</span>
+                  <span>{q}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Status badge */}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {call.status && (
@@ -532,6 +560,33 @@ function PendingTopicCard({ topic }: { topic: TopicData }) {
           </ul>
         )}
       </div>
+
+      {(topic.open_questions?.length ?? 0) > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              textTransform: "uppercase",
+              color: "#0052cc",
+              letterSpacing: ".04em",
+              marginBottom: 3,
+            }}
+          >
+            Open questions
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
+            {topic.open_questions!.map((q, i) => (
+              <li key={i} style={{ fontSize: 13, color: "#0052cc", lineHeight: 1.5,
+                display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 2,
+                background: "#eef5ff", borderRadius: 3, padding: "3px 8px" }}>
+                <span>?</span>
+                <span>{q}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {topic.status && (

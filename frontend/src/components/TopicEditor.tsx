@@ -33,6 +33,7 @@ const BADGE_BASE: React.CSSProperties = {
 export default function TopicEditor({ topic, bucket, disposition, onUpdate, onDisposition, onRemove }: Props) {
   const [editing, setEditing]     = useState(false);
   const [newDecision, setNewDecision] = useState("");
+  const [newOpenQuestion, setNewOpenQuestion] = useState("");
 
   function set<K extends keyof TopicData>(key: K, val: TopicData[K]) {
     onUpdate({ ...topic, [key]: val });
@@ -57,6 +58,23 @@ export default function TopicEditor({ topic, bucket, disposition, onUpdate, onDi
 
   function removeFollowUp(i: number) {
     set("follow_up_items", (topic.follow_up_items ?? []).filter((_, idx) => idx !== i));
+  }
+
+  function addOpenQuestion() {
+    const trimmed = newOpenQuestion.trim();
+    if (!trimmed) return;
+    set("open_questions", [...(topic.open_questions ?? []), trimmed]);
+    setNewOpenQuestion("");
+  }
+
+  function updateOpenQuestion(i: number, val: string) {
+    const items = [...(topic.open_questions ?? [])];
+    items[i] = val;
+    set("open_questions", items);
+  }
+
+  function removeOpenQuestion(i: number) {
+    set("open_questions", (topic.open_questions ?? []).filter((_, idx) => idx !== i));
   }
 
   const isNotDiscussed = bucket === "not_discussed";
@@ -129,6 +147,14 @@ export default function TopicEditor({ topic, bucket, disposition, onUpdate, onDi
                   <option value="neutral">Neutral</option>
                   <option value="concern">Concern</option>
                 </select>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#5e6c84" }}>
+                  <input
+                    type="checkbox"
+                    checked={topic.is_parked ?? false}
+                    onChange={(e) => set("is_parked", e.target.checked)}
+                  />
+                  Parked
+                </label>
               </>
             ) : (
               <>
@@ -136,6 +162,9 @@ export default function TopicEditor({ topic, bucket, disposition, onUpdate, onDi
                 <span style={{ fontSize: 9, fontWeight: 600, background: "#f4f5f7", color: "#5e6c84",
                   padding: "2px 6px", borderRadius: 3 }}>{topic.owner}</span>
                 <span style={{ ...BADGE_BASE, ...SENT_BADGE[topic.sentiment] }}>{topic.sentiment}</span>
+                {topic.is_parked && (
+                  <span style={{ ...BADGE_BASE, background: "#f4f5f7", color: "#5e6c84" }}>⏸ PARKED</span>
+                )}
               </>
             )}
           </div>
@@ -168,6 +197,46 @@ export default function TopicEditor({ topic, bucket, disposition, onUpdate, onDi
                     cursor: "pointer", marginTop: 2 }}>
                   + Add follow-up
                 </button>
+              )}
+            </div>
+          )}
+
+          {/* Open Questions */}
+          {(editing || (topic.open_questions ?? []).length > 0) && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#0052cc",
+                marginBottom: 4, letterSpacing: "0.05em" }}>Open questions</div>
+              {(topic.open_questions ?? []).map((item, i) => (
+                <div key={i} style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 2,
+                  background: "#eef5ff", borderRadius: 3, padding: "2px 6px" }}>
+                  <span style={{ color: "#0052cc", fontSize: 10 }}>?</span>
+                  {editing ? (
+                    <>
+                      <input value={item} onChange={(e) => updateOpenQuestion(i, e.target.value)}
+                        style={{ flex: 1, fontSize: 10, border: "1px solid #b3c6e8", borderRadius: 4,
+                          padding: "1px 6px", background: "transparent" }} />
+                      <button onClick={() => removeOpenQuestion(i)}
+                        style={{ fontSize: 10, color: "#0052cc", background: "none", border: "none",
+                          cursor: "pointer" }}>✕</button>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 10, color: "#0052cc" }}>{item}</span>
+                  )}
+                </div>
+              ))}
+              {editing && (
+                <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                  <input value={newOpenQuestion} onChange={(e) => setNewOpenQuestion(e.target.value)}
+                    placeholder="Add open question…"
+                    onKeyDown={(e) => e.key === "Enter" && addOpenQuestion()}
+                    style={{ flex: 1, fontSize: 10, border: "1px solid #b3c6e8", borderRadius: 4,
+                      padding: "2px 6px" }} />
+                  <button onClick={addOpenQuestion}
+                    style={{ fontSize: 10, color: "#0052cc", background: "none", border: "1px solid #b3c6e8",
+                      borderRadius: 4, padding: "2px 8px", cursor: "pointer" }}>
+                    Add
+                  </button>
+                </div>
               )}
             </div>
           )}

@@ -225,6 +225,7 @@ export type EvidenceCall = {
   merged_summary: string;
   follow_up_items: string[];
   decisions: string[];
+  open_questions?: string[];
   status: string;
   raw_extract: EvidenceRawExtract | null;
   match_group: EvidenceMatchGroup | null;
