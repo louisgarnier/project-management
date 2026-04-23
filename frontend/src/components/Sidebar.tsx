@@ -74,8 +74,21 @@ export default function Sidebar() {
   return (
     <>
       <aside className="w-[220px] bg-[#f4f5f7] border-r border-[#dfe1e6] flex flex-col flex-shrink-0 overflow-y-auto">
-        {/* Projects section */}
+        {/* Global nav */}
         <div className="px-3 pt-3 pb-1">
+          <Link
+            href="/library"
+            className={`flex items-center gap-2 px-2 py-1.5 rounded mb-1 text-[11px] font-medium transition-colors ${
+              pathname === "/library" ? "bg-[#e3f2fd] text-[#0052cc] font-semibold" : "text-[#172b4d] hover:bg-white"
+            }`}
+          >
+            <span>📚</span>
+            <span>Artifact Library</span>
+          </Link>
+        </div>
+
+        {/* Projects section */}
+        <div className="px-3 pt-1 pb-1">
           <p className="text-[10px] font-semibold text-[#5e6c84] uppercase tracking-wider mb-2">
             Projects
           </p>
