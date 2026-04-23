@@ -190,32 +190,31 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
       {expanded &&
         (editing ? (
           <>
-            {/* OpenRouter model picker — only when provider=openrouter */}
+            {/* OpenRouter model picker — single datalist input: type any slug,
+                click to see curated suggestions for this category. */}
             {llm === "openrouter" && (
               <div style={{ marginTop: 10, marginBottom: 8 }}>
-                <label style={{ fontSize: 11, color: "#5e6c84", display: "block", marginBottom: 4 }}>Model (OpenRouter)</label>
-                <select
-                  value={MODEL_RECOMMENDATIONS[type.category]?.some((m) => m.slug === model) ? model! : "custom"}
-                  onChange={(e) => {
-                    if (e.target.value === "custom") return;
-                    setModel(e.target.value);
-                  }}
-                  style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", fontFamily: "inherit", width: "100%" }}
-                >
-                  {(MODEL_RECOMMENDATIONS[type.category] ?? []).map((m) => (
-                    <option key={m.slug} value={m.slug}>
-                      {m.slug} — {m.label}{m.priceHint ? ` · ${m.priceHint}` : ""}
-                    </option>
-                  ))}
-                  <option value="custom">Custom…</option>
-                </select>
+                <label style={{ fontSize: 11, color: "#5e6c84", display: "block", marginBottom: 4 }}>
+                  Model (OpenRouter slug)
+                </label>
                 <input
                   type="text"
-                  placeholder="Custom OpenRouter slug (e.g. mistralai/mistral-large)"
+                  list={`openrouter-models-${type.id}`}
                   value={model ?? ""}
                   onChange={(e) => setModel(e.target.value)}
-                  style={{ fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "4px 6px", fontFamily: "inherit", width: "100%", marginTop: 4, boxSizing: "border-box" }}
+                  placeholder="e.g. deepseek/deepseek-v3.2 — type any slug or click ▾ for suggestions"
+                  style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "6px 8px", fontFamily: "ui-monospace, Menlo, monospace", width: "100%", boxSizing: "border-box" }}
                 />
+                <datalist id={`openrouter-models-${type.id}`}>
+                  {(MODEL_RECOMMENDATIONS[type.category] ?? []).map((m) => (
+                    <option key={m.slug} value={m.slug}>
+                      {m.label}{m.priceHint ? ` · ${m.priceHint}` : ""}
+                    </option>
+                  ))}
+                </datalist>
+                <p style={{ fontSize: 10, color: "#97a0af", marginTop: 4 }}>
+                  Any model on <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" style={{ color: "#0052cc" }}>openrouter.ai/models</a> works — paste its slug here.
+                </p>
               </div>
             )}
 
