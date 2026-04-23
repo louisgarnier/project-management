@@ -40,7 +40,7 @@ Mark each `[ ]` checkbox as you complete the step.
 
 ### A.3 — Run the prompt migration script
 
-- [ ] In a terminal: `cd backend && python3 -m scripts.migrate_call_topics_prompt`
+- [ ] In a terminal, **from the repo root** (not from inside `backend/`): `python3 -m backend.scripts.migrate_call_topics_prompt`
 - [ ] Confirm the output is: `Done. Migrated: N, Preserved: M.` (N ≥ 0, M ≥ 0, no errors)
 - [ ] "Migrated" = rows that had the old unedited default prompt, now updated to the new rubric-driven default
 - [ ] "Preserved" = rows the user had customized — these are left untouched
