@@ -134,7 +134,13 @@ function TopicRow({
   onViewSource?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const parked = topic.is_parked;
+  const showDetails = detailsOpen || editing;
+  const decisionsCount = topic.decisions?.length ?? 0;
+  const actionsCount = parked ? 0 : (topic.follow_up_items?.length ?? 0);
+  const questionsCount = topic.open_questions?.length ?? 0;
+  const totalCount = decisionsCount + actionsCount + questionsCount;
   const dotColor = parked ? "#97a0af" : IMPORTANCE_COLOR[topic.importance] ?? "#ff991f";
   const borderColor = parked ? "#97a0af" : "#0052cc";
   const background = parked ? "#fafbfc" : "white";
@@ -190,6 +196,14 @@ function TopicRow({
           <span style={{ fontSize: 10, color: "#5e6c84" }}>
             {topic.sentiment?.toUpperCase()} · {topic.owner?.toUpperCase()}
           </span>
+          {totalCount > 0 && !editing && (
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((v) => !v)}
+              title={detailsOpen ? "Collapse details" : "Expand details"}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#5e6c84", padding: "0 2px" }}
+            >{detailsOpen ? "▴" : "▾"}</button>
+          )}
           <button
             type="button"
             onClick={() => setEditing((v) => !v)}
@@ -226,72 +240,106 @@ function TopicRow({
         )
       )}
 
-      {/* Decisions */}
-      {(topic.decisions?.length ?? 0) > 0 && (
-        <SectionBlock
-          label="Decisions"
-          count={topic.decisions.length}
-          bg="#f4f5f7" color="#5e6c84"
-          items={topic.decisions}
-          prefix="✓ "
-          editing={editing}
-          onChange={(items) => onChange({ ...topic, decisions: items })}
-        />
+      {/* Collapsed: compact counts row — click anywhere to expand */}
+      {!showDetails && totalCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setDetailsOpen(true)}
+          style={{
+            display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap",
+            width: "100%", background: "none", border: "none", padding: "4px 0",
+            fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+          }}
+        >
+          {decisionsCount > 0 && (
+            <span style={{ color: "#5e6c84" }}>✓ {decisionsCount} decision{decisionsCount > 1 ? "s" : ""}</span>
+          )}
+          {actionsCount > 0 && (
+            <span style={{ color: "#974f0c" }}>→ {actionsCount} action{actionsCount > 1 ? "s" : ""}</span>
+          )}
+          {questionsCount > 0 && (
+            <span style={{ color: "#0052cc" }}>? {questionsCount} open question{questionsCount > 1 ? "s" : ""}</span>
+          )}
+          <span style={{ color: "#97a0af", marginLeft: "auto" }}>Show details ▾</span>
+        </button>
       )}
 
-      {/* Actions — hidden for parked topics */}
-      {!parked && (topic.follow_up_items?.length ?? 0) > 0 && (
-        <SectionBlock
-          label="Actions"
-          count={topic.follow_up_items.length}
-          bg="#fff8e6" color="#974f0c"
-          items={topic.follow_up_items}
-          prefix="→ "
-          renderItem={renderOwnerHighlight}
-          editing={editing}
-          onChange={(items) => onChange({ ...topic, follow_up_items: items })}
-        />
+      {/* Expanded details */}
+      {showDetails && (
+        <>
+          {/* Decisions */}
+          {(topic.decisions?.length ?? 0) > 0 && (
+            <SectionBlock
+              label="Decisions"
+              count={topic.decisions.length}
+              bg="#f4f5f7" color="#5e6c84"
+              items={topic.decisions}
+              prefix="✓ "
+              editing={editing}
+              onChange={(items) => onChange({ ...topic, decisions: items })}
+            />
+          )}
+
+          {/* Actions — hidden for parked topics */}
+          {!parked && (topic.follow_up_items?.length ?? 0) > 0 && (
+            <SectionBlock
+              label="Actions"
+              count={topic.follow_up_items.length}
+              bg="#fff8e6" color="#974f0c"
+              items={topic.follow_up_items}
+              prefix="→ "
+              renderItem={renderOwnerHighlight}
+              editing={editing}
+              onChange={(items) => onChange({ ...topic, follow_up_items: items })}
+            />
+          )}
+
+          {/* Open questions */}
+          {(topic.open_questions?.length ?? 0) > 0 && (
+            <SectionBlock
+              label="Open questions"
+              count={topic.open_questions.length}
+              bg="#eef5ff" color="#0052cc"
+              items={topic.open_questions}
+              prefix="? "
+              editing={editing}
+              onChange={(items) => onChange({ ...topic, open_questions: items })}
+            />
+          )}
+
+          {/* Source excerpt link — inside expanded block */}
+          {onViewSource && (
+            <div style={{ marginTop: 2, marginBottom: 4 }}>
+              <button
+                type="button"
+                onClick={onViewSource}
+                style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  fontSize: 11, color: "#0052cc", padding: 0, fontFamily: "inherit", textDecoration: "underline",
+                }}
+              >📄 Source excerpt ↗</button>
+            </div>
+          )}
+        </>
       )}
 
-      {/* Open questions */}
-      {(topic.open_questions?.length ?? 0) > 0 && (
-        <SectionBlock
-          label="Open questions"
-          count={topic.open_questions.length}
-          bg="#eef5ff" color="#0052cc"
-          items={topic.open_questions}
-          prefix="? "
-          editing={editing}
-          onChange={(items) => onChange({ ...topic, open_questions: items })}
-        />
-      )}
-
-      {/* Footer strip */}
-      <div style={{ display: "flex", gap: 10, paddingTop: 8, marginTop: 6, borderTop: "1px dashed #dfe1e6", alignItems: "center", flexWrap: "wrap" }}>
-        {onViewSource && (
-          <button
-            type="button"
-            onClick={onViewSource}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              fontSize: 11, color: "#0052cc", padding: 0, fontFamily: "inherit", textDecoration: "underline",
-            }}
-          >📄 Source excerpt ↗</button>
-        )}
-        {parked && (
-          <button
-            type="button"
-            onClick={() => onChange({ ...topic, is_parked: false })}
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#5e6c84", textDecoration: "underline" }}
-          >Un-park</button>
-        )}
-        {!parked && editing && (
-          <button
-            type="button"
-            onClick={() => onChange({ ...topic, is_parked: true })}
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#5e6c84", textDecoration: "underline" }}
-          >⏸ Park</button>
-        )}
+      {/* Footer strip — only when there's something to show */}
+      {(parked || editing) && (
+        <div style={{ display: "flex", gap: 10, paddingTop: 8, marginTop: 6, borderTop: "1px dashed #dfe1e6", alignItems: "center", flexWrap: "wrap" }}>
+          {parked && (
+            <button
+              type="button"
+              onClick={() => onChange({ ...topic, is_parked: false })}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#5e6c84", textDecoration: "underline" }}
+            >Un-park</button>
+          )}
+          {!parked && editing && (
+            <button
+              type="button"
+              onClick={() => onChange({ ...topic, is_parked: true })}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#5e6c84", textDecoration: "underline" }}
+            >⏸ Park</button>
+          )}
         {editing && (
           <div style={{ display: "flex", gap: 6 }}>
             <select value={topic.status} onChange={(e) => onChange({ ...topic, status: e.target.value as TopicStatus })} style={SEL}>
@@ -311,7 +359,8 @@ function TopicRow({
             </select>
           </div>
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
