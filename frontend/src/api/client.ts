@@ -247,6 +247,25 @@ export const artifactTypesAPI = {
   },
 };
 
+export const libraryAPI = {
+  list: (): Promise<LibraryEntry[]> =>
+    proxyFetch<LibraryEntry[]>("/api/library"),
+  create: (entry: Partial<LibraryEntry>): Promise<LibraryEntry> =>
+    proxyFetch<LibraryEntry>("/api/library", {
+      method: "POST",
+      body: JSON.stringify(entry),
+    }),
+  update: (id: string, patch: Partial<LibraryEntry>): Promise<LibraryEntry> =>
+    proxyFetch<LibraryEntry>(`/api/library/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  delete: (id: string): Promise<void> =>
+    proxyFetch<void>(`/api/library/${id}`, { method: "DELETE" }),
+  resetSystem: (): Promise<{ updated: number }> =>
+    proxyFetch<{ updated: number }>("/api/library/reset-system", { method: "POST" }),
+};
+
 export const artifactsAPI = {
   createSelections: (
     callId: string,

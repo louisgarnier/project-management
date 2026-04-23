@@ -250,9 +250,11 @@ export default function ArtifactsPage() {
       {showModal && (
         <AddArtifactTypeModal
           projectId={projectId}
+          existingTypes={types}
           onClose={() => setShowModal(false)}
           onCreated={(t) => setTypes((prev) => [...prev, t])}
           onImported={(ts) => setTypes((prev) => [...prev, ...ts])}
+          onAdded={() => load()}
         />
       )}
     </div>

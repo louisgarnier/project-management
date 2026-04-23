@@ -1,21 +1,35 @@
 "use client";
 
-import { useState } from "react";
-import { projectsAPI, artifactTypesAPI } from "@/api/client";
+import { useState, useEffect } from "react";
+import { projectsAPI, artifactTypesAPI, libraryAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { Project, ArtifactType } from "@/types";
+import type { Project, ArtifactType, LibraryEntry } from "@/types";
 
-type Mode = "create" | "import";
+type Tab = "library" | "create" | "import";
 
 type Props = {
   projectId: string;
+  existingTypes?: ArtifactType[];
   onClose: () => void;
   onCreated: (type: ArtifactType) => void;
   onImported: (types: ArtifactType[]) => void;
+  onAdded?: () => void;
 };
 
-export default function AddArtifactTypeModal({ projectId, onClose, onCreated, onImported }: Props) {
-  const [mode, setMode] = useState<Mode>("create");
+export default function AddArtifactTypeModal({
+  projectId,
+  existingTypes,
+  onClose,
+  onCreated,
+  onImported,
+  onAdded,
+}: Props) {
+  const [tab, setTab] = useState<Tab>("library");
+
+  // Library state
+  const [libraryEntries, setLibraryEntries] = useState<LibraryEntry[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
 
   // Create state
   const [name, setName] = useState("");
@@ -35,8 +49,19 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
   const [projectsLoadError, setProjectsLoadError] = useState(false);
   const [typesLoadError, setTypesLoadError] = useState(false);
 
+  useEffect(() => {
+    if (tab !== "library") return;
+    setLibraryLoading(true);
+    setLibraryError(null);
+    libraryAPI
+      .list()
+      .then((entries) => setLibraryEntries(entries))
+      .catch((e) => setLibraryError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLibraryLoading(false));
+  }, [tab]);
+
   async function handleSwitchToImport() {
-    setMode("import");
+    setTab("import");
     if (projects !== null) return;
     setLoadingProjects(true);
     try {
@@ -87,6 +112,7 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
       const created = await artifactTypesAPI.create(projectId, { name: name.trim(), prompt: prompt.trim() });
       logger.info("Created artifact type", { component: "AddArtifactTypeModal", data: { id: created.id } });
       onCreated(created);
+      onAdded?.();
       onClose();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create");
@@ -103,6 +129,7 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
       const imported = await artifactTypesAPI.import(projectId, [...selectedTypeIds]);
       logger.info("Imported artifact types", { component: "AddArtifactTypeModal", data: { count: imported.length } });
       onImported(imported);
+      onAdded?.();
       onClose();
     } catch (err) {
       setImportError(err instanceof Error ? err.message : "Failed to import");
@@ -119,33 +146,129 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
           <h2 className="text-[16px] font-semibold text-[#172b4d]">Add artifact type</h2>
         </div>
 
-        {/* Mode tabs */}
-        <div className="flex gap-1 px-6 pt-4">
-          <button
-            onClick={() => setMode("create")}
-            className={`px-3 py-1.5 text-[12px] font-medium rounded transition-colors ${
-              mode === "create"
-                ? "bg-[#e9f0ff] text-[#0052cc]"
-                : "text-[#5e6c84] hover:bg-[#f4f5f7]"
-            }`}
-          >
-            Create new
-          </button>
-          <button
-            onClick={handleSwitchToImport}
-            className={`px-3 py-1.5 text-[12px] font-medium rounded transition-colors ${
-              mode === "import"
-                ? "bg-[#e9f0ff] text-[#0052cc]"
-                : "text-[#5e6c84] hover:bg-[#f4f5f7]"
-            }`}
-          >
-            Import from another project
-          </button>
+        {/* Tab strip */}
+        <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #dfe1e6", marginBottom: 0 }}>
+          {(["library", "create", "import"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => {
+                if (t === "import") {
+                  handleSwitchToImport();
+                } else {
+                  setTab(t);
+                }
+              }}
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: tab === t ? "#0052cc" : "#5e6c84",
+                background: "none",
+                border: "none",
+                borderBottom: tab === t ? "2px solid #0052cc" : "2px solid transparent",
+                padding: "8px 14px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {t === "library"
+                ? "Browse library"
+                : t === "create"
+                ? "Create new"
+                : "Import from another project"}
+            </button>
+          ))}
         </div>
 
         <div className="px-6 py-4">
-          {/* Create new */}
-          {mode === "create" && (
+          {/* Library tab */}
+          {tab === "library" && (
+            <div>
+              {libraryLoading && (
+                <p style={{ fontSize: 12, color: "#5e6c84" }}>Loading library…</p>
+              )}
+              {libraryError && (
+                <p style={{ fontSize: 12, color: "#ae2a19" }}>Error: {libraryError}</p>
+              )}
+              {!libraryLoading && !libraryError && libraryEntries.length === 0 && (
+                <p style={{ fontSize: 12, color: "#5e6c84" }}>
+                  Library is empty. System entries seed automatically on backend startup.
+                </p>
+              )}
+              {libraryEntries
+                .filter(
+                  (lib) =>
+                    !(existingTypes ?? []).some((t) => t.library_ref_id === lib.id)
+                )
+                .map((lib) => {
+                  const kindIcon =
+                    lib.kind === "template" ? "🔧" : lib.kind === "hybrid" ? "⚡" : "🤖";
+                  return (
+                    <div
+                      key={lib.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "10px 0",
+                        borderBottom: "1px solid #f0f1f3",
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#172b4d" }}>
+                          {kindIcon} {lib.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: "#5e6c84", marginTop: 2 }}>
+                          {lib.description || <em>No description</em>}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#97a0af", marginTop: 2 }}>
+                          {lib.is_system ? "🏛 system" : "👤 yours"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await artifactTypesAPI.fromLibrary(projectId, lib.id);
+                            onAdded?.();
+                            onClose();
+                          } catch (e) {
+                            alert(
+                              `Failed to add: ${e instanceof Error ? e.message : String(e)}`
+                            );
+                          }
+                        }}
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "white",
+                          background: "#0052cc",
+                          border: "none",
+                          borderRadius: 4,
+                          padding: "6px 12px",
+                          cursor: "pointer",
+                          flexShrink: 0,
+                        }}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  );
+                })}
+              <div className="flex justify-end gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="text-[13px] text-[#5e6c84] hover:text-[#172b4d]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Create new tab */}
+          {tab === "create" && (
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
                 <label className="block text-[12px] font-medium text-[#172b4d] mb-1">Name</label>
@@ -187,8 +310,8 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
             </form>
           )}
 
-          {/* Import */}
-          {mode === "import" && (
+          {/* Import tab */}
+          {tab === "import" && (
             <div className="space-y-3">
               {loadingProjects ? (
                 <p className="text-[13px] text-[#5e6c84]">Loading projects…</p>
@@ -197,7 +320,11 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
                   <div className="flex flex-col gap-2">
                     <p className="text-[13px] text-red-600">Failed to load projects.</p>
                     <button
-                      onClick={() => { setProjectsLoadError(false); setProjects(null); handleSwitchToImport(); }}
+                      onClick={() => {
+                        setProjectsLoadError(false);
+                        setProjects(null);
+                        handleSwitchToImport();
+                      }}
                       className="text-[13px] text-[#0052cc] underline self-start"
                     >
                       Retry
@@ -209,7 +336,9 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
               ) : (
                 <>
                   <div>
-                    <label className="block text-[12px] font-medium text-[#172b4d] mb-1">Project</label>
+                    <label className="block text-[12px] font-medium text-[#172b4d] mb-1">
+                      Project
+                    </label>
                     <select
                       value={selectedProjectId}
                       onChange={(e) => handleSelectProject(e.target.value)}
@@ -217,13 +346,17 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
                     >
                       <option value="">Select a project…</option>
                       {projects.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
                       ))}
                     </select>
                   </div>
 
                   {typesLoadError && (
-                    <p className="text-[13px] text-red-600">Failed to load artifact types. Try selecting the project again.</p>
+                    <p className="text-[13px] text-red-600">
+                      Failed to load artifact types. Try selecting the project again.
+                    </p>
                   )}
 
                   {loadingTypes && (
@@ -231,7 +364,9 @@ export default function AddArtifactTypeModal({ projectId, onClose, onCreated, on
                   )}
 
                   {!loadingTypes && selectedProjectId && sourceTypes.length === 0 && (
-                    <p className="text-[13px] text-[#5e6c84]">No artifact types in this project.</p>
+                    <p className="text-[13px] text-[#5e6c84]">
+                      No artifact types in this project.
+                    </p>
                   )}
 
                   {!loadingTypes && sourceTypes.length > 0 && (
