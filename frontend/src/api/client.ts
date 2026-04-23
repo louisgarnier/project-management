@@ -245,6 +245,19 @@ export const artifactTypesAPI = {
     if (!res.ok) throw new Error("Failed to add from library");
     return res.json();
   },
+
+  publishToLibrary: async (typeId: string, data: { name: string; description: string }): Promise<LibraryEntry> => {
+    const res = await fetch(`${PROXY_BASE}/api/artifact-types/${typeId}/publish-to-library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: "Unknown error" }));
+      throw new Error(parseApiError(body, res.status));
+    }
+    return res.json();
+  },
 };
 
 export const libraryAPI = {

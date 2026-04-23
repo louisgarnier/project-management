@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import type { ArtifactType, LLMProvider, ContextScope, LibraryEntry } from "@/types";
 import { MODEL_RECOMMENDATIONS, PROVIDER_LABELS, estimateCost } from "@/constants/models";
 import { artifactTypesAPI } from "@/api/client";
+import PublishToLibraryDialog from "@/components/PublishToLibraryDialog";
 
 type Props = {
   type: ArtifactType;
@@ -426,20 +427,17 @@ Transcript:
 
       {saveError && <p className="mt-2 text-[11px] text-red-600">{saveError}</p>}
 
-      {/* Publish to library stub dialog */}
-      {publishDialogOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(9,30,66,.54)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-          <div style={{ background: "white", borderRadius: 8, padding: 20, width: 420 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: "#172b4d", margin: "0 0 8px" }}>Publish to library</h3>
-            <p style={{ fontSize: 12, color: "#5e6c84" }}>Publish dialog will be wired in Task 13.</p>
-            <div style={{ textAlign: "right" }}>
-              <button onClick={() => setPublishDialogOpen(false)} style={{ fontSize: 12, color: "#5e6c84", background: "none", border: "1px solid #dfe1e6", borderRadius: 4, padding: "6px 14px", cursor: "pointer" }}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PublishToLibraryDialog
+        type={type}
+        open={publishDialogOpen}
+        onClose={() => setPublishDialogOpen(false)}
+        onPublished={() => {
+          // Refresh so library_ref_id shows up and Publish button hides.
+          // Reload the full page because ArtifactTypeCard doesn't have a parent
+          // refresh callback; acceptable as a minimal UX here.
+          window.location.reload();
+        }}
+      />
     </div>
   );
 }
