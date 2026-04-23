@@ -16,6 +16,11 @@ This doc is a checklist. Walk the 6 phases in order. Each step is a single `[ ]`
 - [ ] Verify `artifact_types` now has columns `kind`, `template_id`, `library_ref_id`
 - [ ] Verify `artifact_library` table exists with 11 columns
 
+### A.1b — Migration 022 (artifact_types.prompt nullable)
+- [ ] Paste `backend/database/migrations/022_artifact_types_prompt_nullable.sql` into Supabase SQL editor and run it
+- [ ] Verify query returns `is_nullable = YES` for `artifact_types.prompt`
+- [ ] **Why:** template-kind artifact types have no prompt (logic is Python); without this, `seed_defaults` fails on new projects with `null value in column "prompt"`
+
 ### A.2 — Backend startup seeds library
 - [ ] Restart the backend: `cd backend && uvicorn backend.main:app --reload`
 - [ ] In backend log, look for: `✅ [Startup] artifact_library seeded: inserted=8 preserved=0` (first boot) or `inserted=0 preserved=8` (subsequent boots)
