@@ -121,21 +121,27 @@ def seed_defaults(project_id: str) -> None:
 
 class ArtifactTypeCreate(BaseModel):
     name: str = Field(min_length=1)
-    prompt: str = Field(min_length=1)
+    prompt: str | None = Field(default=None)
     llm: Literal["groq", "deepseek", "claude", "openai", "openrouter"] | None = None
     model: str | None = None
     context_scope: Literal["call", "project"] = "call"
+    kind: Literal["llm", "template", "hybrid"] = "llm"
+    template_id: str | None = None
+    library_ref_id: str | None = None
 
 
 class ArtifactTypeUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
-    prompt: str | None = Field(default=None, min_length=1)
+    prompt: str | None = Field(default=None)
     llm: Literal["groq", "deepseek", "claude", "openai", "openrouter"] | None = Field(
         default=None
     )
     model: str | None = Field(default=None)
     context_scope: Literal["call", "project"] | None = Field(default=None)
     is_default: bool | None = Field(default=None)
+    kind: Literal["llm", "template", "hybrid"] | None = Field(default=None)
+    template_id: str | None = Field(default=None)
+    library_ref_id: str | None = Field(default=None)
 
 
 class ArtifactTypeImport(BaseModel):
@@ -173,6 +179,9 @@ def create_artifact_type(project_id: str, payload: ArtifactTypeCreate):
                 "llm": payload.llm,
                 "model": payload.model,
                 "context_scope": payload.context_scope,
+                "kind": payload.kind,
+                "template_id": payload.template_id,
+                "library_ref_id": payload.library_ref_id,
             }
         )
         .execute()
@@ -299,3 +308,156 @@ def get_default_for_category(category: str):
     payload.setdefault("llm", None)
     payload.setdefault("model", None)
     return payload
+
+
+class FromLibraryPayload(BaseModel):
+    library_id: str
+
+
+@router.post("/projects/{project_id}/artifact-types/from-library", status_code=201)
+def add_from_library(project_id: str, payload: FromLibraryPayload):
+    """Copy a library entry into this project's artifact_types."""
+    client = get_client()
+    lib_rows = (
+        client.table("artifact_library")
+        .select("*")
+        .eq("id", payload.library_id)
+        .execute()
+        .data
+    )
+    if not lib_rows:
+        raise HTTPException(status_code=404, detail="Library entry not found")
+    lib = lib_rows[0]
+    row = {
+        "project_id": project_id,
+        "name": lib["name"],
+        "prompt": lib.get("prompt"),
+        "is_default": False,
+        "category": "artifacts",
+        "llm": lib.get("llm"),
+        "model": lib.get("model"),
+        "context_scope": lib.get("context_scope", "call"),
+        "kind": lib["kind"],
+        "template_id": lib.get("template_id"),
+        "library_ref_id": lib["id"],
+    }
+    result = client.table("artifact_types").insert(row).execute()
+    db_logger.info(
+        f"✅ [DB] Added artifact type '{lib['name']}' from library to project {project_id}"
+    )
+    return result.data[0]
+
+
+@router.get("/artifact-types/{type_id}/library-source")
+def get_library_source(type_id: str):
+    """Fetch the library entry this artifact type was copied from.
+    If library_ref_id is NULL, fall back to matching by name against is_system=true entries
+    (so existing projects predating EPIC-12 can still reset to defaults)."""
+    client = get_client()
+    type_rows = (
+        client.table("artifact_types")
+        .select("library_ref_id, name")
+        .eq("id", type_id)
+        .execute()
+        .data
+    )
+    if not type_rows:
+        raise HTTPException(status_code=404, detail="Artifact type not found")
+    ref_id = type_rows[0].get("library_ref_id")
+    if not ref_id:
+        # Fallback: match by name against system library
+        name = type_rows[0].get("name", "")
+        name_match = (
+            client.table("artifact_library")
+            .select("*")
+            .eq("name", name)
+            .eq("is_system", True)
+            .execute()
+            .data
+        )
+        if not name_match:
+            raise HTTPException(status_code=404, detail="No library source linked")
+        return name_match[0]
+    lib_rows = (
+        client.table("artifact_library").select("*").eq("id", ref_id).execute().data
+    )
+    if not lib_rows:
+        raise HTTPException(status_code=404, detail="Library entry no longer exists")
+    return lib_rows[0]
+
+
+class PublishPayload(BaseModel):
+    name: str = Field(min_length=1)
+    description: str = ""
+
+
+@router.post("/artifact-types/{type_id}/publish-to-library", status_code=201)
+def publish_to_library(type_id: str, payload: PublishPayload):
+    """Copy this artifact type into the library as a user-published entry.
+    Sets the source artifact_type.library_ref_id to the new library entry's id.
+    Restricted to kind='llm' artifact types (templates/hybrids need Python code)."""
+    client = get_client()
+    type_rows = (
+        client.table("artifact_types").select("*").eq("id", type_id).execute().data
+    )
+    if not type_rows:
+        raise HTTPException(status_code=404, detail="Artifact type not found")
+    t = type_rows[0]
+    if t.get("kind") != "llm":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot publish kind='{t.get('kind')}' artifacts to library. Only LLM artifacts can be published.",
+        )
+    entry = {
+        "name": payload.name,
+        "description": payload.description,
+        "kind": "llm",
+        "prompt": t.get("prompt"),
+        "template_id": None,
+        "llm": t.get("llm"),
+        "model": t.get("model"),
+        "context_scope": t.get("context_scope", "call"),
+        "is_system": False,
+        "seeded_by_default": False,
+    }
+    result = client.table("artifact_library").insert(entry).execute()
+    new_lib = result.data[0]
+    # Link source back to new library entry so Reset works
+    client.table("artifact_types").update({"library_ref_id": new_lib["id"]}).eq(
+        "id", type_id
+    ).execute()
+    db_logger.info(
+        f"✅ [DB] Published artifact type {type_id} to library as '{payload.name}'"
+    )
+    return new_lib
+
+
+class PreviewPayload(BaseModel):
+    call_id: str
+
+
+@router.post("/artifact-types/{type_id}/preview")
+def preview_artifact(type_id: str, payload: PreviewPayload):
+    """Render the template part of this artifact type for a given call.
+    Template kind: returns the full renderer output.
+    Hybrid kind: returns just the template skeleton (no LLM intro/closing).
+    LLM kind: returns 400 — nothing to preview without an LLM call."""
+    from backend.services.template_service import render_template_for_preview
+
+    client = get_client()
+    type_rows = (
+        client.table("artifact_types").select("*").eq("id", type_id).execute().data
+    )
+    if not type_rows:
+        raise HTTPException(status_code=404, detail="Artifact type not found")
+    t = type_rows[0]
+    if t.get("kind") == "llm":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot preview an LLM artifact. Preview only works for template/hybrid kinds.",
+        )
+    try:
+        content = render_template_for_preview(t, payload.call_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"content": content}
