@@ -340,7 +340,11 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
       if (t) {
         setPromptName(t.name);
         const llm = t.llm ?? project.default_llm;
-        setEffectiveLlm(LLM_LABELS[llm] ?? llm);
+        // For OpenRouter, append the model slug so the user can see exactly
+        // which model ran — artifact type override wins, else project default.
+        const model = llm === "openrouter" ? (t.model ?? project.default_model) : null;
+        const providerLabel = LLM_LABELS[llm] ?? llm;
+        setEffectiveLlm(model ? `${providerLabel} · ${model}` : providerLabel);
       }
     }).catch(() => {});
   }, [call.project_id]);
