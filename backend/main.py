@@ -2,7 +2,15 @@ import os
 from contextlib import asynccontextmanager
 
 from backend.middleware.logging_middleware import log_requests
-from backend.routers import artifact_types, artifacts, calls, files, projects, topics
+from backend.routers import (
+    artifact_types,
+    artifacts,
+    calls,
+    files,
+    library,
+    projects,
+    topics,
+)
 from backend.utils.logger import get_logger
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -55,6 +63,7 @@ app.include_router(files.router)
 app.include_router(artifact_types.router)
 app.include_router(artifacts.router)
 app.include_router(topics.router)
+app.include_router(library.router)
 
 
 @app.get("/health")
