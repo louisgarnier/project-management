@@ -100,8 +100,8 @@ export default function ArtifactsPage() {
   }
 
   const artifactTypes = types.filter((t) => t.category === "artifacts" || !t.category);
-  const workflowPrompts = types.filter(
-    (t) => t.category === "call_topics" || t.category === "project_topics" || t.category === "topics"
+  const workflowPrompts = types.filter((t) =>
+    ["call_topics", "project_topics", "merge_verification", "not_discussed_check", "topics"].includes(t.category)
   );
 
   return (
@@ -149,12 +149,6 @@ export default function ArtifactsPage() {
               )}
             </div>
           )}
-          <button
-            onClick={() => setShowModal(true)}
-            className="bg-[#0052cc] text-white px-4 py-[6px] rounded text-[13px] font-medium hover:bg-[#0065ff]"
-          >
-            + Add artifact type
-          </button>
         </div>
       </div>
 
@@ -187,48 +181,68 @@ export default function ArtifactsPage() {
               />
             </div>
 
-            {/* ── Artifacts section ── */}
-            <div className="flex flex-col gap-3 mb-8">
-              {artifactTypes.length === 0 ? (
-                <p className="text-[13px] text-[#5e6c84]">No artifact types yet.</p>
-              ) : (
-                artifactTypes.map((t) => (
-                  <ArtifactTypeCard
-                    key={t.id}
-                    type={t}
-                    projectDefaultLlm={project?.default_llm ?? "groq"}
-                    onDelete={handleDelete}
-                    onUpdate={handleUpdate}
-                  />
-                ))
+            {/* ── Tier 1 — Workflow Prompts ── */}
+            <div style={{ margin: "24px 0 8px" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#5e6c84", letterSpacing: ".05em", marginBottom: 4 }}>
+                ⚙️ Tier 1 — Workflow Prompts
+              </div>
+              <div style={{ fontSize: 11, color: "#97a0af", marginBottom: 10 }}>
+                System-essential prompts the extraction / merge / verification pipeline uses. 4 per project. Edit to customize, Reset to restore canonical.
+              </div>
+            </div>
+            <div className="flex flex-col gap-3">
+              {workflowPrompts.map((t) => (
+                <ArtifactTypeCard
+                  key={t.id}
+                  type={t}
+                  projectDefaultLlm={project?.default_llm ?? "groq"}
+                  onDelete={() => {}}
+                  onUpdate={handleUpdate}
+                  hideDelete
+                  hideDefaultToggle
+                />
+              ))}
+              {workflowPrompts.length === 0 && (
+                <div style={{ padding: "16px 0", fontSize: 12, color: "#97a0af", textAlign: "center" }}>
+                  No workflow prompts found for this project. Run migration 021 + backend startup to seed them.
+                </div>
               )}
             </div>
 
-            {/* ── Workflow Prompts section ── */}
-            {workflowPrompts.length > 0 && (
+            {/* ── Tier 2 — Artifact Prompts ── */}
+            <div style={{ margin: "24px 0 8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-[13px] font-bold text-[#172b4d]">Workflow Prompts</h2>
-                  <span className="text-[10px] font-bold uppercase tracking-wide bg-[#e3fcef] text-[#006644] px-2 py-[2px] rounded">
-                    Workflow
-                  </span>
-                  <span className="text-[11px] text-[#5e6c84]">— used automatically during call processing</span>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#5e6c84", letterSpacing: ".05em", marginBottom: 4 }}>
+                  📝 Tier 2 — Artifact Prompts
                 </div>
-                <div className="flex flex-col gap-3">
-                  {workflowPrompts.map((t) => (
-                    <ArtifactTypeCard
-                      key={t.id}
-                      type={t}
-                      projectDefaultLlm={project?.default_llm ?? "groq"}
-                      onDelete={() => {}}
-                      onUpdate={handleUpdate}
-                      hideDelete
-                      hideDefaultToggle
-                    />
-                  ))}
+                <div style={{ fontSize: 11, color: "#97a0af" }}>
+                  Library-backed or custom artifacts this project generates. Add from library, publish yours to the library, or create custom.
                 </div>
               </div>
-            )}
+              <button
+                type="button"
+                onClick={() => setShowModal(true)}
+                style={{ fontSize: 13, fontWeight: 600, color: "white", background: "#0052cc", border: "none", borderRadius: 6, padding: "8px 14px", cursor: "pointer" }}
+              >
+                + Add artifact type
+              </button>
+            </div>
+            <div className="flex flex-col gap-3 pb-6">
+              {artifactTypes.map((t) => (
+                <ArtifactTypeCard
+                  key={t.id}
+                  type={t}
+                  projectDefaultLlm={project?.default_llm ?? "groq"}
+                  onDelete={handleDelete}
+                  onUpdate={handleUpdate}
+                />
+              ))}
+              {artifactTypes.length === 0 && (
+                <div style={{ padding: "16px 0", fontSize: 12, color: "#97a0af", textAlign: "center" }}>
+                  No artifact types. Click &quot;+ Add artifact type&quot; to browse the library.
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
