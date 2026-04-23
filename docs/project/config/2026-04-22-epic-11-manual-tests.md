@@ -38,6 +38,11 @@ Mark each `[ ]` checkbox as you complete the step.
   - [ ] `artifact_types` has column: `model` (text, nullable)
   - [ ] `projects` has column: `default_model` (text, nullable)
 
+### A.2b — Run migration 020 (artifacts.mode constraint)
+
+- [ ] Paste the contents of `backend/database/migrations/020_add_openrouter_mode.sql` and run it
+- [ ] The verify query should return a row showing `CHECK (mode = ANY (ARRAY['groq'::text, 'deepseek'::text, 'claude'::text, 'openai'::text, 'openrouter'::text, 'manual'::text]))` — confirming `openrouter` is now in the allowlist
+
 ### A.3 — Run the prompt migration script
 
 - [ ] In a terminal, **from the repo root** (not from inside `backend/`): `python3 -m backend.scripts.migrate_call_topics_prompt`
