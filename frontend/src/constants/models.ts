@@ -50,3 +50,23 @@ export const PROVIDER_LABELS: Record<LLMProvider | "inherit", string> = {
   openai:     "OpenAI (direct)",
   openrouter: "OpenRouter ⭐",
 };
+
+export const MODEL_COSTS: Record<string, { inputPerMillion: number; outputPerMillion: number }> = {
+  "anthropic/claude-sonnet-4.6":       { inputPerMillion: 3,    outputPerMillion: 15  },
+  "anthropic/claude-opus-4.7":          { inputPerMillion: 15,   outputPerMillion: 75  },
+  "openai/gpt-4o":                      { inputPerMillion: 2.5,  outputPerMillion: 10  },
+  "openai/gpt-4o-mini":                 { inputPerMillion: 0.15, outputPerMillion: 0.60 },
+  "google/gemini-2.5-pro":              { inputPerMillion: 1.25, outputPerMillion: 5   },
+  "deepseek/deepseek-chat":             { inputPerMillion: 0.27, outputPerMillion: 1.10 },
+  "deepseek/deepseek-v3.2":             { inputPerMillion: 0.27, outputPerMillion: 1.10 },
+  "meta-llama/llama-3.3-70b-instruct":  { inputPerMillion: 0.59, outputPerMillion: 0.79 },
+};
+
+/** Estimates the per-call cost for an LLM artifact assuming ~12k input + ~4k output tokens. */
+export function estimateCost(modelSlug: string | null | undefined): string {
+  if (!modelSlug) return "—";
+  const rates = MODEL_COSTS[modelSlug];
+  if (!rates) return "—";
+  const cost = (12_000 / 1_000_000) * rates.inputPerMillion + (4_000 / 1_000_000) * rates.outputPerMillion;
+  return `~$${cost.toFixed(3)}`;
+}

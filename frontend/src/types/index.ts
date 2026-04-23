@@ -46,6 +46,23 @@ export type ArtifactCategory = "artifacts" | "topics" | "call_topics" | "project
 
 export type ContextScope = "call" | "project";
 
+export type ArtifactKind = "llm" | "template" | "hybrid";
+
+export interface LibraryEntry {
+  id: string;
+  name: string;
+  description: string;
+  kind: ArtifactKind;
+  prompt: string | null;
+  template_id: string | null;
+  llm: LLMProvider | null;
+  model: string | null;
+  context_scope: ContextScope;
+  is_system: boolean;
+  seeded_by_default: boolean;
+  created_at: string;
+}
+
 export interface ArtifactType {
   id: string;
   project_id: string;
@@ -56,6 +73,9 @@ export interface ArtifactType {
   llm: LLMProvider | null;
   model: string | null;
   context_scope: ContextScope;
+  kind: ArtifactKind;
+  template_id: string | null;
+  library_ref_id: string | null;
   created_at: string;
 }
 
