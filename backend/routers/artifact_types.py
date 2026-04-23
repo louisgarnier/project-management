@@ -61,61 +61,52 @@ DEFAULT_NOT_DISCUSSED_CHECK_PROMPT = {
 
 
 def seed_defaults(project_id: str) -> None:
-    """Insert artifact types + 2 workflow prompts for a newly created project.
-
-    Artifact types are sourced from the global pool: all artifact_types with
-    is_default=True and category='artifacts' across all projects, deduplicated
-    by name (most recently created wins). Falls back to hardcoded DEFAULT_ARTIFACT_TYPES
-    if no defaults exist yet (first project ever).
+    """Seed a new project with:
+    - Tier 1: the 4 workflow prompts (always, from backend/prompts/*.py)
+    - Tier 2: artifact_library entries where seeded_by_default=true (typically 3)
     """
     client = get_client()
 
-    # Build artifact rows from global defaults pool
-    existing_defaults = (
-        client.table("artifact_types")
-        .select("name, prompt, llm, context_scope")
-        .eq("is_default", True)
-        .eq("category", "artifacts")
-        .order("created_at", desc=True)
+    # Tier 1 — workflow prompts (EPIC-11 pattern, unchanged)
+    for workflow_prompt in (
+        DEFAULT_CALL_TOPICS_PROMPT,
+        DEFAULT_PROJECT_TOPICS_PROMPT,
+        DEFAULT_MERGE_VERIFICATION_PROMPT,
+        DEFAULT_NOT_DISCUSSED_CHECK_PROMPT,
+    ):
+        client.table("artifact_types").insert(
+            {"project_id": project_id, **workflow_prompt}
+        ).execute()
+
+    # Tier 2 — library-backed artifact types with seeded_by_default=true
+    seeded = (
+        client.table("artifact_library")
+        .select(
+            "id, name, description, kind, prompt, template_id, llm, model, context_scope"
+        )
+        .eq("seeded_by_default", True)
         .execute()
         .data
     )
+    for entry in seeded:
+        client.table("artifact_types").insert(
+            {
+                "project_id": project_id,
+                "name": entry["name"],
+                "prompt": entry.get("prompt"),
+                "is_default": True,
+                "category": "artifacts",
+                "kind": entry["kind"],
+                "template_id": entry.get("template_id"),
+                "library_ref_id": entry["id"],
+                "llm": entry.get("llm"),
+                "model": entry.get("model"),
+                "context_scope": entry.get("context_scope", "call"),
+            }
+        ).execute()
 
-    seen_names: set[str] = set()
-    deduped: list[dict] = []
-    for row in existing_defaults:
-        key = row["name"].lower().strip()
-        if key not in seen_names:
-            seen_names.add(key)
-            deduped.append(row)
-
-    if deduped:
-        artifact_rows = [
-            {"project_id": project_id, "category": "artifacts", "is_default": True, **r}
-            for r in deduped
-        ]
-    else:
-        # First project ever — seed from hardcoded defaults
-        artifact_rows = [
-            {"project_id": project_id, "category": "artifacts", **t}
-            for t in DEFAULT_ARTIFACT_TYPES
-        ]
-
-    client.table("artifact_types").insert(artifact_rows).execute()
-    client.table("artifact_types").insert(
-        {"project_id": project_id, **DEFAULT_CALL_TOPICS_PROMPT}
-    ).execute()
-    client.table("artifact_types").insert(
-        {"project_id": project_id, **DEFAULT_PROJECT_TOPICS_PROMPT}
-    ).execute()
-    client.table("artifact_types").insert(
-        {"project_id": project_id, **DEFAULT_MERGE_VERIFICATION_PROMPT}
-    ).execute()
-    client.table("artifact_types").insert(
-        {"project_id": project_id, **DEFAULT_NOT_DISCUSSED_CHECK_PROMPT}
-    ).execute()
     db_logger.info(
-        f"✅ [DB] Seeded {len(artifact_rows)} artifact types + 4 workflow prompts for project: {project_id}"
+        f"✅ [DB] Seeded project {project_id}: 4 workflow prompts + {len(seeded)} library artifacts"
     )
 
 

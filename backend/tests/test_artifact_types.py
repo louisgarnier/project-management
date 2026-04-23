@@ -334,3 +334,86 @@ def test_update_artifact_type_accepts_model(mock_gc):
     )
     assert r.status_code == 200
     assert r.json()["model"] == "google/gemini-2.5-pro"
+
+
+def test_seed_defaults_inserts_workflow_and_library_seeded():
+    """seed_defaults inserts 4 Tier-1 workflow prompts + library entries with seeded_by_default=true."""
+    from unittest.mock import MagicMock, patch
+
+    from backend.routers.artifact_types import seed_defaults
+
+    inserted_rows: list[dict] = []
+    mock = MagicMock()
+
+    def table_side_effect(name):
+        m = MagicMock()
+        if name == "artifact_library":
+            # Simulate 3 seeded-by-default library entries
+            m.select.return_value.eq.return_value.execute.return_value.data = [
+                {
+                    "id": "lib-1",
+                    "name": "Executive Summary",
+                    "kind": "llm",
+                    "prompt": "...",
+                    "template_id": None,
+                    "llm": "openrouter",
+                    "model": "anthropic/claude-sonnet-4.6",
+                    "context_scope": "call",
+                    "description": "",
+                },
+                {
+                    "id": "lib-2",
+                    "name": "Next Steps & Action Items",
+                    "kind": "template",
+                    "prompt": None,
+                    "template_id": "next_steps",
+                    "llm": None,
+                    "model": None,
+                    "context_scope": "call",
+                    "description": "",
+                },
+                {
+                    "id": "lib-3",
+                    "name": "Questions for Stakeholders",
+                    "kind": "template",
+                    "prompt": None,
+                    "template_id": "questions_list",
+                    "llm": None,
+                    "model": None,
+                    "context_scope": "call",
+                    "description": "",
+                },
+            ]
+        elif name == "artifact_types":
+
+            def capture(rows):
+                if isinstance(rows, list):
+                    inserted_rows.extend(rows)
+                else:
+                    inserted_rows.append(rows)
+                return m
+
+            m.insert.side_effect = capture
+            m.insert.return_value.execute.return_value.data = []
+        return m
+
+    mock.table.side_effect = table_side_effect
+
+    with patch("backend.routers.artifact_types.get_client", return_value=mock):
+        seed_defaults("test-proj-id")
+
+    categories = [r.get("category") for r in inserted_rows]
+    # 4 Tier-1 workflow prompts
+    assert categories.count("call_topics") == 1
+    assert categories.count("project_topics") == 1
+    assert categories.count("merge_verification") == 1
+    assert categories.count("not_discussed_check") == 1
+    # 3 Tier-2 library-backed artifacts
+    assert categories.count("artifacts") == 3
+    artifacts_inserted = [r for r in inserted_rows if r.get("category") == "artifacts"]
+    assert all(r.get("library_ref_id") for r in artifacts_inserted)
+    # Kinds preserved from library
+    kinds = {r["name"]: r["kind"] for r in artifacts_inserted}
+    assert kinds["Executive Summary"] == "llm"
+    assert kinds["Next Steps & Action Items"] == "template"
+    assert kinds["Questions for Stakeholders"] == "template"
