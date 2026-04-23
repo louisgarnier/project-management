@@ -304,7 +304,10 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
     for t in topics:
         updates = (
             db.table("topic_updates")
-            .select("summary, follow_up_items, decisions, status, owner, sentiment")
+            .select(
+                "summary, follow_up_items, decisions, open_questions, "
+                "status, owner, sentiment, is_parked, importance, rationale"
+            )
             .eq("topic_id", t["id"])
             .order("created_at", desc=True)
             .limit(1)
@@ -320,9 +323,13 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
                 "summary": latest.get("summary", ""),
                 "follow_up_items": latest.get("follow_up_items", []),
                 "decisions": latest.get("decisions", []),
+                "open_questions": latest.get("open_questions", []),
                 "status": latest.get("status", "open"),
                 "owner": latest.get("owner", "Us"),
                 "sentiment": latest.get("sentiment", "neutral"),
+                "is_parked": latest.get("is_parked", False),
+                "importance": latest.get("importance", "medium"),
+                "rationale": latest.get("rationale", ""),
             }
         )
     return result
@@ -1360,9 +1367,13 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
             "summary": t.summary,
             "follow_up_items": t.follow_up_items,
             "decisions": t.decisions,
+            "open_questions": t.open_questions,
             "status": t.status,
             "owner": t.owner,
             "sentiment": t.sentiment,
+            "is_parked": t.is_parked,
+            "importance": t.importance,
+            "rationale": t.rationale,
         }
         if t.transcript_excerpt:
             update_row["transcript_excerpt"] = t.transcript_excerpt
@@ -1899,7 +1910,8 @@ async def list_call_topics(call_id: str) -> list[dict]:
     updates = (
         db.table("topic_updates")
         .select(
-            "topic_id, summary, follow_up_items, decisions, status, owner, sentiment, created_at"
+            "topic_id, summary, follow_up_items, decisions, open_questions, "
+            "status, owner, sentiment, is_parked, importance, rationale, created_at"
         )
         .eq("call_id", call_id)
         .order("created_at", desc=True)
@@ -1935,9 +1947,13 @@ async def list_call_topics(call_id: str) -> list[dict]:
                     "summary": u.get("summary") or "",
                     "follow_up_items": u.get("follow_up_items") or [],
                     "decisions": u.get("decisions") or [],
+                    "open_questions": u.get("open_questions") or [],
                     "status": u.get("status") or "open",
                     "owner": u.get("owner") or "Us",
                     "sentiment": u.get("sentiment") or "neutral",
+                    "is_parked": u.get("is_parked") or False,
+                    "importance": u.get("importance") or "medium",
+                    "rationale": u.get("rationale") or "",
                 }
             )
 
