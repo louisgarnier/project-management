@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory } from "@/types";
+import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory, LibraryEntry } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -218,6 +218,33 @@ export const artifactTypesAPI = {
       method: "POST",
       body: JSON.stringify({ type_ids: typeIds }),
     }),
+
+  preview: async (typeId: string, callId: string): Promise<{ content: string }> => {
+    const res = await fetch(`${PROXY_BASE}/api/artifact-types/${typeId}/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ call_id: callId }),
+    });
+    if (!res.ok) throw new Error(`Preview failed: ${res.status}`);
+    return res.json();
+  },
+
+  getLibrarySource: async (typeId: string): Promise<LibraryEntry | null> => {
+    const res = await fetch(`${PROXY_BASE}/api/artifact-types/${typeId}/library-source`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Failed to fetch library source`);
+    return res.json();
+  },
+
+  fromLibrary: async (projectId: string, libraryId: string): Promise<ArtifactType> => {
+    const res = await fetch(`${PROXY_BASE}/api/projects/${projectId}/artifact-types/from-library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ library_id: libraryId }),
+    });
+    if (!res.ok) throw new Error("Failed to add from library");
+    return res.json();
+  },
 };
 
 export const artifactsAPI = {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import type { ArtifactType, LLMProvider, ContextScope } from "@/types";
-import { MODEL_RECOMMENDATIONS, PROVIDER_LABELS } from "@/constants/models";
+import { useState, useEffect } from "react";
+import type { ArtifactType, LLMProvider, ContextScope, LibraryEntry } from "@/types";
+import { MODEL_RECOMMENDATIONS, PROVIDER_LABELS, estimateCost } from "@/constants/models";
 import { artifactTypesAPI } from "@/api/client";
 
 type Props = {
@@ -25,6 +25,25 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [promptExpanded, setPromptExpanded] = useState(false);
+
+  // New state for diff-vs-canonical badge + publish stub
+  const [librarySource, setLibrarySource] = useState<LibraryEntry | null>(null);
+  const [isEdited, setIsEdited] = useState(false);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    artifactTypesAPI.getLibrarySource(type.id).then((src) => {
+      if (!active) return;
+      setLibrarySource(src);
+      if (src && src.prompt !== null && type.prompt !== null) {
+        setIsEdited((src.prompt || "").trim() !== (type.prompt || "").trim());
+      }
+    }).catch(() => {
+      // non-canonical custom types — no source, no diff
+    });
+    return () => { active = false; };
+  }, [type.id, type.prompt]);
 
   function handleCancelEdit() {
     setEditing(false);
@@ -49,6 +68,8 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
     }
   }
 
+  const effectiveKind = type.kind ?? "llm";
+
   return (
     <div
       className="border rounded-lg p-4 bg-white transition-colors"
@@ -71,6 +92,20 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
               {type.is_default ? "✓ Default" : "+ Default"}
             </button>
           )}
+
+          {/* Diff-vs-canonical badge (LLM kind only) */}
+          {librarySource && effectiveKind === "llm" && (
+            isEdited ? (
+              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", background: "#fff4e6", color: "#974f0c", borderRadius: 3 }}>
+                ✎ edited
+              </span>
+            ) : (
+              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", background: "#f4f5f7", color: "#5e6c84", borderRadius: 3 }}>
+                ⟲ canonical
+              </span>
+            )
+          )}
+
           {editing ? (
             <input
               value={name}
@@ -82,55 +117,57 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
           )}
         </div>
 
-        {/* Provider + context scope — always visible in header */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {editing ? (
-            <>
-              <select
-                value={llm ?? "inherit"}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setLlm(val === "inherit" ? null : (val as LLMProvider));
-                  if (val !== "openrouter") setModel(null);
-                }}
-                className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
-              >
-                <option value="inherit">{PROVIDER_LABELS.inherit}</option>
-                <option value="groq">{PROVIDER_LABELS.groq}</option>
-                <option value="deepseek">{PROVIDER_LABELS.deepseek}</option>
-                <option value="claude">{PROVIDER_LABELS.claude}</option>
-                <option value="openai">{PROVIDER_LABELS.openai}</option>
-                <option value="openrouter">{PROVIDER_LABELS.openrouter}</option>
-              </select>
-              <select
-                value={contextScope}
-                onChange={(e) => setContextScope(e.target.value as ContextScope)}
-                className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
-              >
-                <option value="call">Call only</option>
-                <option value="project">Full project</option>
-              </select>
-            </>
-          ) : (
-            <>
-              <span className="text-[11px] text-[#5e6c84] bg-[#f4f5f7] px-2 py-[3px] rounded">
-                {type.llm
-                  ? PROVIDER_LABELS[type.llm]
-                  : `Inherit · ${PROVIDER_LABELS[projectDefaultLlm]}`}
-              </span>
-              <span
-                className="text-[10px] font-medium px-2 py-[3px] rounded"
-                style={
-                  (type.context_scope ?? "call") === "project"
-                    ? { background: "#e3fcef", color: "#006644" }
-                    : { background: "#f4f5f7", color: "#5e6c84" }
-                }
-              >
-                {(type.context_scope ?? "call") === "project" ? "Full project" : "Call only"}
-              </span>
-            </>
-          )}
-        </div>
+        {/* Provider + context scope — always visible in header (LLM and hybrid kinds) */}
+        {effectiveKind !== "template" && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {editing ? (
+              <>
+                <select
+                  value={llm ?? "inherit"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setLlm(val === "inherit" ? null : (val as LLMProvider));
+                    if (val !== "openrouter") setModel(null);
+                  }}
+                  className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
+                >
+                  <option value="inherit">{PROVIDER_LABELS.inherit}</option>
+                  <option value="groq">{PROVIDER_LABELS.groq}</option>
+                  <option value="deepseek">{PROVIDER_LABELS.deepseek}</option>
+                  <option value="claude">{PROVIDER_LABELS.claude}</option>
+                  <option value="openai">{PROVIDER_LABELS.openai}</option>
+                  <option value="openrouter">{PROVIDER_LABELS.openrouter}</option>
+                </select>
+                <select
+                  value={contextScope}
+                  onChange={(e) => setContextScope(e.target.value as ContextScope)}
+                  className="text-[11px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc]"
+                >
+                  <option value="call">Call only</option>
+                  <option value="project">Full project</option>
+                </select>
+              </>
+            ) : (
+              <>
+                <span className="text-[11px] text-[#5e6c84] bg-[#f4f5f7] px-2 py-[3px] rounded">
+                  {type.llm
+                    ? PROVIDER_LABELS[type.llm]
+                    : `Inherit · ${PROVIDER_LABELS[projectDefaultLlm]}`}
+                </span>
+                <span
+                  className="text-[10px] font-medium px-2 py-[3px] rounded"
+                  style={
+                    (type.context_scope ?? "call") === "project"
+                      ? { background: "#e3fcef", color: "#006644" }
+                      : { background: "#f4f5f7", color: "#5e6c84" }
+                  }
+                >
+                  {(type.context_scope ?? "call") === "project" ? "Full project" : "Call only"}
+                </span>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-3 flex-shrink-0">
           {editing ? (
@@ -143,7 +180,7 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving || !name.trim() || !prompt.trim()}
+                disabled={saving || !name.trim()}
                 className="text-[11px] text-[#0052cc] hover:underline disabled:opacity-50"
               >
                 {saving ? "Saving…" : "Save"}
@@ -183,71 +220,146 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
         className="mt-2 text-[11px] text-[#5e6c84] hover:text-[#0052cc] flex items-center gap-1"
       >
         <span>{expanded ? "▾" : "▸"}</span>
-        <span>{expanded ? "Hide prompt" : "View prompt"}</span>
+        <span>{expanded ? "Hide details" : "View details"}</span>
       </button>
 
-      {/* Prompt — read or edit */}
-      {expanded &&
-        (editing ? (
-          <>
-            {/* OpenRouter model picker — single datalist input: type any slug,
-                click to see curated suggestions for this category. */}
-            {llm === "openrouter" && (
-              <div style={{ marginTop: 10, marginBottom: 8 }}>
-                <label style={{ fontSize: 11, color: "#5e6c84", display: "block", marginBottom: 4 }}>
-                  Model (OpenRouter slug)
-                </label>
-                <input
-                  type="text"
-                  list={`openrouter-models-${type.id}`}
-                  value={model ?? ""}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder="e.g. deepseek/deepseek-v3.2 — type any slug or click ▾ for suggestions"
-                  style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "6px 8px", fontFamily: "ui-monospace, Menlo, monospace", width: "100%", boxSizing: "border-box" }}
-                />
-                <datalist id={`openrouter-models-${type.id}`}>
-                  {(MODEL_RECOMMENDATIONS[type.category] ?? []).map((m) => (
-                    <option key={m.slug} value={m.slug}>
-                      {m.label}{m.priceHint ? ` · ${m.priceHint}` : ""}
-                    </option>
-                  ))}
-                </datalist>
-                <p style={{ fontSize: 10, color: "#97a0af", marginTop: 4 }}>
-                  Any model on <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" style={{ color: "#0052cc" }}>openrouter.ai/models</a> works — paste its slug here.
-                </p>
+      {/* Card body — forked on kind */}
+      {expanded && (
+        <>
+          {effectiveKind === "template" ? (
+            /* ── Template kind ── */
+            <div style={{ padding: "8px 0 4px" }}>
+              <p style={{ fontSize: 12, color: "#5e6c84", lineHeight: 1.5 }}>
+                {librarySource?.description || "Deterministic template — renders from your topic data with no LLM call."}
+              </p>
+              <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const latestCall = window.prompt("Call ID to preview with?");
+                    if (!latestCall) return;
+                    try {
+                      const { content } = await artifactTypesAPI.preview(type.id, latestCall);
+                      alert(content);
+                    } catch (e) {
+                      alert(`Preview failed: ${e instanceof Error ? e.message : String(e)}`);
+                    }
+                  }}
+                  style={{ fontSize: 11, color: "#0052cc", background: "none", border: "1px solid #b3c6e8", borderRadius: 4, padding: "4px 10px", cursor: "pointer" }}
+                >
+                  ▷ Preview
+                </button>
+                <span style={{ fontSize: 11, color: "#006644" }}>Cost: $0 (template)</span>
               </div>
-            )}
-
-            {/* Expandable prompt textarea */}
-            <div style={{ position: "relative", marginTop: 8 }}>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={promptExpanded ? 25 : 6}
-                style={{
-                  width: "100%", fontSize: 12, fontFamily: "ui-monospace, Menlo, monospace",
-                  color: "#172b4d", border: "1px solid #dfe1e6", borderRadius: 4,
-                  padding: "8px 10px", resize: "vertical", boxSizing: "border-box",
-                  minHeight: promptExpanded ? 500 : 120,
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setPromptExpanded((v) => !v)}
-                title={promptExpanded ? "Collapse" : "Expand for easier editing"}
-                style={{ position: "absolute", top: 6, right: 6, background: "rgba(255,255,255,.9)", border: "1px solid #dfe1e6", borderRadius: 3, padding: "2px 6px", fontSize: 10, cursor: "pointer" }}
-              >
-                {promptExpanded ? "⤡ Collapse" : "⤢ Expand"}
-              </button>
             </div>
+          ) : effectiveKind === "hybrid" ? (
+            /* ── Hybrid kind ── */
+            <div style={{ padding: "8px 0 4px" }}>
+              <p style={{ fontSize: 12, color: "#5e6c84", lineHeight: 1.5 }}>
+                <strong>Hybrid artifact:</strong> {librarySource?.description || "Template skeleton + LLM-generated intro & closing."}
+              </p>
+              {editing && (() => {
+                let parts: { intro?: string; closing?: string } = {};
+                try { parts = JSON.parse(type.prompt || "{}"); } catch { /* ignore */ }
+                return (
+                  <>
+                    <label style={{ fontSize: 11, color: "#5e6c84", display: "block", marginTop: 8 }}>Intro prompt</label>
+                    <textarea
+                      value={parts.intro || ""}
+                      onChange={(e) => {
+                        const next = JSON.stringify({ intro: e.target.value, closing: parts.closing || "" });
+                        setPrompt(next);
+                      }}
+                      rows={2}
+                      style={{ width: "100%", fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "6px 8px", fontFamily: "inherit", boxSizing: "border-box" }}
+                    />
+                    <label style={{ fontSize: 11, color: "#5e6c84", display: "block", marginTop: 6 }}>Closing prompt</label>
+                    <textarea
+                      value={parts.closing || ""}
+                      onChange={(e) => {
+                        const next = JSON.stringify({ intro: parts.intro || "", closing: e.target.value });
+                        setPrompt(next);
+                      }}
+                      rows={2}
+                      style={{ width: "100%", fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "6px 8px", fontFamily: "inherit", boxSizing: "border-box" }}
+                    />
+                  </>
+                );
+              })()}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <span style={{ fontSize: 11, color: "#5e6c84" }}>
+                  Cost: {type.llm === "openrouter" ? estimateCost(type.model) : "—"} (2 short LLM calls)
+                </span>
+              </div>
+            </div>
+          ) : (
+            /* ── LLM kind (default) — keep existing markup intact ── */
+            editing ? (
+              <>
+                {/* OpenRouter model picker */}
+                {llm === "openrouter" && (
+                  <div style={{ marginTop: 10, marginBottom: 8 }}>
+                    <label style={{ fontSize: 11, color: "#5e6c84", display: "block", marginBottom: 4 }}>
+                      Model (OpenRouter slug)
+                    </label>
+                    <input
+                      type="text"
+                      list={`openrouter-models-${type.id}`}
+                      value={model ?? ""}
+                      onChange={(e) => setModel(e.target.value)}
+                      placeholder="e.g. deepseek/deepseek-v3.2 — type any slug or click ▾ for suggestions"
+                      style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "6px 8px", fontFamily: "ui-monospace, Menlo, monospace", width: "100%", boxSizing: "border-box" }}
+                    />
+                    <datalist id={`openrouter-models-${type.id}`}>
+                      {(MODEL_RECOMMENDATIONS[type.category] ?? []).map((m) => (
+                        <option key={m.slug} value={m.slug}>
+                          {m.label}{m.priceHint ? ` · ${m.priceHint}` : ""}
+                        </option>
+                      ))}
+                    </datalist>
+                    <p style={{ fontSize: 10, color: "#97a0af", marginTop: 4 }}>
+                      Any model on <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" style={{ color: "#0052cc" }}>openrouter.ai/models</a> works — paste its slug here.
+                    </p>
+                  </div>
+                )}
 
-            {/* Runtime context disclosure — call_topics only */}
-            {type.category === "call_topics" && (
-              <details style={{ marginTop: 8, fontSize: 11 }}>
-                <summary style={{ cursor: "pointer", color: "#5e6c84" }}>
-                  Show runtime context (appended automatically at extraction time)
-                </summary>
-                <pre style={{ fontSize: 10, background: "#fafbfc", padding: 8, borderRadius: 4, color: "#5e6c84", whiteSpace: "pre-wrap", marginTop: 6 }}>
+                {/* Cost estimate when editing with OpenRouter */}
+                {llm === "openrouter" && (
+                  <div style={{ padding: "4px 0", fontSize: 11, color: "#5e6c84" }}>
+                    Cost estimate: {estimateCost(model)} per call
+                  </div>
+                )}
+
+                {/* Expandable prompt textarea */}
+                <div style={{ position: "relative", marginTop: 8 }}>
+                  <textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    rows={promptExpanded ? 25 : 6}
+                    style={{
+                      width: "100%", fontSize: 12, fontFamily: "ui-monospace, Menlo, monospace",
+                      color: "#172b4d", border: "1px solid #dfe1e6", borderRadius: 4,
+                      padding: "8px 10px", resize: "vertical", boxSizing: "border-box",
+                      minHeight: promptExpanded ? 500 : 120,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPromptExpanded((v) => !v)}
+                    title={promptExpanded ? "Collapse" : "Expand for easier editing"}
+                    style={{ position: "absolute", top: 6, right: 6, background: "rgba(255,255,255,.9)", border: "1px solid #dfe1e6", borderRadius: 3, padding: "2px 6px", fontSize: 10, cursor: "pointer" }}
+                  >
+                    {promptExpanded ? "⤡ Collapse" : "⤢ Expand"}
+                  </button>
+                </div>
+
+                {/* Runtime context disclosure — call_topics only */}
+                {type.category === "call_topics" && (
+                  <details style={{ marginTop: 8, fontSize: 11 }}>
+                    <summary style={{ cursor: "pointer", color: "#5e6c84" }}>
+                      Show runtime context (appended automatically at extraction time)
+                    </summary>
+                    <pre style={{ fontSize: 10, background: "#fafbfc", padding: 8, borderRadius: 4, color: "#5e6c84", whiteSpace: "pre-wrap", marginTop: 6 }}>
 {`Project context: {projects.context}
 
 Existing project topic names (vocabulary alignment):
@@ -259,46 +371,75 @@ Response schema: { ... fixed JSON shape ... }
 
 Transcript:
 {full transcript}`}
-                </pre>
-                <p style={{ fontSize: 10, color: "#97a0af", marginTop: 4 }}>
-                  These blocks are added automatically by the extraction pipeline — they cannot be edited here.
-                </p>
-              </details>
-            )}
+                    </pre>
+                    <p style={{ fontSize: 10, color: "#97a0af", marginTop: 4 }}>
+                      These blocks are added automatically by the extraction pipeline — they cannot be edited here.
+                    </p>
+                  </details>
+                )}
 
-            {/* Action row: Reset to default (left) + Cancel / Save (right) */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!confirm("Overwrite your current prompt and settings with the latest default? Your edits will be lost.")) return;
-                  try {
-                    const def = await artifactTypesAPI.getDefaults(type.category);
-                    setPrompt(def.prompt);
-                    setLlm(def.llm);
-                    setModel(def.model);
-                  } catch (err) {
-                    setSaveError(err instanceof Error ? err.message : "Failed to load defaults");
-                  }
-                }}
-                style={{ fontSize: 11, color: "#5e6c84", background: "none", border: "1px solid #dfe1e6", borderRadius: 4, padding: "4px 10px", cursor: "pointer", marginRight: "auto" }}
-              >
-                ⟲ Reset to default
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="mt-2 text-[12px] text-[#5e6c84] leading-relaxed whitespace-pre-wrap bg-[#f4f5f7] rounded p-3">
-              {type.prompt}
-            </p>
-            {type.model && (
-              <p className="mt-1 text-[10px] text-[#97a0af]">Model: {type.model}</p>
-            )}
-          </>
-        ))}
+                {/* Action row: Reset to default (left) + Publish stub */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!confirm("Overwrite your current prompt and settings with the latest default? Your edits will be lost.")) return;
+                      try {
+                        const def = await artifactTypesAPI.getDefaults(type.category);
+                        setPrompt(def.prompt);
+                        setLlm(def.llm);
+                        setModel(def.model);
+                      } catch (err) {
+                        setSaveError(err instanceof Error ? err.message : "Failed to load defaults");
+                      }
+                    }}
+                    style={{ fontSize: 11, color: "#5e6c84", background: "none", border: "1px solid #dfe1e6", borderRadius: 4, padding: "4px 10px", cursor: "pointer", marginRight: "auto" }}
+                  >
+                    ⟲ Reset to default
+                  </button>
+
+                  {/* Publish to library stub — only for custom (non-library-linked) LLM types */}
+                  {!type.library_ref_id && (
+                    <button
+                      type="button"
+                      onClick={() => setPublishDialogOpen(true)}
+                      style={{ fontSize: 11, color: "#5e6c84", background: "none", border: "1px solid #dfe1e6", borderRadius: 4, padding: "4px 10px", cursor: "pointer" }}
+                    >
+                      ↗ Publish to library
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-[12px] text-[#5e6c84] leading-relaxed whitespace-pre-wrap bg-[#f4f5f7] rounded p-3">
+                  {type.prompt}
+                </p>
+                {type.model && (
+                  <p className="mt-1 text-[10px] text-[#97a0af]">Model: {type.model}</p>
+                )}
+              </>
+            )
+          )}
+        </>
+      )}
 
       {saveError && <p className="mt-2 text-[11px] text-red-600">{saveError}</p>}
+
+      {/* Publish to library stub dialog */}
+      {publishDialogOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(9,30,66,.54)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div style={{ background: "white", borderRadius: 8, padding: 20, width: 420 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: "#172b4d", margin: "0 0 8px" }}>Publish to library</h3>
+            <p style={{ fontSize: 12, color: "#5e6c84" }}>Publish dialog will be wired in Task 13.</p>
+            <div style={{ textAlign: "right" }}>
+              <button onClick={() => setPublishDialogOpen(false)} style={{ fontSize: 12, color: "#5e6c84", background: "none", border: "1px solid #dfe1e6", borderRadius: 4, padding: "6px 14px", cursor: "pointer" }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
