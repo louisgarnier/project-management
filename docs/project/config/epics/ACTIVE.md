@@ -1,22 +1,22 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Epic:** EPIC-12 — Artifacts Overhaul — **in progress (started 2026-04-23)**
-- **Active story:** 12.1 — Schema + Template Renderers
+- **Epic:** EPIC-12 — Artifacts Overhaul — **code complete 2026-04-23 (pending manual validation)**
 - **Branch:** `epic-12-artifacts-overhaul` (stacked on `epic-11-call-topics-overhaul`)
 - **Spec:** `docs/project/config/2026-04-23-epic-12-artifacts-overhaul-design.md`
 - **Plan:** `docs/project/config/2026-04-23-epic-12-artifacts-overhaul-plan.md`
+- **Manual tests:** `docs/project/config/2026-04-23-epic-12-manual-tests.md`
 - **Epic overview:** `docs/project/config/epics/epic-12/overview.md`
 
 ### EPIC-12 Stories
 | # | Story | Status |
 |---|---|---|
-| 12.1 | Schema + template renderers | in_progress |
-| 12.2 | Artifact library (seed + CRUD API) | pending |
-| 12.3 | Artifact types API + generation fork | pending |
-| 12.4 | Frontend two-tier layout + card per kind | pending |
-| 12.5 | Library modal + /library page + publish dialog | pending |
-| 12.6 | End-to-end smoke + close | pending |
+| 12.1 | Schema + template renderers | done 2026-04-23 |
+| 12.2 | Artifact library (seed + CRUD API) | done 2026-04-23 |
+| 12.3 | Artifact types API + generation fork | done 2026-04-23 |
+| 12.4 | Frontend two-tier layout + card per kind | done 2026-04-23 |
+| 12.5 | Library modal + /library page + publish dialog | done 2026-04-23 |
+| 12.6 | End-to-end smoke + close | done 2026-04-23 |
 
 ### EPIC-11 (previous, code complete pending validation)
 - **Epic:** EPIC-11 — Call Topics Extraction Overhaul — **code complete 2026-04-22 (pending manual validation)**

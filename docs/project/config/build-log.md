@@ -1,6 +1,54 @@
 # Build Log — Call Tracker
 
 ## Current Stage
+**EPIC-12 — Artifacts Overhaul — code complete 2026-04-23 (pending manual validation)**
+- All 6 stories done. Three artifact kinds (llm/template/hybrid), artifact library (8 system entries), two-tier artifacts page, /library page, publish-to-library flow shipped.
+
+---
+
+### 2026-04-23 — EPIC-12: Artifacts Overhaul
+
+**Backend — schema:**
+- Migration 021: `artifact_types` gets `kind TEXT` (CHECK llm/template/hybrid), `template_id TEXT`, `library_ref_id UUID` + FK. New `artifact_library` table with 11 columns.
+
+**Backend — templates + library:**
+- `backend/templates/` package: 5 renderers (next_steps, questions_list, agenda_skeleton, risk_register, decisions_digest) + `registry.py`.
+- `backend/library/seed.py` — `SYSTEM_LIBRARY` 8 canonical entries + idempotent `upsert_system_library`.
+- Startup hook in `main.py::lifespan` seeds library on boot.
+- `backend/services/template_service.py` — dispatches artifact_types rows to renderers by `template_id`.
+
+**Backend — library API:**
+- `routers/library.py`: GET / POST / PATCH / DELETE /api/library + POST /reset-system. System entries can't hard-delete; reset re-applies SYSTEM_LIBRARY.
+
+**Backend — artifact_types API:**
+- Pydantic models carry `kind`, `template_id`, `library_ref_id`.
+- 4 new endpoints: `from-library`, `library-source` (with name-fallback), `publish-to-library` (LLM kind only), `preview`.
+- `seed_defaults` rewritten to read from `artifact_library` where `seeded_by_default=true` → new projects get 4 Tier-1 + 3 Tier-2 rows.
+
+**Backend — generation flow:**
+- `routers/artifacts.py::gen_one` forks on `kind`: template = render-only (no LLM); hybrid = 2 short LLM calls + render; llm = unchanged.
+
+**Frontend — foundation:**
+- `ArtifactKind`, `LibraryEntry` types + `MODEL_COSTS` map + `estimateCost()` helper.
+
+**Frontend — artifacts page:**
+- Two-tier layout: Tier 1 ⚙️ Workflow Prompts + Tier 2 📝 Artifact Prompts with labeled sections and descriptions.
+- Workflow prompts filter fixed to include `merge_verification` + `not_discussed_check` (previously hidden).
+- `ArtifactTypeCard` kind-conditional body: template = description + Preview; hybrid = intro/closing prompts + shared provider; llm = existing + diff badge + cost preview + Publish button.
+
+**Frontend — library:**
+- `/library` top-level page with System / Yours sections, `LibraryEntryCard` with inline edit/delete, "Reset system to defaults" button.
+- `AddArtifactTypeModal` 3rd tab "Browse library" (new default).
+- `PublishToLibraryDialog` wired into artifact card.
+- Sidebar "📚 Artifact Library" nav entry.
+
+**Commits:** 14 `[EPIC-12]` commits.
+**Tests:** 32+ new backend tests. Frontend `tsc --noEmit` + `npm run lint` clean.
+**Manual test doc:** `docs/project/config/2026-04-23-epic-12-manual-tests.md` — 6-phase walkthrough.
+**Migration:** 021 (manual, Supabase) + startup hook seeds library idempotently.
+
+---
+
 **EPIC-11 — Call Topics Extraction Overhaul — code complete 2026-04-22 (pending manual validation)**
 - All 6 stories done. Rubric-driven prompt, 4 new topic fields, OpenRouter provider, enriched tile UI, and model picker shipped.
 

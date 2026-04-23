@@ -1,6 +1,6 @@
 # Epic 12 — Artifacts Overhaul
 
-**Status:** in progress — started 2026-04-23
+**Status:** done — 2026-04-23
 **Spec:** [`2026-04-23-epic-12-artifacts-overhaul-design.md`](../../2026-04-23-epic-12-artifacts-overhaul-design.md)
 **Plan:** [`2026-04-23-epic-12-artifacts-overhaul-plan.md`](../../2026-04-23-epic-12-artifacts-overhaul-plan.md)
 **Branch:** `epic-12-artifacts-overhaul`
@@ -11,9 +11,9 @@ Artifacts today are LLM-only, auto-seeded as 6 per project, and two of the four 
 ## Stories
 | # | Story | Status |
 |---|---|---|
-| 12.1 | Schema + template renderers | pending |
-| 12.2 | Artifact library (seed + CRUD API) | pending |
-| 12.3 | Artifact types API extensions + generation fork | pending |
-| 12.4 | Frontend two-tier layout + card per kind | pending |
-| 12.5 | Library modal + /library page + publish dialog | pending |
-| 12.6 | End-to-end smoke + close | pending |
+| 12.1 | Schema + template renderers | done 2026-04-23 |
+| 12.2 | Artifact library (seed + CRUD API) | done 2026-04-23 |
+| 12.3 | Artifact types API extensions + generation fork | done 2026-04-23 |
+| 12.4 | Frontend two-tier layout + card per kind | done 2026-04-23 |
+| 12.5 | Library modal + /library page + publish dialog | done 2026-04-23 |
+| 12.6 | End-to-end smoke + close | done 2026-04-23 |

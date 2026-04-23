@@ -93,6 +93,30 @@ transcription/
     └── test_health.py             → 2 tests: health + rejection (EPIC-4 / Story 4.7)
 
 run_transcription.sh               → Starts local transcription server on :8001 (EPIC-4 / Story 4.1)
+
+backend/templates/
+├── next_steps.py                  → Template renderer: formats follow_up_items[] into ## topic / - **Owner:** action markdown (EPIC-12 / Story 12.1)
+├── questions_list.py              → Template renderer: formats open_questions[] grouped by topic (EPIC-12 / Story 12.1)
+├── agenda_skeleton.py             → Template renderer: filters resolved topics, sorts concern-first, renders agenda bullets (EPIC-12 / Story 12.1)
+├── risk_register.py               → Template renderer: includes only sentiment=concern OR is_parked=true topics (EPIC-12 / Story 12.1)
+├── decisions_digest.py            → Template renderer: flattens decisions[] across all topics grouped by topic (EPIC-12 / Story 12.1)
+└── registry.py                    → Maps template_id keys to render functions (EPIC-12 / Story 12.1)
+
+backend/library/
+└── seed.py                        → SYSTEM_LIBRARY list[dict] with 8 canonical entries (3 seeded_by_default) + idempotent upsert_system_library(db) (EPIC-12 / Story 12.2)
+
+backend/routers/
+└── library.py                     → GET/POST/PATCH/DELETE /api/library + POST /api/library/reset-system; system entries 403 on DELETE; reset re-applies SYSTEM_LIBRARY (EPIC-12 / Story 12.2)
+
+backend/services/
+└── template_service.py            → dispatch_template(artifact_type, topics) → markdown str; routes by template_id via registry (EPIC-12 / Story 12.3)
+
+frontend/app/library/
+└── page.tsx                       → Top-level library management page: System / Yours sections, reset-system button (EPIC-12 / Story 12.5)
+
+frontend/src/components/
+├── LibraryEntryCard.tsx           → Inline edit/delete for a library entry; Delete hidden for system entries (EPIC-12 / Story 12.5)
+└── PublishToLibraryDialog.tsx     → Modal: name + description fields, posts to /api/artifact-types/{id}/publish-to-library (EPIC-12 / Story 12.5)
 ```
 
 ---
