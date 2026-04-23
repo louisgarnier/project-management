@@ -17,6 +17,18 @@ logger = get_logger("startup")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 [Railway] Call Tracker API starting")
+    # Seed artifact_library with system-canonical entries (idempotent)
+    try:
+        from backend.database.supabase_client import get_client
+        from backend.library.seed import upsert_system_library
+
+        result = upsert_system_library(get_client())
+        logger.info(
+            f"✅ [Startup] artifact_library seeded: "
+            f"inserted={result['inserted']} preserved={result['preserved']}"
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ [Startup] artifact_library seed failed: {e}")
     yield
 
 
