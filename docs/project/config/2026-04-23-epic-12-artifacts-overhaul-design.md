@@ -8,31 +8,47 @@
 
 ## 1. Problem
 
-The artifact generation system has five tangled pain points:
+The artifact generation system has six tangled pain points:
 
 - **Re-extraction waste.** Today every artifact is an LLM call. "Next Steps & Action Items" and "Questions for Stakeholders" re-extract content the user already reviewed on the Call Topics tiles — lossy, costly, potentially inconsistent ("Nick: run benchmark" vs *"Nick should run a benchmark"*).
 - **Pre-populated bloat.** New projects auto-seed 6 artifact types. Projects that don't need emails or agendas still get them, forcing manual deletion.
-- **`is_default` conflation.** The column conflates "system-owned, can't delete" with "auto-added to new projects". Splitting them unlocks a curated library.
+- **Two workflow prompts are invisible.** The Artifacts page filter at [`page.tsx:102-105`](../../../frontend/app/projects/[id]/artifacts/page.tsx#L102-L105) only surfaces `category='call_topics' | 'project_topics' | 'topics'`. `merge_verification` and `not_discussed_check` prompts exist in DB but have no UI — users can't see or edit them.
+- **No reusable library across projects.** To reuse a tuned prompt, users have to Import from another project by remembering which project has it. No central pool.
 - **Reset-to-default gap.** EPIC-11 added `GET /api/artifact-types/defaults/{category}` but only for workflow categories (`call_topics` etc.). Individual artifact types (Executive Summary, Next Steps…) have no per-name canonical, so the Reset button was UI-wrapped to only show on `call_topics` cards. The rest can't be reset.
 - **Cost opacity.** Users have no visibility into per-artifact cost; a 6-artifact generation with Sonnet is ~$0.60 with no forewarning.
 
 ## 2. Goals
 
-- **Three artifact kinds** — *Template* (deterministic, no LLM), *LLM* (prompt + structured topics), *Hybrid* (template scaffold + LLM prose wrapper) — each fits its job.
-- **Curated library** of canonical artifact types, separated from "auto-seeded on project creation".
-- **New projects seed a minimal 3** (Executive Summary, Next Steps, Questions for Stakeholders). Other library types are opt-in via "Add from library".
-- **Reset-to-default works for every artifact type**, including kind conversion (existing LLM Next Steps → Template on reset).
-- **Diff-vs-canonical indicator** shows when a user has edited a prompt from its library default.
-- **Cost preview** surfaces per-artifact expected cost at config time.
+Establish a **two-tier model** for every project:
+
+### Tier 1 — Workflow Prompts (system-essential, per-project)
+Four prompts the extraction/merge/verification pipeline needs to function. Always present on every project, always visible on the Artifacts page, editable per-project, have canonical defaults (EPIC-11 `backend/prompts/*.py` modules), Reset-to-default button works.
+
+The four: `call_topics`, `project_topics`, `merge_verification`, `not_discussed_check`.
+
+### Tier 2 — Artifact Prompts (library-backed, cross-project reusable)
+A shared **artifact library** backing every project's artifact list. Users can:
+- **Add from library** → copy a library entry into the current project
+- **Publish to library** → promote a project's artifact type to the shared pool so other projects can add it
+- **Edit library entries** via a management page
+- System-canonical library entries seed on first run — users can delete, re-add, edit
+
+Plus:
+- **Three artifact kinds** — *Template* (deterministic, no LLM), *LLM* (prompt + structured topics), *Hybrid* (template scaffold + LLM prose wrapper)
+- **Minimal seeding on new projects** — 3 library entries flagged `seeded_by_default=true` (Executive Summary, Next Steps, Questions for Stakeholders) auto-added on project create; others opt-in
+- **Reset-to-default for every artifact type** including kind conversion
+- **Diff-vs-canonical indicator** when a project's prompt diverges from its library source
+- **Cost preview** per LLM artifact
 
 ## 3. Non-goals
 
-- **No user-editable template logic.** Templates are Python renderers. Users who need custom behavior create a custom **LLM** artifact (existing mechanism). Deferred indefinitely; ship A.
-- **No retroactive migration.** Existing projects' 6 types stay as-is until the user clicks Reset per type. No bulk migrate-all button.
-- **No live pricing API.** Cost preview uses hardcoded per-1M-token rates from a frontend constant, refreshed manually when rates shift.
-- **No versioned prompt history.** Out of scope for EPIC-12. Users have Reset if they want the canonical back.
-- **No per-user or per-org library scoping.** Library is a single system-wide canonical registry in code.
-- **No streaming for template artifacts.** Templates render synchronously (~ms); no SSE needed. Existing `/stream` endpoint keeps its shape — it just skips LLM for template artifacts.
+- **No user-editable template logic.** Templates are Python renderers. Users who need custom behavior create a custom **LLM** artifact (existing mechanism).
+- **No retroactive migration of existing projects.** Existing projects' 6 types stay as-is until the user clicks Reset per type. No bulk migrate-all button.
+- **No live pricing API.** Cost preview uses hardcoded per-1M-token rates from a frontend constant.
+- **No versioned prompt history.** Out of scope. Reset button is the "undo".
+- **No per-user or per-org library scoping.** Single-user app today → single shared library. Multi-tenancy deferred.
+- **No streaming for template artifacts.** Templates render synchronously. SSE keeps its shape; it just skips LLM for template artifacts.
+- **No editing workflow prompts from the library.** Tier 1 is strictly per-project, canonical defaults live in code (`backend/prompts/*.py`). The library (Tier 2) contains only artifact prompts.
 
 ## 4. Design
 
@@ -46,42 +62,47 @@ kind ∈ {'llm', 'template', 'hybrid'}
 - **`template`** — zero LLM. A Python renderer function takes `list_call_topics(call_id)` (or `list_project_topics` for project scope) and returns markdown. Output is the renderer's return value.
 - **`hybrid`** — template skeleton + LLM intro/closing. Renderer produces the structural bulk (topic list, statuses); two short LLM calls produce intro and closing prose. Output is `intro + template_body + closing` concatenated.
 
-### 4.2 Database: new `kind` column
+### 4.2 Database: migration 021 — `kind` + `template_id` + library table + ref
 
-Migration 021:
 ```sql
+-- Add kind + template_id to artifact_types
 ALTER TABLE artifact_types
-  ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'llm';
+  ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'llm',
+  ADD COLUMN IF NOT EXISTS template_id TEXT DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS library_ref_id UUID DEFAULT NULL;
 
--- CHECK constraint for safety
 ALTER TABLE artifact_types
   ADD CONSTRAINT IF NOT EXISTS artifact_types_kind_check
   CHECK (kind IN ('llm', 'template', 'hybrid'));
+
+-- New: artifact library pool
+CREATE TABLE IF NOT EXISTS artifact_library (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'llm' CHECK (kind IN ('llm', 'template', 'hybrid')),
+  prompt TEXT DEFAULT NULL,                -- nullable for pure templates
+  template_id TEXT DEFAULT NULL,            -- registry key for template/hybrid
+  llm TEXT DEFAULT NULL,
+  model TEXT DEFAULT NULL,
+  context_scope TEXT NOT NULL DEFAULT 'call' CHECK (context_scope IN ('call', 'project')),
+  is_system BOOLEAN NOT NULL DEFAULT FALSE, -- true = system-canonical (can't hard-delete, Reset restores)
+  seeded_by_default BOOLEAN NOT NULL DEFAULT FALSE, -- auto-added on new project create
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (name)  -- library names are unique (case-sensitive)
+);
+
+-- Ref back: artifact_types.library_ref_id → artifact_library.id (on delete: NULL so the project type survives)
+ALTER TABLE artifact_types
+  ADD CONSTRAINT IF NOT EXISTS artifact_types_library_ref_fkey
+  FOREIGN KEY (library_ref_id) REFERENCES artifact_library(id) ON DELETE SET NULL;
 ```
 
-No migration on existing rows — they all stay `kind='llm'` until the user clicks Reset per-type (which may flip the value).
+Existing `artifact_types` rows unaffected — they get `kind='llm'`, `template_id=NULL`, `library_ref_id=NULL`. Workflow prompts (`category != 'artifacts'`) stay per-project and are never linked to the library.
 
-### 4.3 Library registry — `backend/library/artifacts.py`
+### 4.3 Library seeding — system-canonical entries
 
-Single source of truth for canonical artifact types. Python module exports:
-
-```python
-from typing import TypedDict
-
-class LibraryEntry(TypedDict):
-    name: str
-    kind: str            # 'llm' | 'template' | 'hybrid'
-    category: str        # always 'artifacts' for this epic
-    description: str     # shown in library browser
-    prompt: str | None   # LLM prompt text (for llm/hybrid kinds; None for pure template)
-    template_id: str | None  # key into backend/templates/registry.py (for template/hybrid)
-    llm: str | None      # default provider ('openrouter' or None)
-    model: str | None    # default model slug
-    context_scope: str   # 'call' | 'project'
-    seeded_by_default: bool  # True → auto-added to new projects
-```
-
-Initial library (8 entries):
+On application startup (or first migration run), a one-shot seed populates `artifact_library` with 8 system-canonical entries. Implementation: `backend/library/seed.py` exports `SYSTEM_LIBRARY` list; a startup hook runs an upsert-by-name so re-running is idempotent.
 
 | name | kind | seeded | template_id | description |
 |---|---|---|---|---|
@@ -93,6 +114,10 @@ Initial library (8 entries):
 | Next Call Agenda | `hybrid` | ✗ | `agenda_skeleton` | Open/in-progress topics as agenda; LLM writes intro + closing. |
 | Risk Register | `template` | ✗ | `risk_register` | Topics with `sentiment=concern` or `is_parked=true`, with excerpts. |
 | Decisions Digest | `template` | ✗ | `decisions_digest` | All `decisions[]` across topics, call-scoped or project-scoped. |
+
+All 8 start with `is_system=true`. Users can edit the `prompt` / `llm` / `model` / `description` on system entries (edits are their personal overrides). Users can **hide** but not hard-delete system entries — a "Reset library to system defaults" button re-upserts the `SYSTEM_LIBRARY` rows with original values.
+
+User-created library entries have `is_system=false` — fully deletable.
 
 ### 4.4 Template registry — `backend/templates/`
 
@@ -167,52 +192,65 @@ for artifact_row in artifacts_to_generate:
 
 **Template SSE behavior:** template artifacts complete near-instantly; still emit `status → generating → done` events on the SSE stream so the frontend's existing state machine is unchanged.
 
-### 4.6 Seeding strategy
+### 4.6 Seeding strategy on new project
 
-`seed_defaults(project_id)` in `routers/artifact_types.py` changes:
+`seed_defaults(project_id)` in `routers/artifact_types.py` changes to query the `artifact_library` table:
 
 ```python
 def seed_defaults(project_id: str) -> None:
-    from backend.library.artifacts import LIBRARY
-    for entry in LIBRARY:
-        if not entry["seeded_by_default"]:
-            continue
+    client = get_client()
+
+    # Tier 1 — workflow prompts: unchanged from EPIC-11, always all 4 seeded
+    for workflow_prompt in (DEFAULT_CALL_TOPICS_PROMPT, DEFAULT_PROJECT_TOPICS_PROMPT,
+                            DEFAULT_MERGE_VERIFICATION_PROMPT, DEFAULT_NOT_DISCUSSED_CHECK_PROMPT):
+        client.table("artifact_types").insert({"project_id": project_id, **workflow_prompt}).execute()
+
+    # Tier 2 — artifact types: query library for seeded_by_default=true entries, copy each
+    seeded = (
+        client.table("artifact_library")
+        .select("id, name, description, kind, prompt, template_id, llm, model, context_scope")
+        .eq("seeded_by_default", True)
+        .execute()
+        .data
+    )
+    for entry in seeded:
         client.table("artifact_types").insert({
             "project_id": project_id,
             "name": entry["name"],
-            "prompt": entry["prompt"],
+            "prompt": entry.get("prompt"),
             "is_default": True,
-            "category": entry["category"],
+            "category": "artifacts",
             "kind": entry["kind"],
             "template_id": entry.get("template_id"),
-            "llm": entry["llm"],
-            "model": entry["model"],
-            "context_scope": entry["context_scope"],
+            "library_ref_id": entry["id"],
+            "llm": entry.get("llm"),
+            "model": entry.get("model"),
+            "context_scope": entry.get("context_scope", "call"),
         }).execute()
-    # Also seed workflow prompts (call_topics, project_topics, merge_verification, not_discussed_check)
-    # — these keep their existing seeding pattern from EPIC-11.
 ```
 
-**New DB column:** `artifact_types.template_id TEXT NULL` — carries the registry key for template + hybrid kinds; NULL for llm kind. Migration 021 also adds this column.
+**Result:** a new project ends up with 4 Tier-1 rows + 3 Tier-2 rows (from library `seeded_by_default=true`).
 
-### 4.7 Reset-to-default — all artifact types
+### 4.7 Reset-to-default — works for both tiers
 
-Extend `GET /api/artifact-types/defaults/{category}` to also accept `?name=<artifact_name>` for per-name lookup within `category='artifacts'`:
+Two sources for the "canonical" version depending on tier:
 
-```
-GET /api/artifact-types/defaults/artifacts?name=Next%20Steps%20%26%20Action%20Items
-→ { name, kind, prompt, template_id, llm, model, context_scope }
-```
+- **Tier 1 (workflow prompts):** Reset reads from `backend/prompts/*.py` modules via the existing EPIC-11 endpoint `GET /api/artifact-types/defaults/{category}` (category = `call_topics` | `project_topics` | `merge_verification` | `not_discussed_check`). Unchanged.
 
-Lookup is a linear scan of the `LIBRARY` list matching by `name` + `category`.
+- **Tier 2 (artifact types):** Reset reads from `artifact_library` via the artifact type's `library_ref_id`. New endpoint:
+  ```
+  GET /api/artifact-types/{type_id}/library-source
+  → { id, name, description, kind, prompt, template_id, llm, model, context_scope }
+  ```
+  Returns the library entry pointed at by `library_ref_id`. 404 if `library_ref_id IS NULL` (user-created custom types with no library origin can't be reset).
 
-Reset button appears on **every** artifact type card (not just `call_topics` as today). Semantics: calls the endpoint, overwrites the draft state with the canonical record, including `kind`. Saving converts the stored row's `kind`.
+Reset button appears on **every** artifact type card where a canonical exists. Semantics: overwrites the draft state with the source record, including `kind` (so an LLM-mode Next Steps flips to template on reset if the library says so). Saving converts the stored row's `kind`.
 
-**What if a user's artifact type name doesn't match any library entry?** (e.g. custom types they created). Reset button is hidden for those — they have no canonical to reset to.
+**Custom types (no `library_ref_id`):** Reset button hidden. User can still edit or delete as today.
 
 ### 4.8 "Add from library" UX
 
-Extend the existing `AddArtifactTypeModal` with a third tab:
+Extend the existing `AddArtifactTypeModal` with a third tab (first/default tab — promoted over "Create new"):
 
 ```
 ┌─────────────────────────────────────────┐
@@ -220,24 +258,35 @@ Extend the existing `AddArtifactTypeModal` with a third tab:
 ├─────────────────────────────────────────┤
 │ Browse library tab (default):           │
 │                                         │
-│  [x] Email Summary 🤖    [Add]          │
-│      Professional email to the client…  │
+│  Email Summary 🤖         [Add]          │
+│     Professional email to the client    │
+│     🏛 system                            │
 │                                         │
-│  [x] Email Follow-up 🤖  [Add]          │
-│      Short email sent between calls…    │
+│  Email Follow-up 🤖       [Add]          │
+│     Short email sent between calls      │
+│     🏛 system                            │
 │                                         │
-│  [x] Next Call Agenda ⚡  [Add]         │
-│      Open topics as agenda; LLM intro…  │
+│  Next Call Agenda ⚡      [Add]          │
+│     Open topics as agenda; LLM intro    │
+│     🏛 system                            │
 │                                         │
-│  [x] Risk Register 🔧    [Add]          │
-│      Topics with concern or parked…     │
+│  Risk Register 🔧         [Add]          │
+│     Topics with concern or parked       │
+│     🏛 system                            │
 │                                         │
-│  [x] Decisions Digest 🔧 [Add]          │
-│      All decisions across topics…       │
+│  Decisions Digest 🔧      [Add]          │
+│     All decisions across topics         │
+│     🏛 system                            │
+│                                         │
+│  Board Meeting Summary 🤖 [Add]          │
+│     My custom type from Project aaaa    │
+│     👤 published from aaaa · 2d ago      │
 └─────────────────────────────────────────┘
 ```
 
-Filters out library entries already present in the project (match by name, case-insensitive). Click *Add* → POST to a new endpoint `POST /api/projects/{id}/artifact-types/from-library` with `{name: "Risk Register"}` → backend looks up the library entry + inserts the row → modal closes + page refreshes.
+Source: `GET /api/library` returns every `artifact_library` row with a small badge — `🏛 system` for `is_system=true` or `👤 published from <project>` for user-published entries. Filters out library entries already present in the current project (match by `library_ref_id` so multiple imports of the same library entry are blocked).
+
+Click *Add* → `POST /api/projects/{id}/artifact-types/from-library` with `{library_id: "<uuid>"}` → backend copies the library entry to a new `artifact_types` row with `library_ref_id` set → modal closes + page refreshes.
 
 ### 4.9 Artifact type card UX per kind
 
@@ -266,12 +315,16 @@ Template skeleton description (read-only) + two editable LLM prompt fields (`Int
 ### 4.10 Diff-vs-canonical indicator
 
 Small badge on the artifact card header:
-- `⟲ canonical` (grey) — prompt exactly matches the library version (char-for-char, after trim)
+- `⟲ canonical` (grey) — prompt exactly matches the library/workflow source (char-for-char, after trim)
 - `✎ edited` (amber) — user has customized
+- *(no badge)* — custom type with no library source
 
-Computed client-side by comparing `type.prompt` against the value fetched from `GET /api/artifact-types/defaults/artifacts?name=...`. For non-canonical types (no library match), badge hidden.
+Computed client-side by comparing the stored `prompt` against:
+- **Tier 1:** `backend/prompts/*.py` canonical (fetched via existing defaults endpoint)
+- **Tier 2 with `library_ref_id`:** `artifact_library.prompt` (fetched via `GET /api/artifact-types/{id}/library-source`)
+- **Tier 2 without `library_ref_id`:** skipped — custom type, no source to compare
 
-Save persists the edited prompt. Next visit recomputes the badge based on the stored text vs library text.
+Save persists the edited prompt. Next visit recomputes the badge.
 
 ### 4.11 Cost preview
 
@@ -299,71 +352,199 @@ cost = (12_000 / 1_000_000) * inputPerMillion + (4_000 / 1_000_000) * outputPerM
 
 Templates show "Cost: $0 (template)". Unknown slugs show "Cost: —".
 
+### 4.12 Artifacts page layout — two tiers visible
+
+`/projects/{id}/artifacts` gets two clearly-labeled sections:
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│  Artifact Types                        [Project default: …]   │
+├───────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ⚙️  TIER 1 — WORKFLOW PROMPTS  (system-essential, 4 prompts) │
+│  ────────────────────────────────────────────────────         │
+│  [Call Topics Extraction   ⟲ canonical]                       │
+│  [Project Topics Merge     ✎ edited]                          │
+│  [Merge Verification       ⟲ canonical]                       │
+│  [Not-Discussed Verification ⟲ canonical]                     │
+│                                                               │
+│  📝  TIER 2 — ARTIFACT PROMPTS   [+ Add artifact type ▾]      │
+│  ────────────────────────────────────────────────────         │
+│  [Executive Summary  🤖 OpenRouter · sonnet-4.6  ⟲ canonical] │
+│  [Next Steps          🔧 Template  ⟲ canonical]               │
+│  [Questions           🔧 Template  ✎ edited]                  │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**Tier 1 section:**
+- Always exactly 4 cards
+- No "+ Add" button (the 4 are fixed — you can't add or remove workflow prompts)
+- Cards use existing EPIC-11 rich card UX (provider/model picker, expandable textarea, runtime-context disclosure, Reset button)
+- Filter fix: `frontend/app/projects/[id]/artifacts/page.tsx` updates the workflow-prompts filter from `category ∈ { 'call_topics' | 'project_topics' | 'topics' }` to `category ∈ { 'call_topics' | 'project_topics' | 'merge_verification' | 'not_discussed_check' }`
+
+**Tier 2 section:**
+- 0+ cards (depends on what the user has in this project)
+- "+ Add artifact type ▾" button opens the `AddArtifactTypeModal` (Browse library / Create new / Import from another project tabs)
+- Each card has Publish-to-library button (§4.14) if not already library-backed, plus Reset / Edit / Delete
+- Delete on Tier 2 only removes the project's row — never touches the library entry
+
+### 4.13 Library management page — `/library`
+
+A new top-level page (not project-scoped) for managing the shared pool. Nav entry in the sidebar under "Projects": **"Artifact Library"**.
+
+```
+┌────────────────────────────────────────────────────────────┐
+│  Artifact Library                 [+ New library entry]    │
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│  🏛 SYSTEM (8)                     [Reset to defaults]     │
+│  [Executive Summary 🤖 🌱 seeded]                           │
+│  [Next Steps & Action Items 🔧 🌱 seeded]                   │
+│  [Questions for Stakeholders 🔧 🌱 seeded]                  │
+│  [Email Summary 🤖]                                         │
+│  [Email Follow-up 🤖]                                       │
+│  [Next Call Agenda ⚡]                                      │
+│  [Risk Register 🔧]                                         │
+│  [Decisions Digest 🔧]                                      │
+│                                                            │
+│  👤 YOURS (2)                                              │
+│  [Board Meeting Summary 🤖   published from aaaa · 2d ago] │
+│  [Compliance Memo 🤖         published from rammmm · 1d]   │
+│                                                            │
+└────────────────────────────────────────────────────────────┘
+```
+
+**Capabilities:**
+- Edit any entry inline (name, description, prompt, llm, model, context_scope, seeded_by_default toggle)
+- **Templates and hybrids** — name + description + `seeded_by_default` toggle editable; template_id / kind locked (can't change a template to a different renderer)
+- Click an entry → opens a detail editor (similar to artifact card but in a wider layout). **Reset button on system entries** restores the original system values (reads from `backend/library/seed.py::SYSTEM_LIBRARY`).
+- Hard-delete allowed on `is_system=false` entries. System entries can only be hidden (set `seeded_by_default=false`); "Reset to defaults" button re-seeds.
+- Impact on existing projects: editing a library entry does NOT cascade to projects that already imported it (copy semantics). The diff-vs-canonical badge is the only signal.
+
+Routes: `GET /api/library`, `POST /api/library`, `PATCH /api/library/{id}`, `DELETE /api/library/{id}` (blocked on `is_system=true`), `POST /api/library/reset-system`.
+
+### 4.14 Publish to library — button on artifact card
+
+A small **"Publish to library"** button on Tier 2 artifact cards. Clicking it:
+
+1. Opens a confirmation dialog: *"Publish 'Board Meeting Summary' to the library? Other projects will be able to add a copy of it."*
+2. Default `name` = the artifact type's name; user can edit in the dialog (to avoid clashing with system entries)
+3. Default `description` = empty; user fills in a one-line description
+4. POSTs `{name, description, kind, prompt, template_id, llm, model, context_scope}` to `POST /api/library` with `is_system=false`
+5. On success, backend sets `artifact_types.library_ref_id = <new library id>` on the source row so Reset works going forward
+
+**Already library-backed (`library_ref_id NOT NULL`):** button hidden; Publish only makes sense for originals.
+
+**Template / hybrid artifacts:** can't be created in-project (they need Python code) so they can never be Published. The button is only visible on LLM-kind cards.
+
 ## 5. Implementation plan preview
 
-**Backend — schema:**
-1. Migration 021 — `artifact_types.kind TEXT DEFAULT 'llm'`, `artifact_types.template_id TEXT NULL`, CHECK constraint for kind
-2. Pydantic models — `ArtifactTypeCreate`, `ArtifactTypeUpdate`, `ArtifactTypeOut` grow `kind: Literal[...]` and `template_id: str | None`
+**Backend — schema (manual in Supabase):**
+1. Migration 021 — per §4.2: adds `artifact_types.kind`, `artifact_types.template_id`, `artifact_types.library_ref_id`, creates `artifact_library` table with FK, CHECK constraints
 
-**Backend — library + templates:**
-3. `backend/library/__init__.py` + `backend/library/artifacts.py` — the 8-entry `LIBRARY` list
-4. `backend/templates/__init__.py` + 5 renderer modules (`next_steps.py`, `questions_list.py`, `agenda_skeleton.py`, `risk_register.py`, `decisions_digest.py`)
-5. `backend/templates/registry.py` — maps `template_id` → render function
-6. Unit tests per template: given canned topic data, assert markdown output
+**Backend — template renderers:**
+2. `backend/templates/__init__.py` + 5 renderer modules: `next_steps.py`, `questions_list.py`, `agenda_skeleton.py`, `risk_register.py`, `decisions_digest.py`
+3. `backend/templates/registry.py` — maps `template_id` → render function
+4. Unit tests per template: canned topic list → asserted markdown output
+
+**Backend — library seeding:**
+5. `backend/library/__init__.py` + `backend/library/seed.py` — `SYSTEM_LIBRARY: list[dict]` with the 8 canonical entries
+6. Startup hook (in `backend/main.py` lifespan) — upsert `SYSTEM_LIBRARY` rows by name on boot; idempotent
+7. Tests — startup seeds DB; re-running is a no-op; user edits to prompts are NOT overwritten except by explicit Reset-to-system call
+
+**Backend — library CRUD API:**
+8. `routers/library.py` — new router, mounted at `/api/library`:
+   - `GET /` — list all library entries
+   - `POST /` — create (user-published)
+   - `PATCH /{id}` — edit (any non-system field; `is_system` flag-gated on specific fields)
+   - `DELETE /{id}` — delete (403 if `is_system=true`)
+   - `POST /reset-system` — re-upsert SYSTEM_LIBRARY with original values
+9. Tests — CRUD happy paths, delete-system rejected, reset-system restores
+
+**Backend — artifact_types API updates:**
+10. `ArtifactTypeCreate`, `ArtifactTypeUpdate`, `ArtifactTypeOut` Pydantic models grow `kind`, `template_id`, `library_ref_id`
+11. `POST /api/projects/{id}/artifact-types/from-library` — body `{library_id}` — copies library entry to artifact_types with `library_ref_id` set
+12. `GET /api/artifact-types/{id}/library-source` — fetch the library entry this artifact type was copied from, or 404
+13. `POST /api/artifact-types/{id}/publish-to-library` — body `{name, description}` — creates library entry from this artifact type, sets `library_ref_id` on the source row, returns library entry
+14. `POST /api/artifact-types/{id}/preview` — body `{call_id}` — runs the template renderer (for template / hybrid-skeleton) and returns markdown
+15. `seed_defaults(project_id)` rewritten per §4.6 — inserts 4 Tier-1 workflow prompts + library entries where `seeded_by_default=true`
 
 **Backend — generation flow:**
-7. `routers/artifacts.py` SSE handler — fork on `kind`, call `render_template` or `generate_hybrid` or existing LLM path
-8. New helper `backend/services/template_service.py` — `render_template(artifact_row, call_id, scope)` looks up renderer, calls with `list_call_topics` or `list_project_topics`
-9. Hybrid generation — parse `prompt` as JSON, extract `intro` + `closing`, run LLM for each, concat with template body
-10. Tests — template artifacts complete without LLM mock; hybrid artifacts invoke LLM twice then concatenate
-
-**Backend — library/reset APIs:**
-11. `GET /api/artifact-types/defaults/{category}?name=<name>` — per-name lookup within category
-12. `GET /api/artifact-types/library` — returns the `LIBRARY` list, JSON-serialised
-13. `POST /api/projects/{id}/artifact-types/from-library` — body `{name}`, looks up library entry, inserts row
-14. `POST /api/artifact-types/{id}/preview` — body `{call_id}`, returns rendered markdown (template or hybrid-template-only) for the latest completed call. Skips the LLM for hybrid previews (preview is just the skeleton).
-15. `seed_defaults` rewrites to iterate LIBRARY with `seeded_by_default=True` filter
+16. `routers/artifacts.py` SSE handler — fork on `kind`:
+    - `kind='template'` → call `template_service.render(artifact_row, call_id, scope)`, skip LLM, write content + status=done
+    - `kind='hybrid'` → parse `prompt` as JSON `{intro, closing}`, run LLM for each, concat with template render, write content + status=done
+    - `kind='llm'` → existing path unchanged
+17. `backend/services/template_service.py` — `render(artifact_row, call_id, scope)` dispatches to the renderer via `template_id`
+18. Tests — template artifacts complete without LLM mock; hybrid invokes LLM twice then concatenates
 
 **Frontend — types + constants:**
-14. `types/index.ts` — `ArtifactKind = "llm" | "template" | "hybrid"`; add `kind`, `template_id` to `ArtifactType`
-15. `constants/models.ts` — add `MODEL_COSTS` map
+19. `types/index.ts` — add `ArtifactKind = "llm" | "template" | "hybrid"`, extend `ArtifactType` with `kind`, `template_id`, `library_ref_id`; add `LibraryEntry` type
+20. `constants/models.ts` — add `MODEL_COSTS` map
 
-**Frontend — library modal:**
-16. `AddArtifactTypeModal.tsx` — third tab "Browse library", fetches library list via new `GET /api/artifact-types/library`, filters out present types, POST to `from-library` endpoint on click
+**Frontend — Artifacts page two-tier layout:**
+21. `app/projects/[id]/artifacts/page.tsx` — split into Tier 1 + Tier 2 sections with labeled headers:
+    - Tier 1 filter fix: `category ∈ {'call_topics', 'project_topics', 'merge_verification', 'not_discussed_check'}` — **includes the 2 currently-hidden ones**
+    - Tier 2 filter: `category === 'artifacts'`
+22. `ArtifactTypeCard.tsx` — per-kind conditional rendering:
+    - Template kind: description + Preview button + Reset + Delete + Publish (hidden for templates)
+    - LLM kind: existing markup + diff-vs-canonical badge + cost preview + Publish-to-library button
+    - Hybrid kind: template-skeleton description (read-only) + two editable prompt textareas (`Intro prompt` / `Closing prompt`) + shared provider/model picker
 
-**Frontend — card per kind:**
-17. `ArtifactTypeCard.tsx` — conditional rendering branches on `type.kind`:
-    - Template kind: description + Preview button + Reset + Delete
-    - LLM kind: existing markup + diff-vs-canonical badge + cost preview
-    - Hybrid kind: template description + two prompt textareas (intro/closing) + shared provider/model picker
-18. `api/client.ts` — `getDefaults(category, name?)`, `fromLibrary(projectId, name)`, `library()` list endpoint, `previewTemplate(typeId, callId)` endpoint (optional — can render inline without backend roundtrip if data is in browser)
+**Frontend — Add modal + library page:**
+23. `AddArtifactTypeModal.tsx` — third tab "Browse library" (new default), fetches `GET /api/library`, filters out types with matching `library_ref_id`, POSTs to `from-library`
+24. `app/library/page.tsx` — new top-level page. Lists library entries grouped by System / Yours. Entry cards similar to artifact cards but wider.
+25. `components/LibraryEntryCard.tsx` — edit inline, delete (if non-system), system entries show "Reset to system defaults" when edited
+26. `components/PublishToLibraryDialog.tsx` — modal triggered from artifact card; fields `name` + `description`; POSTs to `publish-to-library`
+27. `components/Sidebar.tsx` — add "Artifact Library" nav entry
 
-**Frontend — preview:**
-19. `TemplatePreviewModal.tsx` — new component; fetches latest completed call's `list_call_topics` via existing API, runs the renderer *server-side* via new endpoint `POST /api/artifact-types/{id}/preview?call_id=<id>`, shows markdown output
+**Frontend — API client:**
+28. `api/client.ts` — `libraryAPI = { list, create, update, delete, resetSystem }`, `artifactTypesAPI.fromLibrary`, `getLibrarySource`, `publishToLibrary`, `preview`
 
 **Migration / rollout:**
-- Existing artifact_types rows get `kind='llm'`, `template_id=NULL` by default. All existing projects keep working as LLM artifacts.
-- When user clicks Reset on a type whose name matches a library entry with `kind='template'`, the row's `kind` flips. Silent but effective.
-- New projects seed only 3 types (Exec 🤖, Next Steps 🔧, Questions 🔧).
+- Existing `artifact_types` rows stay with defaults (`kind='llm'`, `template_id=NULL`, `library_ref_id=NULL`) — existing projects keep working
+- First boot after migration 021: startup hook seeds `artifact_library` with 8 system entries (idempotent)
+- User clicks Reset on an existing project's Next Steps → endpoint looks up matching library entry by name (if `library_ref_id` is NULL, we match by name to the system library as fallback), flips kind from `llm` to `template`, sets `library_ref_id`
+- New projects: 4 Tier-1 + 3 Tier-2 (Exec/NextSteps/Questions) auto-seeded
 
 ## 6. Tests
 
-**Backend:**
+**Backend — templates:**
 - `test_templates_next_steps` — canned topic list with owner-prefixed actions → assert markdown structure, bolded owners
-- `test_templates_questions_list` — topics with open_questions → assert blue-prefix rendering
+- `test_templates_questions_list` — topics with open_questions → assert rendering
 - `test_templates_agenda_skeleton` — only open/in_progress, sorted by concern first → verify ordering
 - `test_templates_risk_register` — only `sentiment=concern` + `is_parked=true` rendered; neutral topics excluded
 - `test_templates_decisions_digest` — all decisions across topics flattened; call-scope vs project-scope both tested
+
+**Backend — library:**
+- `test_library_startup_seeds_8_system_entries` — fresh DB + startup hook → 8 rows with `is_system=true`
+- `test_library_startup_is_idempotent` — running twice doesn't create duplicates; user edits preserved
+- `test_library_reset_system_restores_original` — after user edit, POST reset-system restores the seed row's values
+- `test_library_delete_system_returns_403` — system entries cannot be hard-deleted
+- `test_library_list_groups_system_and_user` — response includes both `is_system=true` and user-created entries
+- `test_library_crud_happy_paths` — POST / PATCH / DELETE for user-created entries
+
+**Backend — artifact_types flow:**
+- `test_from_library_creates_row_with_kind_and_ref` — POST with library_id inserts row with `kind` + `template_id` + `library_ref_id` copied
+- `test_publish_to_library_creates_entry_and_links` — publishing a custom LLM type creates library row, sets source row's `library_ref_id`
+- `test_library_source_endpoint_returns_linked_entry` — GET library-source returns the library row
+- `test_library_source_404_when_no_ref` — GET library-source on a type with NULL `library_ref_id` → 404
+- `test_seed_defaults_inserts_4_workflow_plus_3_seeded_library` — new project gets 4 Tier-1 + 3 Tier-2 rows
 - `test_generation_forks_on_kind` — kind=template artifact completes with renderer output, no LLM mock called
 - `test_generation_hybrid_calls_llm_twice_then_concats` — hybrid artifact fires 2 LLM calls + 1 render, content is concatenation
-- `test_library_endpoint_returns_8_entries` — GET library returns canonical list
-- `test_from_library_creates_row_with_kind` — POST with name="Risk Register" inserts a row with `kind='template'`, `template_id='risk_register'`
-- `test_reset_to_default_for_artifact_name` — GET defaults with name param returns library entry including kind
-- `test_seed_defaults_inserts_only_three_artifacts` — new project gets 3 types (not 6)
 
 **Frontend:**
 - `tsc --noEmit` + `npm run lint` clean after all component changes
-- Manual smoke: library modal shows 5 available entries, click Add → row appears on page; reset on existing LLM Next Steps → kind flips to template; template card shows Preview button; preview opens modal with markdown
+- Manual smoke checklist (expanded EPIC-11 manual test doc):
+  - Artifacts page shows Tier 1 (4 cards) + Tier 2 sections
+  - `merge_verification` and `not_discussed_check` cards now visible in Tier 1
+  - "+ Add artifact type" modal has 3 tabs, Browse library default
+  - Click library entry → appears in Tier 2
+  - Click Publish on a custom LLM artifact → dialog → appears in `/library` under "Yours"
+  - Click Reset on a Tier 2 card with library_ref_id → prompt reverts
+  - Edit a library entry in `/library` → existing project artifacts get `✎ edited` badge if they diverged
+  - Delete a user library entry works; delete a system entry is blocked (button hidden)
+  - Reset library to system defaults restores any system entries the user edited
 
 ## 7. Open questions
 
@@ -371,6 +552,9 @@ Templates show "Cost: $0 (template)". Unknown slugs show "Cost: —".
 2. **Preview scope.** Preview fetches the latest completed call's topics. Users may want to preview against a specific call. Deferring specific-call preview to follow-up.
 3. **Template preview endpoint vs client-side render.** Client-side is cheaper (no API call) but requires porting the Python render logic to TypeScript (duplication). Server-side endpoint is simpler but adds a round-trip. Spec picks server-side for single-source-of-truth.
 4. **Import-from-another-project behavior for templates.** If a user imports a template-kind artifact type from another project, do we copy `kind + template_id` (matches source) or force `kind='llm'` for cross-project imports? Recommend: copy as-is.
+5. **Library entries with kind=template — can a user publish a template?** Today templates require Python code → user can't create one in a project → nothing to publish. Recommend: Publish button hidden when `kind != 'llm'`.
+6. **Library `/library` page access.** Today the sidebar has project list; top-level page pattern exists (there's a project list page). Recommend: add "Artifact Library" link near the top of the sidebar as a peer of "Projects".
+7. **Reset on existing projects with NULL `library_ref_id`.** For the 2 existing projects whose artifact types predate EPIC-12, clicking Reset needs a fallback: match by name to system library entries. On success, also set `library_ref_id` so subsequent Resets are fast. Recommend: include this name-fallback in the `library-source` endpoint.
 
 ## 8. References
 
