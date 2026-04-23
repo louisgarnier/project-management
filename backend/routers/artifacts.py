@@ -5,7 +5,6 @@ from typing import Literal
 from backend.database.supabase_client import get_client
 from backend.services.llm_service import generate_artifact
 from backend.services.topics_service import (
-    get_project_topics_context,  # kept for backwards compatibility
     get_project_topics_lineage_context,
 )
 from backend.utils.logger import db_logger, get_logger
@@ -102,7 +101,9 @@ def list_artifacts(call_id: str):
 class ArtifactUpdate(BaseModel):
     content: str | None = None
     status: Literal["pending", "generating", "done", "error"] | None = None
-    mode: Literal["groq", "deepseek", "claude", "openai", "openrouter", "manual"] | None = None
+    mode: (
+        Literal["groq", "deepseek", "claude", "openai", "openrouter", "manual"] | None
+    ) = None
 
 
 @router.patch("/artifacts/{artifact_id}")
@@ -237,9 +238,11 @@ async def stream_artifacts(call_id: str):
     )
     pending = artifacts_result.data
 
-    # Build context_scope and model maps: artifact_type_id → value
+    # Build context_scope, model, kind and template_id maps: artifact_type_id → value
     context_scope_map: dict[str, str] = {}
     type_model_map: dict[str, str | None] = {}
+    type_kind_map: dict[str, str] = {}
+    type_template_map: dict[str, str | None] = {}
     if pending:
         type_ids = list(
             {a["artifact_type_id"] for a in pending if a.get("artifact_type_id")}
@@ -247,7 +250,7 @@ async def stream_artifacts(call_id: str):
         if type_ids:
             scope_rows = (
                 supabase.table("artifact_types")
-                .select("id,context_scope,model")
+                .select("id,context_scope,model,kind,template_id")
                 .in_("id", type_ids)
                 .execute()
                 .data
@@ -256,6 +259,8 @@ async def stream_artifacts(call_id: str):
                 r["id"]: r.get("context_scope", "call") for r in scope_rows
             }
             type_model_map = {r["id"]: r.get("model") for r in scope_rows}
+            type_kind_map = {r["id"]: r.get("kind", "llm") for r in scope_rows}
+            type_template_map = {r["id"]: r.get("template_id") for r in scope_rows}
 
     async def event_stream():
         if not pending:
@@ -265,11 +270,18 @@ async def stream_artifacts(call_id: str):
         queue: asyncio.Queue = asyncio.Queue()
 
         async def gen_one(artifact: dict) -> None:
+            import json as _json
+
+            from backend.services.template_service import render_template
+
             artifact_id = artifact["id"]
             prompt_used = artifact["prompt_used"]
             type_id = artifact.get("artifact_type_id", "")
             scope = context_scope_map.get(type_id, "call")
             effective_model = type_model_map.get(type_id) or project_default_model
+            kind = type_kind_map.get(type_id, "llm")
+            template_id = type_template_map.get(type_id)
+
             await queue.put(
                 {"type": "status", "artifact_id": artifact_id, "status": "generating"}
             )
@@ -277,28 +289,75 @@ async def stream_artifacts(call_id: str):
                 "id", artifact_id
             ).execute()
             try:
-                full_context = transcript
-                if scope == "project" and project_topics_context:
-                    full_context = f"{transcript}\n\n{project_topics_context}"
-                effective_prompt = (
-                    f"Project context:\n{project_context}\n\n{prompt_used}"
-                    if project_context
-                    else prompt_used
-                )
-                content = await generate_artifact(
-                    effective_prompt,
-                    full_context,
-                    artifact["mode"],
-                    topics=call_topics,
-                    model=effective_model,
-                )
+                if kind == "template":
+                    at_row = {
+                        "id": type_id,
+                        "kind": kind,
+                        "template_id": template_id,
+                        "context_scope": scope,
+                    }
+                    content = await render_template(at_row, call_id)
+                elif kind == "hybrid":
+                    at_row = {
+                        "id": type_id,
+                        "kind": kind,
+                        "template_id": template_id,
+                        "context_scope": scope,
+                    }
+                    body = await render_template(at_row, call_id)
+                    try:
+                        parts = _json.loads(prompt_used) if prompt_used else {}
+                    except (ValueError, TypeError):
+                        parts = {}
+                    intro_prompt = (
+                        parts.get("intro") or "Write a one-sentence intro for this."
+                    )
+                    closing_prompt = (
+                        parts.get("closing") or "Write a one-sentence closing."
+                    )
+                    full_context = f"{transcript}\n\n{body}"
+                    intro = await generate_artifact(
+                        intro_prompt,
+                        full_context,
+                        artifact["mode"],
+                        topics=call_topics,
+                        model=effective_model,
+                    )
+                    closing = await generate_artifact(
+                        closing_prompt,
+                        full_context,
+                        artifact["mode"],
+                        topics=call_topics,
+                        model=effective_model,
+                    )
+                    content = (
+                        f"{intro.strip()}\n\n{body.rstrip()}\n\n{closing.strip()}\n"
+                    )
+                else:
+                    # kind == 'llm' — existing path unchanged
+                    full_context = transcript
+                    if scope == "project" and project_topics_context:
+                        full_context = f"{transcript}\n\n{project_topics_context}"
+                    effective_prompt = (
+                        f"Project context:\n{project_context}\n\n{prompt_used}"
+                        if project_context
+                        else prompt_used
+                    )
+                    content = await generate_artifact(
+                        effective_prompt,
+                        full_context,
+                        artifact["mode"],
+                        topics=call_topics,
+                        model=effective_model,
+                    )
+
                 supabase.table("artifacts").update(
                     {"status": "done", "content": content}
                 ).eq("id", artifact_id).execute()
                 await queue.put(
                     {"type": "done", "artifact_id": artifact_id, "content": content}
                 )
-                db_logger.info(f"✅ [DB] Artifact done: {artifact_id}")
+                db_logger.info(f"✅ [DB] Artifact done ({kind}): {artifact_id}")
             except Exception as exc:
                 msg = str(exc)
                 supabase.table("artifacts").update(
