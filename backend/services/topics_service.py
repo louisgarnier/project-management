@@ -189,7 +189,11 @@ _TOPIC_SCHEMA = (
 
 async def _call_llm(prompt: str, llm: str, *, model: str | None = None) -> list[dict] | dict:
     logger.info(f"🤖 [{llm}] Extracting topics")
-    raw = await call_llm_raw(_EXTRACT_SYSTEM, prompt, llm, model=model)
+    # Extraction emits rich per-topic payloads (3–6 sentence summaries + decisions +
+    # follow_up_items + open_questions + rationale). 4096 is too tight — a 4-topic
+    # call regularly hits the ceiling mid-JSON and breaks parsing. 16384 fits all
+    # credible OpenRouter models (Claude Sonnet 4.6, GPT-4o, Gemini 2.5 Pro).
+    raw = await call_llm_raw(_EXTRACT_SYSTEM, prompt, llm, max_tokens=16384, model=model)
     raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
