@@ -39,9 +39,11 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
         artifactsAPI.list(callId),
         projectsAPI.get(projectId),
       ]);
-      const artifactTypes = types.filter(
-        (t) => t.category !== "topics" && t.category !== "call_topics" && t.category !== "project_topics"
-      );
+      // Only category='artifacts' are user-generatable artifacts.
+      // The 4 Tier-1 workflow prompts (call_topics / project_topics /
+      // merge_verification / not_discussed_check) run inside the pipeline,
+      // not on user click — must not appear in the selector.
+      const artifactTypes = types.filter((t) => t.category === "artifacts" || !t.category);
       setArtifactTypes(artifactTypes);
       setProjectDefaultLlm(project.default_llm);
       setProjectDefaultModel(project.default_model ?? null);
