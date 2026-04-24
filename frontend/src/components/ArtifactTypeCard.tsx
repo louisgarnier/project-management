@@ -192,6 +192,17 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefau
             ) : (
               <>
                 <button
+                  onClick={() => setExpanded((v) => !v)}
+                  title={expanded ? "Collapse" : "Expand"}
+                  style={{
+                    fontSize: 13, color: "#5e6c84", background: "white",
+                    border: "1px solid rgba(0,0,0,.08)", borderRadius: 4,
+                    padding: "3px 10px", cursor: "pointer", lineHeight: 1,
+                  }}
+                >
+                  {expanded ? "▾" : "▸"}
+                </button>
+                <button
                   onClick={() => {
                     setEditing(true);
                     setExpanded(true);
@@ -224,7 +235,8 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefau
         </div>
       </div>
 
-      {/* ── Body ── */}
+      {/* ── Body (collapsed by default; expands via chevron or enters edit mode) ── */}
+      {(expanded || editing) && (
       <div style={{ background: "white", padding: "14px 16px" }}>
 
         {/* Description (from librarySource when available) */}
@@ -311,17 +323,9 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefau
           </div>
         )}
 
-        {/* Expand/collapse toggle — below metadata grid */}
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          style={{ fontSize: 11, color: "#5e6c84", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 4, marginBottom: expanded ? 12 : 0 }}
-        >
-          <span>{expanded ? "▾" : "▸"}</span>
-          <span>{expanded ? "Hide details" : "View details"}</span>
-        </button>
-
-        {/* Expanded kind-conditional content */}
-        {expanded && (
+        {/* Kind-conditional content — always rendered inside the body
+             (the whole body is gated by expanded/editing above) */}
+        {true && (
           <>
             {effectiveKind === "template" ? (
               /* ── Template kind ── */
@@ -527,6 +531,7 @@ Transcript:
 
         {saveError && <p style={{ marginTop: 8, fontSize: 11, color: "#ae2a19" }}>{saveError}</p>}
       </div>
+      )}
 
       <PublishToLibraryDialog
         type={type}

@@ -20,6 +20,7 @@ export default function LibraryEntryCard({
   onDeleted: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState<LibraryEntry>(entry);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -164,7 +165,19 @@ export default function LibraryEntryCard({
               <>
                 <button
                   type="button"
-                  onClick={() => setEditing(true)}
+                  onClick={() => setExpanded((v) => !v)}
+                  title={expanded ? "Collapse" : "Expand"}
+                  style={{
+                    fontSize: 13, color: "#5e6c84", background: "white",
+                    border: "1px solid rgba(0,0,0,.08)", borderRadius: 4,
+                    padding: "3px 10px", cursor: "pointer", lineHeight: 1,
+                  }}
+                >
+                  {expanded ? "▾" : "▸"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setEditing(true); setExpanded(true); }}
                   style={{
                     fontSize: 11, fontWeight: 600,
                     background: "white", border: `1px solid ${theme.accent}`,
@@ -190,7 +203,8 @@ export default function LibraryEntryCard({
         </div>
       </div>
 
-      {/* ── Body ── */}
+      {/* ── Body (collapsed by default; expands via chevron or enters edit mode) ── */}
+      {(expanded || editing) && (
       <div style={{ background: "white", padding: "14px 16px" }}>
 
         {/* Description (view mode) */}
@@ -288,6 +302,7 @@ export default function LibraryEntryCard({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
