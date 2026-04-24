@@ -58,6 +58,9 @@ export interface LibraryEntry {
   llm: LLMProvider | null;
   model: string | null;
   context_scope: ContextScope;
+  /** 'artifacts' for Tier-2 entries; 'call_topics' | 'project_topics' |
+   * 'merge_verification' | 'not_discussed_check' for Tier-1 workflow prompts. */
+  category: ArtifactCategory;
   is_system: boolean;
   seeded_by_default: boolean;
   created_at: string;

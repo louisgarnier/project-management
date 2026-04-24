@@ -292,9 +292,46 @@ _DEFAULTS_BY_CATEGORY = {
 @router.get("/artifact-types/defaults/{category}")
 def get_default_for_category(category: str):
     """Return the canonical default artifact-type payload for a workflow category.
-    Used by the 'Reset to default' button in the UI."""
+
+    Source-of-truth order:
+      1. artifact_library row where category matches + is_system=True — this is
+         the user-editable canonical. Takes precedence so that edits on /library
+         propagate to Reset-to-default everywhere.
+      2. Python constant in _DEFAULTS_BY_CATEGORY — fallback if library row
+         missing (e.g. migration 023 not yet run, or startup seed failed).
+    """
     if category not in _DEFAULTS_BY_CATEGORY:
         raise HTTPException(status_code=404, detail=f"Unknown category: {category}")
+
+    # 1. Try the library first
+    try:
+        client = get_client()
+        lib_rows = (
+            client.table("artifact_library")
+            .select("name, prompt, llm, model, context_scope, kind, template_id")
+            .eq("category", category)
+            .eq("is_system", True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if lib_rows:
+            lib = lib_rows[0]
+            return {
+                "name": lib["name"],
+                "prompt": lib.get("prompt"),
+                "is_default": True,
+                "category": category,
+                "llm": lib.get("llm"),
+                "model": lib.get("model"),
+                "context_scope": lib.get("context_scope", "call"),
+                "kind": lib.get("kind", "llm"),
+                "template_id": lib.get("template_id"),
+            }
+    except Exception as e:
+        db_logger.warning(f"⚠️ [Defaults] Library lookup failed for category={category}: {e}")
+
+    # 2. Fallback to hardcoded Python constants
     payload = _DEFAULTS_BY_CATEGORY[category].copy()
     payload.setdefault("llm", None)
     payload.setdefault("model", None)
