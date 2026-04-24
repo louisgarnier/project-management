@@ -1,4 +1,8 @@
-"""Render open_questions grouped by topic."""
+"""Render open_questions grouped by topic.
+
+Every topic gets a section. Topics without open questions render a
+placeholder so the reader sees full coverage of the call's topics.
+"""
 
 
 def render(topics: list[dict], *, scope: str = "call") -> str:
@@ -6,17 +10,14 @@ def render(topics: list[dict], *, scope: str = "call") -> str:
         return "_No open questions captured._"
 
     lines: list[str] = ["# Questions for Stakeholders", ""]
-    emitted = False
     for t in topics:
+        lines.append(f"## {t['name']}")
         questions = t.get("open_questions") or []
         if not questions:
-            continue
-        emitted = True
-        lines.append(f"## {t['name']}")
-        for q in questions:
-            lines.append(f"- {q}")
+            lines.append("_No open questions._")
+        else:
+            for q in questions:
+                lines.append(f"- {q}")
         lines.append("")
 
-    if not emitted:
-        return "_No open questions captured._"
     return "\n".join(lines).rstrip() + "\n"

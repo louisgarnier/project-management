@@ -56,13 +56,14 @@ def test_questions_list_groups_by_topic():
             "Model selection",
             open_questions=["Does MC Mac handle caching?", "Can FV Mac split?"],
         ),
-        _topic("Budget"),  # no questions — skipped
+        _topic("Budget"),  # no questions — should show placeholder, not skip
     ]
     out = render_questions(topics)
     assert "## Model selection" in out
     assert "- Does MC Mac handle caching?" in out
     assert "- Can FV Mac split?" in out
-    assert "Budget" not in out
+    assert "## Budget" in out  # still rendered
+    assert "_No open questions._" in out  # placeholder when none
 
 
 def test_agenda_skeleton_only_open_or_in_progress():
@@ -104,7 +105,7 @@ def test_decisions_digest_flattens_all_decisions():
     topics = [
         _topic("T1", decisions=["Decision 1", "Decision 2"]),
         _topic("T2", decisions=["Decision 3"]),
-        _topic("T3"),  # no decisions — skipped
+        _topic("T3"),  # no decisions — should show placeholder, not skip
     ]
     out = render_decisions(topics)
     assert "## T1" in out
@@ -112,7 +113,8 @@ def test_decisions_digest_flattens_all_decisions():
     assert "- Decision 2" in out
     assert "## T2" in out
     assert "- Decision 3" in out
-    assert "T3" not in out
+    assert "## T3" in out  # still rendered
+    assert "_No decisions recorded._" in out  # placeholder when none
 
 
 def test_registry_maps_all_five_templates():
