@@ -429,9 +429,10 @@ class EvidenceMatchGroup(PydanticBaseModel):
 
 
 class EvidenceVerification(PydanticBaseModel):
-    discussed: bool
+    discussed: bool | None
     transcript_excerpt: str | None
     reasoning: str
+    error: str | None = None
 
 
 class EvidenceCall(PydanticBaseModel):
@@ -562,10 +563,12 @@ async def get_topic_evidence(topic_id: str):
         entry = verification_cache.get(source_tid)
         if not isinstance(entry, dict):
             return None
+        discussed_raw = entry.get("discussed")
         return EvidenceVerification(
-            discussed=bool(entry.get("discussed", False)),
+            discussed=discussed_raw if isinstance(discussed_raw, bool) else None,
             transcript_excerpt=entry.get("transcript_excerpt"),
             reasoning=entry.get("reasoning", "") or "",
+            error=entry.get("error"),
         )
 
     calls: list[EvidenceCall] = []

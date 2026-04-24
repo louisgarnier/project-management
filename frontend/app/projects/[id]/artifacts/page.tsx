@@ -2,19 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { artifactTypesAPI, projectsAPI } from "@/api/client";
+import { artifactTypesAPI, projectsAPI, settingsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { ArtifactType, LLMProvider, Project } from "@/types";
+import type { ArtifactType, LLMProvider, Project, SystemSettings } from "@/types";
 import ArtifactTypeCard from "@/components/ArtifactTypeCard";
 import AddArtifactTypeModal from "@/components/AddArtifactTypeModal";
 
-const LLM_OPTIONS: { value: LLMProvider; label: string }[] = [
-  { value: "groq",       label: "Groq – Llama 3.3 (free)" },
-  { value: "deepseek",   label: "DeepSeek Chat (~free)" },
-  { value: "claude",     label: "Claude Haiku" },
-  { value: "openai",     label: "GPT-4o mini" },
-  { value: "openrouter", label: "OpenRouter ⭐" },
-];
 
 export default function ArtifactsPage() {
   const params = useParams<{ id: string }>();
@@ -30,6 +23,7 @@ export default function ArtifactsPage() {
   const [defaultModel, setDefaultModel] = useState<string>("");
   const [projectContext, setProjectContext] = useState<string>("");
   const [contextSaving, setContextSaving] = useState(false);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,6 +48,10 @@ export default function ArtifactsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    settingsAPI.get().then(setSystemSettings).catch(() => {});
+  }, []);
+
   async function handleDelete(typeId: string) {
     try {
       await artifactTypesAPI.delete(projectId, typeId);
@@ -64,12 +62,12 @@ export default function ArtifactsPage() {
     }
   }
 
-  async function handleUpdateDefaultLlm(llm: LLMProvider, model: string | null = null) {
+  async function handleUpdateDefaultLlm(llm: LLMProvider | null, model: string | null = null) {
     if (!project) return;
     setSavingLlm(true);
     setLlmSaveError(null);
     try {
-      const updated = await projectsAPI.updateDefaultLlm(projectId, llm, model);
+      const updated = await projectsAPI.updateDefaultLlm(projectId, llm as LLMProvider, model);
       setProject(updated);
       setDefaultModel(updated.default_model ?? "");
       logger.info("Updated project default LLM", { component: "ArtifactsPage", data: { llm, model } });
@@ -108,48 +106,6 @@ export default function ArtifactsPage() {
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
         <h1 className="text-[18px] font-bold text-[#172b4d]">Artifact Types</h1>
-        <div className="flex items-center gap-3">
-          {project && (
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex items-end gap-2">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[11px] text-[#5e6c84]">Project default provider</span>
-                  <select
-                    value={project.default_llm}
-                    onChange={(e) => {
-                      const v = e.target.value as LLMProvider;
-                      handleUpdateDefaultLlm(v, v === "openrouter" ? (project.default_model ?? defaultModel) : null);
-                    }}
-                    disabled={savingLlm}
-                    className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc] disabled:opacity-50"
-                  >
-                    {LLM_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
-                {project.default_llm === "openrouter" && (
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[11px] text-[#5e6c84]">Default model</span>
-                    <input
-                      type="text"
-                      value={defaultModel}
-                      onChange={(e) => setDefaultModel(e.target.value)}
-                      onBlur={() => handleUpdateDefaultLlm("openrouter", defaultModel || null)}
-                      placeholder="anthropic/claude-sonnet-4.6"
-                      disabled={savingLlm}
-                      className="text-[12px] border border-[#dfe1e6] rounded px-2 py-1 bg-white text-[#172b4d] focus:outline-none focus:border-[#0052cc] disabled:opacity-50 font-mono w-52"
-                    />
-                  </div>
-                )}
-                {savingLlm && <span className="text-[11px] text-[#5e6c84] pb-1.5">Saving…</span>}
-              </div>
-              {llmSaveError && (
-                <span className="text-[11px] text-red-600">{llmSaveError}</span>
-              )}
-            </div>
-          )}
-        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
@@ -162,6 +118,66 @@ export default function ArtifactsPage() {
           </div>
         ) : (
           <>
+            {/* ── Project Defaults ── */}
+            {project && (
+              <div style={{ background: "white", padding: "14px 18px", border: "1px solid #dfe1e6", borderRadius: 6, marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: "#172b4d", margin: 0 }}>🎯 Project Defaults</h3>
+                  <span style={{ fontSize: 10, color: "#97a0af" }}>
+                    Cascade: card&apos;s own → this project default → system default
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 12, alignItems: "end" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: 10, color: "#5e6c84", display: "block", marginBottom: 3 }}>PROVIDER</label>
+                    <select
+                      value={project.default_llm ?? "inherit"}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "inherit") {
+                          handleUpdateDefaultLlm(null, null);
+                        } else {
+                          handleUpdateDefaultLlm(v as LLMProvider, v === "openrouter" ? (project.default_model ?? defaultModel) : null);
+                        }
+                      }}
+                      disabled={savingLlm}
+                      style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", fontFamily: "inherit", width: "100%" }}
+                    >
+                      <option value="inherit">Inherit system</option>
+                      <option value="openrouter">OpenRouter ⭐</option>
+                      <option value="groq">Groq (direct)</option>
+                      <option value="deepseek">DeepSeek (direct)</option>
+                      <option value="claude">Claude (direct)</option>
+                      <option value="openai">OpenAI (direct)</option>
+                    </select>
+                  </div>
+                  {project.default_llm === "openrouter" && (
+                    <div style={{ flex: 2 }}>
+                      <label style={{ fontSize: 10, color: "#5e6c84", display: "block", marginBottom: 3 }}>MODEL</label>
+                      <input
+                        type="text"
+                        value={defaultModel ?? ""}
+                        onChange={(e) => setDefaultModel(e.target.value)}
+                        onBlur={() => handleUpdateDefaultLlm("openrouter", defaultModel)}
+                        placeholder="e.g. deepseek/deepseek-v3.2"
+                        style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", fontFamily: "ui-monospace, Menlo, monospace", width: "100%", boxSizing: "border-box" }}
+                      />
+                    </div>
+                  )}
+                  {savingLlm && <span style={{ fontSize: 11, color: "#5e6c84" }}>Saving…</span>}
+                </div>
+                {llmSaveError && (
+                  <p style={{ fontSize: 11, color: "#ae2a19", marginTop: 6 }}>{llmSaveError}</p>
+                )}
+                {systemSettings && (
+                  <div style={{ marginTop: 10, padding: "6px 10px", background: "#eef5ff", borderLeft: "3px solid #0052cc", borderRadius: 4, fontSize: 10, color: "#0052cc" }}>
+                    <strong>System default:</strong> {systemSettings.default_llm}{systemSettings.default_model ? ` · ${systemSettings.default_model}` : ""}
+                    {!project.default_llm && " — this project inherits it"}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── Project context ── */}
             <div className="border border-[#dfe1e6] rounded-lg p-4 bg-white mb-6">
               <div className="flex items-center justify-between mb-1">
@@ -195,7 +211,9 @@ export default function ArtifactsPage() {
                 <ArtifactTypeCard
                   key={t.id}
                   type={t}
-                  projectDefaultLlm={project?.default_llm ?? "groq"}
+                  projectDefaultLlm={project?.default_llm ?? null}
+                  projectDefaultModel={defaultModel || null}
+                  systemSettings={systemSettings}
                   onDelete={() => {}}
                   onUpdate={handleUpdate}
                   hideDelete
@@ -232,7 +250,9 @@ export default function ArtifactsPage() {
                 <ArtifactTypeCard
                   key={t.id}
                   type={t}
-                  projectDefaultLlm={project?.default_llm ?? "groq"}
+                  projectDefaultLlm={project?.default_llm ?? null}
+                  projectDefaultModel={defaultModel || null}
+                  systemSettings={systemSettings}
                   onDelete={handleDelete}
                   onUpdate={handleUpdate}
                 />

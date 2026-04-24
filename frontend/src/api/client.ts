@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory, LibraryEntry } from "@/types";
+import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory, LibraryEntry, SystemSettings } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -53,12 +53,12 @@ export const projectsAPI = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  update: (id: string, data: { default_llm?: LLMProvider; default_model?: string | null; context?: string }) =>
+  update: (id: string, data: { default_llm?: LLMProvider | null; default_model?: string | null; context?: string }) =>
     proxyFetch<Project>(`/api/projects/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  updateDefaultLlm: async (projectId: string, llm: LLMProvider, model: string | null = null): Promise<Project> => {
+  updateDefaultLlm: async (projectId: string, llm: LLMProvider | null, model: string | null = null): Promise<Project> => {
     const res = await fetch(`/api/proxy/api/projects/${projectId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -256,6 +256,23 @@ export const artifactTypesAPI = {
       const body = await res.json().catch(() => ({ detail: "Unknown error" }));
       throw new Error(parseApiError(body, res.status));
     }
+    return res.json();
+  },
+};
+
+export const settingsAPI = {
+  get: async (): Promise<SystemSettings> => {
+    const res = await fetch(`${PROXY_BASE}/api/settings`);
+    if (!res.ok) throw new Error("Failed to fetch system settings");
+    return res.json();
+  },
+  update: async (patch: Partial<SystemSettings>): Promise<SystemSettings> => {
+    const res = await fetch(`${PROXY_BASE}/api/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error("Failed to update system settings");
     return res.json();
   },
 };

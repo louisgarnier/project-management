@@ -1231,10 +1231,17 @@ async def verify_not_discussed_topics(call_id: str) -> dict:
                 if raw.startswith("json"):
                     raw = raw[4:]
             parsed = json.loads(raw.strip())
+            # Some LLMs wrap the object in a single-element list despite the
+            # explicit schema. Unwrap defensively.
+            if isinstance(parsed, list):
+                parsed = parsed[0] if parsed else {}
+            if not isinstance(parsed, dict):
+                raise ValueError(f"expected JSON object, got {type(parsed).__name__}")
             results[topic_id] = {
                 "discussed": bool(parsed.get("discussed", False)),
                 "transcript_excerpt": parsed.get("transcript_excerpt"),
                 "reasoning": parsed.get("reasoning", ""),
+                "error": None,
             }
             logger.info(
                 f"🔍 [Verification] {topic['name']}: discussed={results[topic_id]['discussed']}"
@@ -1242,9 +1249,10 @@ async def verify_not_discussed_topics(call_id: str) -> dict:
         except Exception as e:
             logger.error(f"❌ [Verification] Failed for topic {topic['name']}: {e}")
             results[topic_id] = {
-                "discussed": False,
+                "discussed": None,
                 "transcript_excerpt": None,
-                "reasoning": f"Verification failed: {e}",
+                "reasoning": "",
+                "error": str(e),
             }
 
     return results

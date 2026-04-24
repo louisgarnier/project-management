@@ -16,7 +16,7 @@ const LLM_LABEL: Record<string, string> = {
 type Props = {
   artifactTypes: ArtifactType[];
   selections: Record<string, SelectionMode>;
-  projectDefaultLlm: LLMProvider;
+  projectDefaultLlm: LLMProvider | null;
   projectDefaultModel?: string | null;
   onChange: (typeId: string, mode: SelectionMode) => void;
 };
@@ -32,7 +32,7 @@ export default function ArtifactSelector({
     <div className="flex flex-col gap-2">
       {artifactTypes.map((t) => {
         const sel = selections[t.id] ?? "generate";
-        const effectiveLlm = t.llm ?? projectDefaultLlm;
+        const effectiveLlm = t.llm ?? projectDefaultLlm ?? "openrouter";
         const effectiveModel = t.llm === "openrouter"
           ? t.model
           : (effectiveLlm === "openrouter" ? (projectDefaultModel ?? null) : null);

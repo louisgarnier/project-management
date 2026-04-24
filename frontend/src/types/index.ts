@@ -7,7 +7,7 @@ export interface Project {
   id: string;
   name: string;
   description: string | null;
-  default_llm: LLMProvider;
+  default_llm: LLMProvider | null;
   default_model: string | null;
   context: string | null;
   created_at: string;
@@ -34,7 +34,7 @@ export interface Call {
   pending_topics: TopicData[] | null;
   merge_cache: TopicData[] | null;
   merge_status: "idle" | "processing" | "done" | "failed";
-  verification_cache: Record<string, { discussed: boolean; transcript_excerpt: string | null; reasoning: string }> | null;
+  verification_cache: Record<string, { discussed: boolean | null; transcript_excerpt: string | null; reasoning: string; error: string | null }> | null;
   verification_status: "idle" | "processing" | "done" | "failed";
   created_at: string;
 }
@@ -233,9 +233,10 @@ export type EvidenceMatchGroup = {
 };
 
 export type EvidenceVerification = {
-  discussed: boolean;
+  discussed: boolean | null;
   transcript_excerpt: string | null;
   reasoning: string;
+  error?: string | null;
 };
 
 export type EvidenceCall = {
@@ -262,3 +263,8 @@ export type TopicEvidence = {
   lineage: EvidenceLineageNode[];
   calls: EvidenceCall[];
 };
+
+export interface SystemSettings {
+  default_llm: LLMProvider | null;
+  default_model: string | null;
+}

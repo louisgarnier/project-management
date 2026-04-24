@@ -22,7 +22,7 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
   const [artifactTypes, setArtifactTypes] = useState<ArtifactType[]>([]);
   const [selections, setSelections] = useState<Record<string, SelectionMode>>({});
   const [newTypeSelections, setNewTypeSelections] = useState<Record<string, SelectionMode>>({});
-  const [projectDefaultLlm, setProjectDefaultLlm] = useState<LLMProvider>("groq");
+  const [projectDefaultLlm, setProjectDefaultLlm] = useState<LLMProvider | null>(null);
   const [projectDefaultModel, setProjectDefaultModel] = useState<string | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [phase, setPhase] = useState<Phase>("select");
@@ -91,7 +91,7 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
       // POST selections (exclude skipped) — resolve LLM from artifact type settings
       const payload = nonSkipped.map(([typeId, sel]) => {
         const type = artifactTypes.find((t) => t.id === typeId);
-        const mode: ArtifactMode = sel === "manual" ? "manual" : (type?.llm ?? projectDefaultLlm);
+        const mode: ArtifactMode = sel === "manual" ? "manual" : (type?.llm ?? projectDefaultLlm ?? "openrouter");
         return { artifact_type_id: typeId, mode };
       });
       const created = await artifactsAPI.createSelections(callId, payload);
@@ -181,7 +181,7 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
     // Use the LLM from the artifact type's settings (falls back to project default)
     try {
       const artifact = artifacts.find((a) => a.id === artifactId);
-      const llm = (artifact ? (typeMap[artifact.artifact_type_id]?.llm ?? projectDefaultLlm) : projectDefaultLlm) as ArtifactMode;
+      const llm = (artifact ? (typeMap[artifact.artifact_type_id]?.llm ?? projectDefaultLlm ?? "openrouter") : (projectDefaultLlm ?? "openrouter")) as ArtifactMode;
       const updated = await artifactsAPI.update(artifactId, { status: "pending", mode: llm });
       setArtifacts((prev) => prev.map((a) => (a.id === artifactId ? updated : a)));
       logger.info("Artifact reset for retry", { component: "ArtifactsStage", data: { artifactId, llm } });
@@ -198,7 +198,7 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
       const toReset = artifacts.filter((a) => a.status !== "done" && a.status !== "generating");
       const resetWithLlm = toReset.map((a) => ({
         artifact: a,
-        llm: (typeMap[a.artifact_type_id]?.llm ?? projectDefaultLlm) as ArtifactMode,
+        llm: (typeMap[a.artifact_type_id]?.llm ?? projectDefaultLlm ?? "openrouter") as ArtifactMode,
       }));
       await Promise.all(
         resetWithLlm.map(({ artifact, llm }) =>
@@ -233,7 +233,7 @@ export default function ArtifactsStage({ call, onAdvance, hideAdvance = false }:
     try {
       const payload = toProcess.map((t) => {
         const sel = newTypeSelections[t.id] ?? "generate";
-        const mode: ArtifactMode = sel === "manual" ? "manual" : (t.llm ?? projectDefaultLlm);
+        const mode: ArtifactMode = sel === "manual" ? "manual" : (t.llm ?? projectDefaultLlm ?? "openrouter");
         return { artifact_type_id: t.id, mode };
       });
       const created = await artifactsAPI.createSelections(callId, payload);

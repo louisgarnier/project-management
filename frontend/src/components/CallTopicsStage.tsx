@@ -388,7 +388,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
       const t = types.find((t) => t.category === "call_topics");
       if (t) {
         setPromptName(t.name);
-        const llm = t.llm ?? project.default_llm;
+        const llm = t.llm ?? project.default_llm ?? "openrouter";
         // For OpenRouter, append the model slug so the user can see exactly
         // which model ran — artifact type override wins, else project default.
         const model = llm === "openrouter" ? (t.model ?? project.default_model) : null;

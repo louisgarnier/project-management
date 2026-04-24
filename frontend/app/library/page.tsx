@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { libraryAPI } from "@/api/client";
-import type { LibraryEntry } from "@/types";
+import { libraryAPI, settingsAPI } from "@/api/client";
+import type { LibraryEntry, SystemSettings, LLMProvider } from "@/types";
 import LibraryEntryCard from "@/components/LibraryEntryCard";
 
 export default function LibraryPage() {
@@ -10,6 +10,9 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState<SystemSettings>({ default_llm: "openrouter", default_model: "deepseek/deepseek-v3.2" });
 
   async function load() {
     setLoading(true);
@@ -24,6 +27,26 @@ export default function LibraryPage() {
   }
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    settingsAPI.get().then((s) => {
+      setSystemSettings(s);
+      setSettingsDraft(s);
+    }).catch((e) => console.error("settings load failed", e));
+  }, []);
+
+  async function saveSettings() {
+    setSavingSettings(true);
+    try {
+      const updated = await settingsAPI.update(settingsDraft);
+      setSystemSettings(updated);
+      setSettingsDraft(updated);
+    } catch (e) {
+      alert(`Failed to save: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingSettings(false);
+    }
+  }
 
   async function resetSystem() {
     if (!confirm("Restore all system library entries to their original defaults? Your edits to system entries will be lost. User-published entries are not affected.")) return;
@@ -59,6 +82,53 @@ export default function LibraryPage() {
         {error && <p style={{ fontSize: 12, color: "#ae2a19" }}>Error: {error}</p>}
         {!loading && !error && (
           <>
+            {/* System Defaults */}
+            {systemSettings && (
+              <div style={{ background: "white", padding: "16px 18px", border: "1px solid #dfe1e6", borderRadius: 6, marginBottom: 20 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: "#172b4d", margin: 0 }}>🌍 System Defaults</h3>
+                  <span style={{ fontSize: 10, color: "#97a0af" }}>Applied to every NEW project created from now on</span>
+                </div>
+                <p style={{ fontSize: 11, color: "#5e6c84", margin: "0 0 12px", lineHeight: 1.5 }}>
+                  These drive the fallback for every artifact or workflow prompt that has <code style={{ fontSize: 10, background: "#f4f5f7", padding: "1px 4px" }}>llm=null</code>. Changing them does <strong>not</strong> retroactively apply to existing projects — use Reset-to-default on each project&apos;s cards to adopt the new values.
+                </p>
+                <div style={{ display: "flex", gap: 12, alignItems: "end" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: 10, color: "#5e6c84", display: "block", marginBottom: 3 }}>PROVIDER</label>
+                    <select
+                      value={settingsDraft.default_llm ?? "openrouter"}
+                      onChange={(e) => setSettingsDraft({ ...settingsDraft, default_llm: e.target.value as LLMProvider })}
+                      style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", fontFamily: "inherit", width: "100%" }}
+                    >
+                      <option value="openrouter">OpenRouter ⭐</option>
+                      <option value="groq">Groq (direct)</option>
+                      <option value="deepseek">DeepSeek (direct)</option>
+                      <option value="claude">Claude (direct)</option>
+                      <option value="openai">OpenAI (direct)</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 2 }}>
+                    <label style={{ fontSize: 10, color: "#5e6c84", display: "block", marginBottom: 3 }}>MODEL (OpenRouter slug)</label>
+                    <input
+                      type="text"
+                      value={settingsDraft.default_model ?? ""}
+                      onChange={(e) => setSettingsDraft({ ...settingsDraft, default_model: e.target.value })}
+                      placeholder="e.g. deepseek/deepseek-v3.2 — or any slug from openrouter.ai/models"
+                      style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", fontFamily: "ui-monospace, Menlo, monospace", width: "100%", boxSizing: "border-box" }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={saveSettings}
+                    disabled={savingSettings || (settingsDraft.default_llm === systemSettings.default_llm && settingsDraft.default_model === systemSettings.default_model)}
+                    style={{ fontSize: 11, fontWeight: 600, color: "white", background: "#0052cc", border: "none", borderRadius: 4, padding: "6px 14px", cursor: "pointer", opacity: savingSettings ? 0.6 : 1 }}
+                  >
+                    {savingSettings ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Tier 1: Workflow Prompts */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <div>

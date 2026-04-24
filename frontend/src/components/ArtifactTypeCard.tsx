@@ -1,21 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { ArtifactType, LLMProvider, ContextScope, LibraryEntry } from "@/types";
+import type { ArtifactType, LLMProvider, ContextScope, LibraryEntry, SystemSettings } from "@/types";
 import { MODEL_RECOMMENDATIONS, PROVIDER_LABELS, estimateCost } from "@/constants/models";
 import { artifactTypesAPI } from "@/api/client";
 import PublishToLibraryDialog from "@/components/PublishToLibraryDialog";
 
 type Props = {
   type: ArtifactType;
-  projectDefaultLlm: LLMProvider;
+  projectDefaultLlm: LLMProvider | null;
+  projectDefaultModel?: string | null;
+  systemSettings?: SystemSettings | null;
   onDelete: (id: string) => void;
   onUpdate: (id: string, data: { name?: string; prompt?: string; llm?: LLMProvider | null; model?: string | null; context_scope?: ContextScope; is_default?: boolean }) => Promise<void>;
   hideDelete?: boolean;
   hideDefaultToggle?: boolean;
 };
 
-export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, onUpdate, hideDelete, hideDefaultToggle }: Props) {
+export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefaultModel, systemSettings, onDelete, onUpdate, hideDelete, hideDefaultToggle }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(type.name);
@@ -70,6 +72,17 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
   }
 
   const effectiveKind = type.kind ?? "llm";
+
+  const effectiveLlm: LLMProvider =
+    type.llm ??
+    projectDefaultLlm ??
+    systemSettings?.default_llm ??
+    "openrouter";
+  const effectiveModel: string | null =
+    type.model ??
+    (type.llm === null || type.llm === undefined ? projectDefaultModel ?? null : null) ??
+    systemSettings?.default_model ??
+    null;
 
   return (
     <div
@@ -151,9 +164,13 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, onDelete, on
             ) : (
               <>
                 <span className="text-[11px] text-[#5e6c84] bg-[#f4f5f7] px-2 py-[3px] rounded">
-                  {type.llm
-                    ? PROVIDER_LABELS[type.llm]
-                    : `Inherit · ${PROVIDER_LABELS[projectDefaultLlm]}`}
+                  {PROVIDER_LABELS[effectiveLlm]}
+                  {effectiveLlm === "openrouter" && effectiveModel ? ` · ${effectiveModel}` : ""}
+                  {!type.llm && (
+                    <span style={{ fontSize: 9, color: "#97a0af", marginLeft: 4 }}>
+                      (inherited)
+                    </span>
+                  )}
                 </span>
                 <span
                   className="text-[10px] font-medium px-2 py-[3px] rounded"
