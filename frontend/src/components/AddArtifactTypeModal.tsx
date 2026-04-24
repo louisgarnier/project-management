@@ -201,8 +201,14 @@ export default function AddArtifactTypeModal({
                     !(existingTypes ?? []).some((t) => t.library_ref_id === lib.id)
                 )
                 .map((lib) => {
-                  const kindIcon =
-                    lib.kind === "template" ? "🔧" : lib.kind === "hybrid" ? "⚡" : "🤖";
+                  const kindLabel =
+                    lib.kind === "template" ? "TEMPLATE" : lib.kind === "hybrid" ? "HYBRID" : "LLM";
+                  const kindColor =
+                    lib.kind === "template"
+                      ? { bg: "#e3fcef", fg: "#006644" }
+                      : lib.kind === "hybrid"
+                      ? { bg: "#fff4e6", fg: "#974f0c" }
+                      : { bg: "#e9f0ff", fg: "#0052cc" };
                   return (
                     <div
                       key={lib.id}
@@ -215,14 +221,22 @@ export default function AddArtifactTypeModal({
                       }}
                     >
                       <div style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "#172b4d" }}>
-                          {kindIcon} {lib.name}
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#172b4d", display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+                            background: kindColor.bg, color: kindColor.fg, letterSpacing: ".04em",
+                          }}>{kindLabel}</span>
+                          {lib.name}
                         </div>
                         <div style={{ fontSize: 11, color: "#5e6c84", marginTop: 2 }}>
                           {lib.description || <em>No description</em>}
                         </div>
                         <div style={{ fontSize: 10, color: "#97a0af", marginTop: 2 }}>
-                          {lib.is_system ? "🏛 system" : "👤 yours"}
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, padding: "1px 5px", borderRadius: 3,
+                            background: lib.is_system ? "#f4f5f7" : "#fff8e6",
+                            color: lib.is_system ? "#5e6c84" : "#974f0c",
+                          }}>{lib.is_system ? "SYSTEM" : "YOURS"}</span>
                         </div>
                       </div>
                       <button

@@ -18,7 +18,12 @@ export default function LibraryEntryCard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const kindIcon = entry.kind === "template" ? "🔧" : entry.kind === "hybrid" ? "⚡" : "🤖";
+  const kindLabel = entry.kind === "template" ? "TEMPLATE" : entry.kind === "hybrid" ? "HYBRID" : "LLM";
+  const kindColor = entry.kind === "template"
+    ? { bg: "#e3fcef", fg: "#006644" }
+    : entry.kind === "hybrid"
+    ? { bg: "#fff4e6", fg: "#974f0c" }
+    : { bg: "#e9f0ff", fg: "#0052cc" };
 
   async function save() {
     setSaving(true);
@@ -63,13 +68,28 @@ export default function LibraryEntryCard({
               style={{ fontSize: 14, fontWeight: 600, color: "#172b4d", border: "1px solid #dfe1e6", borderRadius: 4, padding: "4px 6px", width: "100%", fontFamily: "inherit" }}
             />
           ) : (
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#172b4d" }}>
-              {kindIcon} {entry.name}
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#172b4d", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{
+                fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+                background: kindColor.bg, color: kindColor.fg,
+                letterSpacing: ".04em",
+              }}>{kindLabel}</span>
+              {entry.name}
             </div>
           )}
           <div style={{ fontSize: 11, color: "#5e6c84", marginTop: 2 }}>
-            {entry.is_system ? "🏛 system" : "👤 yours"}
-            {entry.seeded_by_default && <span style={{ marginLeft: 8 }}>🌱 seeded on new projects</span>}
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: "1px 5px", borderRadius: 3,
+              background: entry.is_system ? "#f4f5f7" : "#fff8e6",
+              color: entry.is_system ? "#5e6c84" : "#974f0c",
+              marginRight: 6,
+            }}>{entry.is_system ? "SYSTEM" : "YOURS"}</span>
+            {entry.seeded_by_default && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "1px 5px", borderRadius: 3,
+                background: "#e3fcef", color: "#006644",
+              }}>AUTO-SEEDED</span>
+            )}
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
