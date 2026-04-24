@@ -199,12 +199,24 @@ async def _call_llm(
         _EXTRACT_SYSTEM, prompt, llm, max_tokens=16384, model=model
     )
     raw = raw.strip()
+    if not raw:
+        logger.error(f"❌ [{llm}] Empty response from LLM")
+        raise ValueError("LLM returned an empty response")
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
+    raw = raw.strip()
+    # Salvage prose-wrapped JSON: some models return "Here is the JSON: [...]".
+    # Slice from the first { or [ to the matching closing bracket.
+    if raw and raw[0] not in "{[":
+        first_obj = raw.find("{")
+        first_arr = raw.find("[")
+        starts = [i for i in (first_obj, first_arr) if i >= 0]
+        if starts:
+            raw = raw[min(starts):]
     try:
-        parsed = json.loads(raw.strip())
+        parsed = json.loads(raw)
         logger.info(f"🔍 [{llm}] Topics raw keys sample: {_sample_keys(parsed)}")
         return _normalize_topic_keys(parsed)
     except json.JSONDecodeError as e:

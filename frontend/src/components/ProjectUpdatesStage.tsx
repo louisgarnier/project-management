@@ -319,6 +319,18 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
     }
   }
 
+  async function handleRerunVerification() {
+    setError(null);
+    try {
+      await topicsAPI.verifyNotDiscussed(callId);
+      setVerifying(true);
+      setVerificationCache(null);
+      logger.info("Verification re-run triggered", { component: "ProjectUpdatesStage" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Re-run check failed");
+    }
+  }
+
   async function handlePromote(topic: TopicData) {
     // Move from not_discussed straight to editable Updated Topics section.
     // Persist as a ptid-only match group so re-running merge or refreshing the
@@ -490,30 +502,47 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
         {notDiscussed.length > 0 && (
           <div style={{ marginTop: 8 }}>
             <div style={{ padding: "8px 20px 6px", borderTop: "1px solid #dfe1e6", borderBottom: "1px solid #dfe1e6",
-              background: "#f4f5f7" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#97a0af",
-                letterSpacing: ".05em" }}>
-                Not discussed in this call&nbsp;&nbsp;({notDiscussed.length} topic{notDiscussed.length !== 1 ? "s" : ""})
-                {verifying && <span style={{ fontWeight: 400, textTransform: "none", marginLeft: 8 }}>⏳ Verifying…</span>}
+              background: "#f4f5f7", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#97a0af",
+                  letterSpacing: ".05em" }}>
+                  Not discussed in this call&nbsp;&nbsp;({notDiscussed.length} topic{notDiscussed.length !== 1 ? "s" : ""})
+                  {verifying && <span style={{ fontWeight: 400, textTransform: "none", marginLeft: 8 }}>⏳ Verifying…</span>}
+                </div>
+                <div style={{ fontSize: 11, color: "#97a0af", marginTop: 2 }}>
+                  These topics exist in the project but were not mentioned in this call. They carry over unchanged.
+                </div>
               </div>
-              <div style={{ fontSize: 11, color: "#97a0af", marginTop: 2 }}>
-                These topics exist in the project but were not mentioned in this call. They carry over unchanged.
-              </div>
+              <button
+                onClick={handleRerunVerification}
+                disabled={verifying}
+                title="Re-run the LLM check against the transcript for every topic below"
+                style={{ padding: "4px 10px", borderRadius: 4, border: "1px solid #dfe1e6",
+                  background: verifying ? "#f4f5f7" : "white", color: verifying ? "#97a0af" : "#5e6c84",
+                  fontSize: 11, cursor: verifying ? "default" : "pointer", fontFamily: "inherit",
+                  whiteSpace: "nowrap", flexShrink: 0 }}
+              >
+                {verifying ? "Checking…" : "Re-run check"}
+              </button>
             </div>
             {notDiscussed.map((t, idx) => {
               const v = verificationCache?.[t.topic_id ?? ""];
-              const isFlagged = v?.discussed === true;
-              const isConfirmed = v?.discussed === false;
+              const hasEntry = !!v;
+              const hasError = !!v?.error;
+              const isFlagged = !hasError && v?.discussed === true;
+              const isConfirmed = !hasError && v?.discussed === false;
+              const isChecking = verifying && !hasEntry;
+              const notChecked = !verifying && !hasEntry;
               return (
                 <div key={t.topic_id ?? t.name ?? idx}
                   style={{
                     opacity: isFlagged ? 1 : 0.7,
                     borderBottom: "1px solid #f0f1f3",
                     paddingLeft: 20, paddingRight: 20, paddingTop: 10, paddingBottom: 10,
-                    borderLeft: isFlagged ? "3px solid #ff991f" : "3px solid transparent",
-                    background: isFlagged ? "#fffae6" : "white",
+                    borderLeft: isFlagged ? "3px solid #ff991f" : hasError ? "3px solid #de350b" : "3px solid transparent",
+                    background: isFlagged ? "#fffae6" : hasError ? "#ffebe6" : "white",
                   }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ color: "#97a0af", fontSize: 12 }}>•</span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: "#172b4d" }}>{t.name}</span>
                     <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
@@ -530,7 +559,25 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
                     {isConfirmed && (
                       <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
                         background: "#e3fcef", color: "#006644", whiteSpace: "nowrap", flexShrink: 0 }}>
-                        ✓ Confirmed
+                        ✓ Check ran · not discussed
+                      </span>
+                    )}
+                    {hasError && (
+                      <span title={v?.error ?? ""} style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+                        background: "#ffebe6", color: "#bf2600", border: "1px solid #de350b", whiteSpace: "nowrap", flexShrink: 0 }}>
+                        ✕ Check failed
+                      </span>
+                    )}
+                    {isChecking && (
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+                        background: "#deebff", color: "#0747a6", border: "1px solid #4c9aff", whiteSpace: "nowrap", flexShrink: 0 }}>
+                        ⏳ Checking…
+                      </span>
+                    )}
+                    {notChecked && (
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+                        background: "#f4f5f7", color: "#5e6c84", border: "1px solid #dfe1e6", whiteSpace: "nowrap", flexShrink: 0 }}>
+                        — Not checked
                       </span>
                     )}
                     <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase",
@@ -546,6 +593,11 @@ export default function ProjectUpdatesStage({ callId, projectId, call, onValidat
                   {isFlagged && v?.reasoning && (
                     <p style={{ fontSize: 11, color: "#974f0c", margin: "4px 0 0 18px", lineHeight: 1.4, fontStyle: "italic" }}>
                       {v.reasoning}
+                    </p>
+                  )}
+                  {hasError && v?.error && (
+                    <p style={{ fontSize: 11, color: "#bf2600", margin: "4px 0 0 18px", lineHeight: 1.4, fontStyle: "italic" }}>
+                      {v.error}
                     </p>
                   )}
                   {isFlagged && (
