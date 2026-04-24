@@ -29,14 +29,15 @@ def test_next_steps_groups_by_topic_with_owner_bolded():
             "Risk model selection",
             follow_up_items=["Nick: run benchmark", "Hassan: share EDS+ evidence"],
         ),
-        _topic("Meeting logistics"),  # no actions — should be skipped
+        _topic("Meeting logistics"),  # no actions — should show placeholder, not skip
     ]
     out = render_next_steps(topics)
     assert "# Next Steps" in out
     assert "## Risk model selection" in out
     assert "- **Nick:** run benchmark" in out
     assert "- **Hassan:** share EDS+ evidence" in out
-    assert "Meeting logistics" not in out  # skipped (no actions)
+    assert "## Meeting logistics" in out  # still rendered
+    assert "_No action expected._" in out  # placeholder when no actions
 
 
 def test_next_steps_handles_action_without_owner_prefix():
