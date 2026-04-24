@@ -54,7 +54,11 @@ def create_artifact_selections(call_id: str, payload: ArtifactSelectionsPayload)
     types_result = (
         client.table("artifact_types").select("id,prompt").in_("id", type_ids).execute()
     )
-    prompt_map = {t["id"]: t["prompt"] for t in types_result.data}
+    # Template-kind artifacts have type.prompt=null (their logic lives in
+    # backend/templates/). Coalesce to "" so the NOT NULL constraint on
+    # artifacts.prompt_used is satisfied. Generation-time fork on `kind`
+    # ignores prompt_used for template kinds anyway.
+    prompt_map = {t["id"]: (t["prompt"] or "") for t in types_result.data}
 
     rows = []
     for s in payload.selections:
