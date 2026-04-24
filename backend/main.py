@@ -9,6 +9,7 @@ from backend.routers import (
     files,
     library,
     projects,
+    settings,
     topics,
 )
 from backend.utils.logger import get_logger
@@ -64,6 +65,7 @@ app.include_router(artifact_types.router)
 app.include_router(artifacts.router)
 app.include_router(topics.router)
 app.include_router(library.router)
+app.include_router(settings.router)
 
 
 @app.get("/health")

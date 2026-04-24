@@ -187,13 +187,17 @@ _TOPIC_SCHEMA = (
 )
 
 
-async def _call_llm(prompt: str, llm: str, *, model: str | None = None) -> list[dict] | dict:
+async def _call_llm(
+    prompt: str, llm: str, *, model: str | None = None
+) -> list[dict] | dict:
     logger.info(f"🤖 [{llm}] Extracting topics")
     # Extraction emits rich per-topic payloads (3–6 sentence summaries + decisions +
     # follow_up_items + open_questions + rationale). 4096 is too tight — a 4-topic
     # call regularly hits the ceiling mid-JSON and breaks parsing. 16384 fits all
     # credible OpenRouter models (Claude Sonnet 4.6, GPT-4o, Gemini 2.5 Pro).
-    raw = await call_llm_raw(_EXTRACT_SYSTEM, prompt, llm, max_tokens=16384, model=model)
+    raw = await call_llm_raw(
+        _EXTRACT_SYSTEM, prompt, llm, max_tokens=16384, model=model
+    )
     raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
@@ -387,10 +391,25 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         .data
     )
     if stored_llm is None:
-        stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
+        stored_llm = proj_rows[0].get("default_llm") if proj_rows else None
     if stored_model is None:
         stored_model = proj_rows[0].get("default_model") if proj_rows else None
-    llm = stored_llm or "groq"
+    if not stored_llm:
+        # Inherit from system_settings (Tier 3)
+        try:
+            settings_row = (
+                db.table("system_settings")
+                .select("default_llm, default_model")
+                .eq("id", 1)
+                .execute()
+                .data
+            )
+            if settings_row:
+                stored_llm = settings_row[0].get("default_llm") or "openrouter"
+                stored_model = stored_model or settings_row[0].get("default_model")
+        except Exception:
+            stored_llm = "openrouter"
+    llm = stored_llm or "openrouter"
     model = stored_model
     project_context = (proj_rows[0].get("context") or "").strip() if proj_rows else ""
 
@@ -399,34 +418,30 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         f"Project context:\n{project_context}\n\n" if project_context else ""
     )
 
-    # Vocabulary hint: pass existing project topic names so the LLM aligns the
-    # new call topic `name` fields with prior naming conventions. Names only —
-    # no summaries or decisions — keeps extraction focused on the transcript.
-    existing_names_rows = (
-        db.table("topics")
-        .select("name")
-        .eq("project_id", project_id)
-        .eq("archived", False)
-        .execute()
-        .data
-    )
-    existing_names = [r["name"] for r in (existing_names_rows or []) if r.get("name")]
-    if existing_names:
-        vocab_lines = "\n".join(f"- {n}" for n in existing_names)
-        vocabulary_hint = (
-            "Existing project topic names (align your `name` field to these "
-            "when the same subject is discussed — do NOT invent new names for "
-            "existing subjects):\n"
-            f"{vocab_lines}\n\n"
+    # Vocabulary hint: inject existing topic names so the LLM can match/extend them
+    try:
+        topic_rows = (
+            db.table("topics")
+            .select("name")
+            .eq("project_id", project_id)
+            .eq("archived", False)
+            .execute()
+            .data
         )
-    else:
-        vocabulary_hint = ""
+        existing_names = [r["name"] for r in topic_rows if r.get("name")]
+    except Exception:
+        existing_names = []
+
+    vocab_hint = ""
+    if existing_names:
+        names_list = "\n".join(f"- {n}" for n in existing_names)
+        vocab_hint = f"Existing project topic names (use these exact names when a new topic matches one):\n{names_list}\n\n"
 
     prompt = (
         context_prefix
         + f"{base_instruction}\n\n"
         + f"Return a JSON array where each element matches this exact schema:\n{_TOPIC_SCHEMA}\n\n"
-        + vocabulary_hint
+        + vocab_hint
         + f"Transcript:\n{transcript}"
     )
 
@@ -666,10 +681,25 @@ async def run_merge_preview(call_id: str) -> list[dict]:
         .data
     )
     if stored_llm is None:
-        stored_llm = proj_rows[0].get("default_llm") if proj_rows else "groq"
+        stored_llm = proj_rows[0].get("default_llm") if proj_rows else None
     if stored_model is None:
         stored_model = proj_rows[0].get("default_model") if proj_rows else None
-    llm = stored_llm or "groq"
+    if not stored_llm:
+        # Inherit from system_settings (Tier 3)
+        try:
+            settings_row = (
+                db.table("system_settings")
+                .select("default_llm, default_model")
+                .eq("id", 1)
+                .execute()
+                .data
+            )
+            if settings_row:
+                stored_llm = settings_row[0].get("default_llm") or "openrouter"
+                stored_model = stored_model or settings_row[0].get("default_model")
+        except Exception:
+            stored_llm = "openrouter"
+    llm = stored_llm or "openrouter"
     model = stored_model
     project_context = (proj_rows[0].get("context") or "").strip() if proj_rows else ""
 
@@ -915,10 +945,31 @@ async def _verify_merged_topics(call_id: str, merged_topics: list[dict]) -> list
         project_id, db, category="merge_verification"
     )
     proj_rows = (
-        db.table("projects").select("default_llm, default_model").eq("id", project_id).execute().data
+        db.table("projects")
+        .select("default_llm, default_model")
+        .eq("id", project_id)
+        .execute()
+        .data
     )
-    llm = stored_llm or (proj_rows[0].get("default_llm") if proj_rows else "groq") or "groq"
-    model = stored_model or (proj_rows[0].get("default_model") if proj_rows else None)
+    _proj_llm = (proj_rows[0].get("default_llm") if proj_rows else None) or None
+    _proj_model = proj_rows[0].get("default_model") if proj_rows else None
+    if not stored_llm and not _proj_llm:
+        # Inherit from system_settings (Tier 3)
+        try:
+            settings_row = (
+                db.table("system_settings")
+                .select("default_llm, default_model")
+                .eq("id", 1)
+                .execute()
+                .data
+            )
+            if settings_row:
+                _proj_llm = settings_row[0].get("default_llm") or "openrouter"
+                _proj_model = _proj_model or settings_row[0].get("default_model")
+        except Exception:
+            _proj_llm = "openrouter"
+    llm = stored_llm or _proj_llm or "openrouter"
+    model = stored_model or _proj_model
     verify_instructions = stored_prompt or (
         "You are a quality reviewer for project topic data. "
         "Verify that the merged topic did NOT lose any important information. "
@@ -1128,10 +1179,31 @@ async def verify_not_discussed_topics(call_id: str) -> dict:
         project_id, db, category="not_discussed_check"
     )
     proj_rows = (
-        db.table("projects").select("default_llm, default_model").eq("id", project_id).execute().data
+        db.table("projects")
+        .select("default_llm, default_model")
+        .eq("id", project_id)
+        .execute()
+        .data
     )
-    llm = stored_llm or (proj_rows[0].get("default_llm") if proj_rows else "groq") or "groq"
-    model = stored_model or (proj_rows[0].get("default_model") if proj_rows else None)
+    _proj_llm = (proj_rows[0].get("default_llm") if proj_rows else None) or None
+    _proj_model = proj_rows[0].get("default_model") if proj_rows else None
+    if not stored_llm and not _proj_llm:
+        # Inherit from system_settings (Tier 3)
+        try:
+            settings_row = (
+                db.table("system_settings")
+                .select("default_llm, default_model")
+                .eq("id", 1)
+                .execute()
+                .data
+            )
+            if settings_row:
+                _proj_llm = settings_row[0].get("default_llm") or "openrouter"
+                _proj_model = _proj_model or settings_row[0].get("default_model")
+        except Exception:
+            _proj_llm = "openrouter"
+    llm = stored_llm or _proj_llm or "openrouter"
+    model = stored_model or _proj_model
     check_instructions = stored_prompt or (
         "You are checking whether a project topic was actually discussed in a call transcript.\n"
         "Given the topic name, its latest summary, and the full call transcript, determine:\n"

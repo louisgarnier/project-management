@@ -170,17 +170,38 @@ async def stream_artifacts(call_id: str):
 
     # Load project context and defaults (best-effort)
     project_context = ""
+    project_default_llm: str | None = None
     project_default_model: str | None = None
     try:
         proj_row = (
             supabase.table("projects")
-            .select("context,default_model")
+            .select("context,default_llm,default_model")
             .eq("id", project_id)
             .execute()
             .data
         )
         project_context = (proj_row[0].get("context") or "").strip() if proj_row else ""
+        project_default_llm = proj_row[0].get("default_llm") if proj_row else None
         project_default_model = proj_row[0].get("default_model") if proj_row else None
+        if not project_default_llm:
+            # Inherit from system
+            try:
+                settings_row = (
+                    supabase.table("system_settings")
+                    .select("default_llm, default_model")
+                    .eq("id", 1)
+                    .execute()
+                    .data
+                )
+                if settings_row:
+                    project_default_llm = (
+                        settings_row[0].get("default_llm") or "openrouter"
+                    )
+                    project_default_model = project_default_model or settings_row[
+                        0
+                    ].get("default_model")
+            except Exception:
+                project_default_llm = project_default_llm or "openrouter"
     except Exception:
         project_context = ""
 
@@ -242,9 +263,10 @@ async def stream_artifacts(call_id: str):
     )
     pending = artifacts_result.data
 
-    # Build context_scope, model, kind and template_id maps: artifact_type_id → value
+    # Build context_scope, model, llm, kind and template_id maps: artifact_type_id → value
     context_scope_map: dict[str, str] = {}
     type_model_map: dict[str, str | None] = {}
+    type_llm_map: dict[str, str | None] = {}
     type_kind_map: dict[str, str] = {}
     type_template_map: dict[str, str | None] = {}
     if pending:
@@ -254,7 +276,7 @@ async def stream_artifacts(call_id: str):
         if type_ids:
             scope_rows = (
                 supabase.table("artifact_types")
-                .select("id,context_scope,model,kind,template_id")
+                .select("id,context_scope,model,kind,template_id,llm")
                 .in_("id", type_ids)
                 .execute()
                 .data
@@ -263,6 +285,7 @@ async def stream_artifacts(call_id: str):
                 r["id"]: r.get("context_scope", "call") for r in scope_rows
             }
             type_model_map = {r["id"]: r.get("model") for r in scope_rows}
+            type_llm_map = {r["id"]: r.get("llm") for r in scope_rows}
             type_kind_map = {r["id"]: r.get("kind", "llm") for r in scope_rows}
             type_template_map = {r["id"]: r.get("template_id") for r in scope_rows}
 
@@ -282,7 +305,18 @@ async def stream_artifacts(call_id: str):
             prompt_used = artifact["prompt_used"]
             type_id = artifact.get("artifact_type_id", "")
             scope = context_scope_map.get(type_id, "call")
-            effective_model = type_model_map.get(type_id) or project_default_model
+            from backend.services.llm_resolver import resolve_effective_llm_model
+
+            type_llm_value = type_llm_map.get(type_id)
+            type_model_value = type_model_map.get(type_id)
+            _resolved_llm, effective_model = resolve_effective_llm_model(
+                type_llm_value,
+                type_model_value,
+                project_default_llm,
+                project_default_model,
+            )
+            # artifact["mode"] is the runtime LLM chosen at POST time — preserve it as authoritative
+            # _resolved_llm is available if needed for future use
             kind = type_kind_map.get(type_id, "llm")
             template_id = type_template_map.get(type_id)
 

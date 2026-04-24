@@ -19,14 +19,15 @@ def test_seeds_reference_constants():
     assert DEFAULT_NOT_DISCUSSED_CHECK_PROMPT["prompt"] == NOT_DISCUSSED_DEFAULT_PROMPT
 
 
-def test_defaults_include_openrouter_model_where_recommended():
-    """Per spec §4.4.4 + §7 Q4 — call_topics + merge_verification default to
-    openrouter + anthropic/claude-sonnet-4.6 for new projects.
-    not_discussed_check defaults to google/gemini-2.5-pro.
-    project_topics stays provider-agnostic (no model required)."""
-    assert DEFAULT_CALL_TOPICS_PROMPT["llm"] == "openrouter"
-    assert DEFAULT_CALL_TOPICS_PROMPT["model"] == "anthropic/claude-sonnet-4.6"
-    assert DEFAULT_MERGE_VERIFICATION_PROMPT["llm"] == "openrouter"
-    assert DEFAULT_MERGE_VERIFICATION_PROMPT["model"] == "anthropic/claude-sonnet-4.6"
-    assert DEFAULT_NOT_DISCUSSED_CHECK_PROMPT["llm"] == "openrouter"
-    assert DEFAULT_NOT_DISCUSSED_CHECK_PROMPT["model"] == "google/gemini-2.5-pro"
+def test_defaults_inherit_system_settings():
+    """EPIC-12: all four Tier-1 workflow prompts now seed with llm=None/model=None
+    so they inherit from the three-tier cascade (project default → system default).
+    project_topics was already None/None; the others were flipped in this story."""
+    assert DEFAULT_CALL_TOPICS_PROMPT["llm"] is None
+    assert DEFAULT_CALL_TOPICS_PROMPT["model"] is None
+    assert DEFAULT_MERGE_VERIFICATION_PROMPT["llm"] is None
+    assert DEFAULT_MERGE_VERIFICATION_PROMPT["model"] is None
+    assert DEFAULT_NOT_DISCUSSED_CHECK_PROMPT["llm"] is None
+    assert DEFAULT_NOT_DISCUSSED_CHECK_PROMPT["model"] is None
+    assert DEFAULT_PROJECT_TOPICS_PROMPT["llm"] is None
+    assert DEFAULT_PROJECT_TOPICS_PROMPT["model"] is None

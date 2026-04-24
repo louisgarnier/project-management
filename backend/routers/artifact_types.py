@@ -28,8 +28,8 @@ DEFAULT_CALL_TOPICS_PROMPT = {
     "prompt": CALL_TOPICS_DEFAULT_PROMPT,
     "is_default": True,
     "category": "call_topics",
-    "llm": "openrouter",
-    "model": "anthropic/claude-sonnet-4.6",
+    "llm": None,
+    "model": None,
 }
 
 DEFAULT_PROJECT_TOPICS_PROMPT = {
@@ -46,8 +46,8 @@ DEFAULT_MERGE_VERIFICATION_PROMPT = {
     "prompt": MERGE_VERIFICATION_DEFAULT_PROMPT,
     "is_default": True,
     "category": "merge_verification",
-    "llm": "openrouter",
-    "model": "anthropic/claude-sonnet-4.6",
+    "llm": None,
+    "model": None,
 }
 
 DEFAULT_NOT_DISCUSSED_CHECK_PROMPT = {
@@ -55,8 +55,8 @@ DEFAULT_NOT_DISCUSSED_CHECK_PROMPT = {
     "prompt": NOT_DISCUSSED_DEFAULT_PROMPT,
     "is_default": True,
     "category": "not_discussed_check",
-    "llm": "openrouter",
-    "model": "google/gemini-2.5-pro",
+    "llm": None,
+    "model": None,
 }
 
 
@@ -329,7 +329,9 @@ def get_default_for_category(category: str):
                 "template_id": lib.get("template_id"),
             }
     except Exception as e:
-        db_logger.warning(f"⚠️ [Defaults] Library lookup failed for category={category}: {e}")
+        db_logger.warning(
+            f"⚠️ [Defaults] Library lookup failed for category={category}: {e}"
+        )
 
     # 2. Fallback to hardcoded Python constants
     payload = _DEFAULTS_BY_CATEGORY[category].copy()
