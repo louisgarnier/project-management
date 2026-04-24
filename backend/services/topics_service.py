@@ -430,30 +430,10 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         f"Project context:\n{project_context}\n\n" if project_context else ""
     )
 
-    # Vocabulary hint: inject existing topic names so the LLM can match/extend them
-    try:
-        topic_rows = (
-            db.table("topics")
-            .select("name")
-            .eq("project_id", project_id)
-            .eq("archived", False)
-            .execute()
-            .data
-        )
-        existing_names = [r["name"] for r in topic_rows if r.get("name")]
-    except Exception:
-        existing_names = []
-
-    vocab_hint = ""
-    if existing_names:
-        names_list = "\n".join(f"- {n}" for n in existing_names)
-        vocab_hint = f"Existing project topic names (use these exact names when a new topic matches one):\n{names_list}\n\n"
-
     prompt = (
         context_prefix
         + f"{base_instruction}\n\n"
         + f"Return a JSON array where each element matches this exact schema:\n{_TOPIC_SCHEMA}\n\n"
-        + vocab_hint
         + f"Transcript:\n{transcript}"
     )
 
