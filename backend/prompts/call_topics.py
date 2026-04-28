@@ -44,6 +44,12 @@ Every topic distributes its content across EXACTLY THREE distinct fields — do 
 - follow_up_items[] — concrete actions. When the owner is named, inline as prefix: "Nick: run benchmark", "Hassan: share EDS+ evidence". Strings only — no object structure.
 - open_questions[] — unresolved uncertainties needing investigation. Phrase as questions.
 
+DUAL-CLASSIFY RULE — when a follow-up is phrased as an investigation (verbs like *investigate, determine, confirm, validate, check, clarify, verify, assess*) OR depends on an unknown outcome, you MUST ALSO record the underlying uncertainty in open_questions[]. The action stays in follow_up_items[]; the question ALSO goes in open_questions[]. Both entries are expected — not either/or. An investigation IS an unresolved question with an owner attached.
+
+Example: follow-up "Nick: investigate whether the memory boost option resolves the Monte Carlo Mac failure" → ALSO add open_question "Does the memory boost option resolve the Monte Carlo Mac memory failure?"
+
+If a topic ends up with only follow_up_items full of "investigate/confirm/check" verbs and open_questions empty, you have violated this rule — revisit and populate open_questions[].
+
 If a thread has none of these three, it is not a topic.
 
 [FEW-SHOT]
@@ -63,6 +69,24 @@ GOOD extraction (shape and discipline to mirror):
     "is_parked": false,
     "importance": "high",
     "rationale": "All 4 criteria met — named systems (LMAC/MC Mac/FV Mac), named people, explicit decision gate, 5+ substantive turns."
+  }
+]
+
+PARKED extraction (shape to mirror for future-life items with no current decision or action):
+[
+  {
+    "name": "Fat-Tail Modeling — Future Extension",
+    "summary": "Hassan briefly raised fat-tail modeling as a longer-term consideration beyond the current Monte Carlo baseline. Mentioned twice with no current commitment, no decision, no owner attached — flagged as something to revisit when the Phase 2 work stabilizes.",
+    "transcript_excerpt": "Hassan: at some point we should think about fat-tail modeling, but that's not this phase... Nick: yeah, let's park it.",
+    "decisions": [],
+    "follow_up_items": [],
+    "open_questions": ["When should fat-tail modeling be revisited and what project milestone triggers the conversation?"],
+    "status": "open",
+    "owner": "Us",
+    "sentiment": "neutral",
+    "is_parked": true,
+    "importance": "low",
+    "rationale": "Parked — future-life and named system (fat-tail modeling) but no current anchor action or decision; carries one unresolved question."
   }
 ]
 

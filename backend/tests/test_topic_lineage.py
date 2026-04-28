@@ -750,6 +750,65 @@ def test_merge_verification_prompt_falls_back_to_flat_lists_when_no_topic_id():
     assert "Source decisions" in prompt
 
 
+def test_merge_verification_rejects_hallucinated_bucket_shape():
+    """Regression: on 2026-04-24, `_verify_merged_topics` silently substituted
+    a bucket-shaped LLM hallucination (`{topic_id, new_topics, followed_up,
+    not_discussed}`) into `merge_cache`, corrupting two items for the puoihug
+    project. Downstream the UI rendered phantom "Not discussed" rows and
+    `validate-updates` threw 7 pydantic TopicUpdate errors.
+
+    Guard: when the LLM returns a dict missing required topic fields
+    (name/summary/follow_up_items/decisions/status/owner/sentiment), the
+    verifier MUST keep the original merged topic and skip substitution.
+    """
+    from backend.services.topics_service import _verify_merged_topics
+
+    db = _make_verify_db("proj-1", "some transcript content")
+
+    async def hallucinated_llm(prompt, llm, *, model=None):
+        # Simulate the bucket-shape hallucination observed in prod
+        return {
+            "new_topics": [],
+            "followed_up": [],
+            "not_discussed": [],
+        }
+
+    original = {
+        "topic_id": "topic-good",
+        "name": "Risk Model Selection",
+        "summary": "Team weighing LMAC vs Monte Carlo Mac — benchmark pending.",
+        "follow_up_items": ["Nick: run benchmark"],
+        "decisions": ["Phase 2 gated on benchmark"],
+        "open_questions": [],
+        "status": "open",
+        "owner": "Us",
+        "sentiment": "concern",
+        "is_parked": False,
+        "importance": "high",
+        "rationale": "All 4 criteria met",
+    }
+
+    with patch("backend.services.topics_service.get_client", return_value=db), \
+         patch("backend.services.topics_service.build_lineage_evidence_block",
+               return_value="(evidence)"), \
+         patch("backend.services.topics_service._call_llm",
+               new=AsyncMock(side_effect=hallucinated_llm)):
+        result = asyncio.run(_verify_merged_topics("call-1", [original]))
+
+    assert len(result) == 1
+    kept = result[0]
+    # Original topic preserved, NOT replaced with the bucket-shape garbage
+    assert kept["name"] == "Risk Model Selection", (
+        f"Expected original topic kept; got substituted shape with keys={list(kept.keys())}"
+    )
+    assert "new_topics" not in kept, (
+        "Hallucinated bucket fields must not leak into the verified topic"
+    )
+    assert "followed_up" not in kept
+    # topic_id preserved
+    assert kept["topic_id"] == "topic-good"
+
+
 # ---------------------------------------------------------------------------
 # Story 10.6 / Fix 6.5 — get_project_topics_lineage_context
 # ---------------------------------------------------------------------------

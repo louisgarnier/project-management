@@ -50,15 +50,26 @@ This will:
 
 ### 2. Start Development Servers
 
-**Backend:** (run from repo root)
+This project runs on **fixed ports**: backend `8765`, frontend `3015`. Chosen
+to avoid colliding with other apps on common ports (8000/3000).
+
+**One-shot (recommended):** boot backend + frontend in a single terminal.
 ```bash
-python3 -m uvicorn backend.main:app --reload --port 8000
+python3 scripts/dev.py
+```
+Streams both processes' output prefixed with `[BACK ]` / `[FRONT]`. Ctrl+C stops both.
+
+**Or run them manually in separate terminals:**
+
+Backend (run from repo root):
+```bash
+python3 -m uvicorn backend.main:app --reload --port 8765
 ```
 
-**Frontend:**
+Frontend (reads `BACKEND_URL` from `frontend/.env.local`):
 ```bash
 cd frontend
-npm run dev
+npm run dev -- --port 3015
 ```
 
 ### 3. Configure Environment Variables

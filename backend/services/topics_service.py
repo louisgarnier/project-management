@@ -306,6 +306,28 @@ def _normalize_topic_keys(parsed: list | dict) -> list | dict:
     }
 
 
+_TOPIC_SHAPE_REQUIRED = {
+    "name", "summary", "follow_up_items", "decisions",
+    "status", "owner", "sentiment",
+}
+
+
+def _is_valid_topic_shape(d: object) -> bool:
+    """True iff `d` looks like a topic dict (not the aggregate-bucket shape
+    some models hallucinate: {new_topics, followed_up, not_discussed}).
+
+    Guards merge_preview + merge_verification LLM call sites — without this
+    check, garbage JSON silently overwrote good merged topics in merge_cache,
+    causing downstream pydantic errors and phantom "not discussed" rows.
+    """
+    if not isinstance(d, dict):
+        return False
+    if not _TOPIC_SHAPE_REQUIRED.issubset(d.keys()):
+        return False
+    name = d.get("name")
+    return isinstance(name, str) and bool(name.strip())
+
+
 def _get_previous_topics(project_id: str, db) -> list[dict]:
     """Return all non-archived topics for a project with their most recent update."""
     topics = (
@@ -767,6 +789,13 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 merged = await _call_llm(prompt, llm, model=model)
                 if isinstance(merged, list):
                     merged = merged[0] if merged else {}
+                if not _is_valid_topic_shape(merged):
+                    logger.error(
+                        f"❌ [Topics] New-topic merge returned non-topic shape — "
+                        f"keys={list(merged.keys()) if isinstance(merged, dict) else type(merged).__name__} "
+                        f"— returning first call topic as-is"
+                    )
+                    return [{**call_matches[0], "topic_id": None}]
                 return [{**merged, "topic_id": None}]
             except Exception as e:
                 logger.error(
@@ -823,6 +852,14 @@ async def run_merge_preview(call_id: str) -> list[dict]:
                 merged = await _call_llm(prompt, llm, model=model)
                 if isinstance(merged, list):
                     merged = merged[0] if merged else {}
+                if not _is_valid_topic_shape(merged):
+                    logger.error(
+                        f"❌ [Topics] 1:1 merge returned non-topic shape for "
+                        f"'{existing.get('name', '?')}' — "
+                        f"keys={list(merged.keys()) if isinstance(merged, dict) else type(merged).__name__} "
+                        f"— returning existing unchanged"
+                    )
+                    return [{**existing, "topic_id": ptid}]
                 return [{**merged, "topic_id": ptid}]
             except Exception as e:
                 logger.error(
@@ -879,6 +916,15 @@ async def run_merge_preview(call_id: str) -> list[dict]:
             merged = await _call_llm(prompt, llm, model=model)
             if isinstance(merged, list):
                 merged = merged[0] if merged else {}
+            if not _is_valid_topic_shape(merged):
+                logger.error(
+                    f"❌ [Topics] M:N merge returned non-topic shape — "
+                    f"keys={list(merged.keys()) if isinstance(merged, dict) else type(merged).__name__} "
+                    f"— returning first existing topic unchanged"
+                )
+                return [
+                    {**existing_topics[0], "topic_id": None, "_source_topic_ids": ptids}
+                ]
             return [{**merged, "topic_id": None, "_source_topic_ids": ptids}]
         except Exception as e:
             logger.error(
@@ -1081,6 +1127,14 @@ async def _verify_merged_topics(call_id: str, merged_topics: list[dict]) -> list
             corrected = await _call_llm(prompt, llm, model=model)
             if isinstance(corrected, list):
                 corrected = corrected[0] if corrected else topic
+            if not _is_valid_topic_shape(corrected):
+                logger.error(
+                    f"❌ [MergeVerify] LLM returned non-topic shape for "
+                    f"'{topic.get('name', '?')}' — "
+                    f"keys={list(corrected.keys()) if isinstance(corrected, dict) else type(corrected).__name__} "
+                    f"— keeping original"
+                )
+                continue
             # Preserve internal fields
             corrected["topic_id"] = topic.get("topic_id")
             if "_source_topic_ids" in topic:

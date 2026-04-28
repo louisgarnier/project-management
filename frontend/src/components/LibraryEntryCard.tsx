@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { LibraryEntry } from "@/types";
 import { libraryAPI } from "@/api/client";
+import { MODEL_RECOMMENDATIONS } from "@/constants/models";
 
 const KIND_THEME = {
   llm:      { bg: "linear-gradient(90deg, #e9f0ff 0%, #f4f8ff 100%)", accent: "#0052cc", label: "LLM",      icon: "🤖" },
@@ -284,11 +285,19 @@ export default function LibraryEntryCard({
                 <label style={{ fontSize: 11, color: "#5e6c84", display: "block", marginTop: 8 }}>Default model (OpenRouter slug)</label>
                 <input
                   type="text"
+                  list={`openrouter-models-lib-${entry.id}`}
                   value={draft.model || ""}
                   onChange={(e) => setDraft({ ...draft, model: e.target.value })}
-                  placeholder="anthropic/claude-sonnet-4.6"
+                  placeholder="e.g. deepseek/deepseek-v3.2 — type any slug or click ▾ for suggestions"
                   style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "4px 6px", fontFamily: "ui-monospace, Menlo, monospace", width: "100%", boxSizing: "border-box" }}
                 />
+                <datalist id={`openrouter-models-lib-${entry.id}`}>
+                  {(MODEL_RECOMMENDATIONS[entry.category ?? "artifacts"] ?? []).map((m) => (
+                    <option key={m.slug} value={m.slug}>
+                      {m.label}{m.priceHint ? ` · ${m.priceHint}` : ""}
+                    </option>
+                  ))}
+                </datalist>
               </>
             )}
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#5e6c84", marginTop: 8 }}>
