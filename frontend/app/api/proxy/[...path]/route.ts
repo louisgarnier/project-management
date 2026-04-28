@@ -39,6 +39,20 @@ async function proxy(request: NextRequest, params: { path: string[] }): Promise<
     if (response.status === 204) {
       return new NextResponse(null, { status: 204 });
     }
+
+    // Pass non-JSON responses (markdown exports, file downloads, etc.) through
+    // verbatim — preserve Content-Type AND Content-Disposition so the browser
+    // triggers a save dialog instead of treating the body as JSON.
+    const upstreamCT = response.headers.get("content-type") || "";
+    if (!upstreamCT.includes("application/json")) {
+      const bytes = await response.arrayBuffer();
+      const passthrough = new Headers();
+      if (upstreamCT) passthrough.set("Content-Type", upstreamCT);
+      const cd = response.headers.get("content-disposition");
+      if (cd) passthrough.set("Content-Disposition", cd);
+      return new NextResponse(bytes, { status: response.status, headers: passthrough });
+    }
+
     const data = await response.json().catch(() => null);
     return NextResponse.json(data, { status: response.status });
   } catch (error) {

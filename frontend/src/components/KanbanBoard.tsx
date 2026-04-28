@@ -149,6 +149,7 @@ export default function KanbanBoard({ calls, onNewCall, onDeleteCall }: Props) {
                 const state     = getCellState(call, s.key, prevCallDone);
                 const clickable = state === "active" || state === "done";
 
+                const isDoneCell = s.key === "done" && state === "done";
                 return (
                   <div
                     key={s.key}
@@ -161,7 +162,7 @@ export default function KanbanBoard({ calls, onNewCall, onDeleteCall }: Props) {
                         router.push(`/projects/${projectId}/calls/${call.id}?view=${s.key}`);
                       }
                     }}
-                    className="flex-1 rounded-md flex flex-col justify-between p-2.5 min-h-[72px]"
+                    className="flex-1 rounded-md flex flex-col justify-between p-2.5 min-h-[72px] relative"
                     style={{ ...CELL_STYLE[state], cursor: clickable ? "pointer" : "default" }}
                   >
                     <span
@@ -170,12 +171,29 @@ export default function KanbanBoard({ calls, onNewCall, onDeleteCall }: Props) {
                     >
                       {s.label}
                     </span>
-                    <span
-                      className="text-[9px] font-bold uppercase tracking-[0.04em] px-[6px] py-[2px] rounded-[3px] self-start"
-                      style={STATUS_BADGE[state]}
-                    >
-                      {STATUS_LABEL[state]}
-                    </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="text-[9px] font-bold uppercase tracking-[0.04em] px-[6px] py-[2px] rounded-[3px]"
+                        style={STATUS_BADGE[state]}
+                      >
+                        {STATUS_LABEL[state]}
+                      </span>
+                      {isDoneCell && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const a = document.createElement("a");
+                            a.href = `/api/proxy/api/calls/${call.id}/export`;
+                            a.click();
+                          }}
+                          title="Download recap (markdown)"
+                          className="text-[10px] font-semibold px-[6px] py-[2px] rounded-[3px] border border-[#15803d] text-[#15803d] bg-white hover:bg-[#15803d] hover:text-white transition-colors leading-none"
+                        >
+                          📥 Export
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}

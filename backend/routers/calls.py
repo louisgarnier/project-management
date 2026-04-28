@@ -1,10 +1,13 @@
 import json
 from typing import Literal, Optional
+from urllib.parse import quote
 
 from backend.database.supabase_client import get_client
+from backend.services.export_service import build_call_export
 from backend.services.topics_service import rollback_to_stage
 from backend.utils.logger import db_logger
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api", tags=["calls"])
@@ -370,3 +373,23 @@ def rollback_call(call_id: str, payload: RollbackPayload):
             db_logger.info(f"🔄 [DB] Cascade-rolled back later call {lc['id']} to call_topics")
 
     return result
+
+
+@router.get("/calls/{call_id}/export")
+async def export_call(call_id: str):
+    """Download a single call's recap (topics + artifacts) as markdown."""
+    db_logger.info(f"📥 [Export] Call recap requested: call={call_id}")
+    try:
+        filename, body = await build_call_export(call_id)
+    except ValueError as e:
+        if str(e) == "call_not_found":
+            raise HTTPException(status_code=404, detail="Call not found")
+        raise HTTPException(status_code=500, detail=str(e))
+    return Response(
+        content=body,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            # RFC 5987 — handles unicode filenames safely across browsers
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        },
+    )
