@@ -39,8 +39,21 @@ def commit(message: str) -> None:
 
 
 def push() -> None:
-    """Push to current branch."""
-    run(["git", "push"])
+    """Push current branch. Auto-sets upstream to origin when missing."""
+    check = subprocess.run(
+        ["git", "rev-parse", "--symbolic-full-name", "@{u}"],
+        capture_output=True,
+        text=True,
+    )
+    if check.returncode != 0:
+        branch_name = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        run(["git", "push", "-u", "origin", branch_name])
+    else:
+        run(["git", "push"])
 
 
 def pull() -> None:
