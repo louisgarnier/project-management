@@ -13,6 +13,7 @@
 |---|---|---|---|---|
 | ADR-001 | Upgrade Next.js from 14 to 15 | Accepted | 2026-04-09 | EPIC-1 |
 | ADR-002 | Use Supabase Storage for Call Context Files | Accepted | 2026-04-10 | EPIC-4 |
+| ADR-003 | Roll back EPIC-13 differential pipeline; return to extract-then-match direction | Accepted | 2026-05-13 | EPIC-13 |
 
 ---
 
@@ -137,6 +138,60 @@ Story 4.6 requires storing arbitrary binary files (PDF, DOCX, CSV, TXT, MD) atta
 #### Review Triggers
 - [ ] If signed URL TTL causes UX issues (links expiring during active session)
 - [ ] If file sizes grow beyond Supabase free-tier storage limits
+
+---
+
+### ADR-003: Roll back EPIC-13 differential pipeline; future redesign uses extract-then-match direction
+**Date:** 2026-05-13
+**Epic / Story:** EPIC-13 (entire epic — rolled back)
+**Status:** `Accepted`
+**Decided by:** Both
+
+#### Context
+EPIC-13 ("Pipeline Trust + Differential Extraction") was built over 7 days on `epic-13-pipeline-trust`. Stories 13.1, 13.2, and 13.3 (with §7-v3 operational fixes) were code-complete and migrations 025–029 applied in Supabase. During manual testing on Call 2 of project WGS07 a systemic quality bug surfaced: the pipeline attributed the same new action to multiple prior topics simultaneously ("Mark: send SO1/SO2/SO3 production PA documents" appeared NEW under 3 different priors) and marked paraphrased restatements as new (e.g. "Team: review SO7 doc" flagged NEW despite a prior next-step that said the same thing in different words).
+
+Investigation identified the root cause as architectural, not promptable. EPIC-13 Step 2 fires **K parallel LLM calls — one per prior topic** — each asking "was I discussed? what's the update?". Each call sees its own prior + the full transcript but is **blind to the other K−1 calls**. When a new fact in the transcript plausibly relates to multiple priors, every call independently claims it. No amount of prompt-tightening can fix this because the LLM literally cannot see what its sibling calls are concluding.
+
+#### Decision
+**Roll back EPIC-13 in its entirety. Return the working tree to `main` (the pre-EPIC-13 baseline). Park the branch as `epic-13-pipeline-trust` for archival reference. Leave migrations 025–029 applied in Supabase (pure-additive, harmless when unused). When the pipeline is redesigned, run direction is reversed: one pass over the call extracts topics, then each extracted topic is matched against the prior set with at most one prior as its target — making cross-bleed structurally impossible.**
+
+#### Alternatives Considered
+| Option | Pros | Cons | Reason Rejected |
+|---|---|---|---|
+| Roll back to `main` (chosen) | Clean baseline; known-good code; no half-wired features lurking | Loses the orthogonal infra (confidence pill, snapshots) until rebuilt | *Chosen* — momentum + clarity over salvage |
+| Patch the K-parallel pipeline with a post-pass dedup | Keeps the architecture; smaller diff | Doesn't fix paraphrase-as-new; dedup heuristics are themselves bug-prone; still a doomed direction | Treats the symptom, not the cause |
+| Re-architect Step 2 in-place into a single global LLM call | No rollback; preserves all built features | Bigger rewrite while mid-test; risks adding new bugs on top of unproven foundation | Too much work without confidence the new shape ships |
+| Revert the Supabase migrations too | DB matches code on `main` exactly | Pure-additive migrations are harmless; reverting is destructive for zero benefit; data already written would be lost | Risk without payoff |
+
+#### Consequences
+**Positive:**
+- One pipeline. No "old vs new" branching in the UI. Easier to reason about.
+- Codebase shrinks back to the EPIC-12 surface; no half-wired Carryover Report.
+- `main` is the known-good baseline; next epic starts from solid ground.
+- Migrations 025–029 stay applied — `confidence_scoring`, `call_prompt_snapshots`, `commit_log`, archive flag schema all sit ready for whichever future feature wants them.
+
+**Negative / Trade-offs:**
+- All the polish work that landed on the branch in the last 4 commits (rollback-cascade, in-flight detection, anti-LLM-lying guards) is parked. Cherry-pickable from branch history if needed.
+- The 5-signal confidence scoring engine + ConfidencePill component sit unused on the branch. Rebuilding will be needed when reliability metrics return.
+- Supabase carries 4 nullable columns + 2 unused tables until cleaned up in a future migration (cost: zero; cosmetic only).
+- 7 days of build investment did not produce shippable value. The redesign discipline that should have caught this (golden-transcript regression fixtures, end-to-end manual test before §7-v3 build-out) was skipped — see ERR-005 prevention rule.
+
+**What this decision affects:**
+- `backend/services/differential_extraction.py` — deleted from working tree (preserved on branch)
+- `backend/prompts/topic_update_check.py` — deleted from working tree (preserved on branch)
+- `frontend/src/components/CarryoverReportPreview.tsx` — deleted from working tree (preserved on branch)
+- `routers/topics.py` — reverts to EPIC-12 surface (no /run-differential, /commit-carryover, etc.)
+- `docs/project/config/epics/ACTIVE.md` — flipped to "no active epic"
+- All `docs/project/config/2026-05-1[23]-*` design/plan/test docs — left on the branch for archival reference
+
+#### Lessons learned (capture before forgetting)
+1. **When a pipeline step is "for each X, do Y" with parallel calls, ask: can the same Y output legitimately belong to multiple Xs?** If yes — K-parallel-blind is structurally broken. Use a single pass with global awareness, OR add a deterministic merge/dedup pass after.
+2. **Golden-transcript regression fixtures aren't optional for LLM pipelines.** EPIC-13's design called for them (Section 6.1) but the build skipped to features instead. A 30-minute fixture on Call 2 with overlapping topics would have surfaced the cross-bleed before any UI was written.
+3. **"K parallel LLM calls" is not the same shape as "K parallel database queries".** Database queries return facts; LLM calls return synthesised opinions that need to be reconciled. Parallelism is a cost-optimisation; reconciliation is a correctness-requirement.
+
+#### Review Triggers
+- [ ] When the next pipeline redesign is in brainstorm — re-read this ADR and the lessons learned
+- [ ] If we ever consider another "for each prior, independently judge X" pattern — STOP and read this ADR
 
 ---
 

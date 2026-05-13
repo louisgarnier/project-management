@@ -54,6 +54,7 @@
 | ERR-001 | INTEGRATION | Frontend API client missing `/api` prefix on backend paths | Resolved | 2026-04-09 | EPIC-2 |
 | ERR-002 | DEPENDENCY | Tailwind v4 installed but configured with v3 syntax | Resolved | 2026-04-09 | EPIC-2 |
 | ERR-003 | INFRA | Transcription server fails on first run — venv never created | Resolved | 2026-04-09 | EPIC-4 |
+| ERR-005 | LOGIC | K parallel "blind" LLM calls cross-attribute the same output to multiple inputs | Resolved (by rollback) | 2026-05-13 | EPIC-13 |
 
 ---
 
@@ -163,6 +164,26 @@ Updated `run_transcription.sh` to auto-create the venv and install deps on first
 
 ---
 
+### ERR-005: K parallel "blind" LLM calls cross-attribute the same output to multiple inputs
+
+**Symptom:** During EPIC-13 testing on Call 2 of project WGS07, the differential pipeline marked the same new action ("Mark: send SO1/SO2/SO3 production PA documents") as NEW under three different prior topics simultaneously. Same pattern for "Mark: assemble and send a representative sample composite" — appeared NEW under three different priors. Paraphrased restatements of existing items were also flagged NEW (e.g. "Team: review SO7 doc" marked NEW despite a prior next-step saying the same thing in different words).
+
+**Root Cause:** EPIC-13 Step 2 invokes K parallel LLM calls — one per prior topic — each asking "was I discussed? what's new about me?". Each parallel call receives only its own prior + the full transcript; it is **structurally blind to the K−1 sibling calls**. When a single fact in the transcript plausibly relates to multiple priors, every parallel call independently claims it. Prompt-tightening cannot fix this because the LLM cannot see what its siblings are concluding. The bug is in the design shape, not the prompt.
+
+**Fix Applied**
+- **Date fixed:** 2026-05-13
+- **Resolution:** Rolled back EPIC-13 in full. Branch parked as `epic-13-pipeline-trust` for archival reference. Future redesign reverses the direction: one global pass extracts topics from the call, then each extracted topic is matched against the prior set with at most one prior target. See ADR-003.
+
+**Prevention Rule**
+> 🔒 **RULE ERR-005:** When designing a "for each X, do Y" pipeline step that uses parallel LLM calls, first ask: **can the same Y output legitimately belong to multiple Xs?** If yes — K-parallel-blind is structurally broken. Three acceptable patterns:
+> 1. **Single global LLM call** that sees all Xs and emits Ys with explicit attribution to ≤1 X.
+> 2. **Inverted direction** — iterate over the OUTPUT space (Ys) instead of the input space (Xs), so each Y has one home by construction. (This is the planned next-iteration direction for this pipeline.)
+> 3. **K parallel calls + deterministic post-pass dedup** — only safe when "same output" is detectable with high precision via normalised string comparison. Not safe when paraphrase or semantic equivalence is involved.
+>
+> **Related rule:** for any LLM pipeline that may exhibit cross-attribution, paraphrase-as-new, or similar quality bugs, golden-transcript regression fixtures are not optional. A 30-minute fixture with overlapping topics would have caught ERR-005 before a single UI line was written. Maintain ≥2 fixtures with hand-verified expected outputs; run them in CI on every pipeline change.
+
+---
+
 ## 🔒 Prevention Rules Summary
 | Rule ID | Applies To | Rule |
 |---|---|---|
@@ -170,6 +191,7 @@ Updated `run_transcription.sh` to auto-create the venv and install deps on first
 | ERR-002 | `frontend/` CSS + PostCSS | Tailwind v4: use `@import "tailwindcss"` + `@tailwindcss/postcss` |
 | ERR-003 | `run_transcription.sh` / any server script | Auto-create venv in launch script; verify server starts on clean checkout before closing story |
 | ERR-004 | Any frontend bucket-move action (promote/demote/reclassify) | Must persist to backend — never rely on React local state alone |
+| ERR-005 | Any LLM pipeline with "for each X, do Y" parallel calls | Ensure Ys have ≤1 home — use global call, invert direction, or deterministic dedup. Golden fixtures mandatory. |
 
 ---
 

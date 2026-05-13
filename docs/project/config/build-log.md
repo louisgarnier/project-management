@@ -1,8 +1,29 @@
 # Build Log — Call Tracker
 
 ## Current Stage
-**EPIC-12 — Artifacts Overhaul — code complete 2026-04-23 (pending manual validation)**
-- All 6 stories done. Three artifact kinds (llm/template/hybrid), artifact library (8 system entries), two-tier artifacts page, /library page, publish-to-library flow shipped.
+**Awaiting next epic — EPIC-13 attempted and rolled back 2026-05-13.**
+- EPIC-12 is the last delivered epic.
+- EPIC-13 (Pipeline Trust + Differential Extraction) was built end-to-end on branch `epic-13-pipeline-trust` but the core architecture (K parallel "did MY prior come up?" LLM calls) produced cross-bleed: the same new action/decision got attributed to multiple priors, and paraphrases of existing items were flagged NEW. Branch parked for archive. See ADR-003 + ERR-005. Migrations 025–029 remain applied in Supabase (pure-additive, unused by current pipeline). Next epic should return to the simpler "extract → match against priors" direction.
+
+---
+
+### 2026-05-13 — EPIC-13 rolled back (parked on branch)
+
+Returned working tree to `main` after 7 days on `epic-13-pipeline-trust`. Reason: discovered during manual testing on Call 2 of project WGS07 that the differential pipeline systematically (a) attributes the same new action to multiple prior topics and (b) marks paraphrased restatements as new updates. Root cause is architectural — Step 2 invokes K parallel LLM calls each blind to the other K−1, so any new fact that plausibly relates to multiple priors gets claimed by all of them.
+
+**What's on the branch (preserved for future salvage):**
+- Story 13.1 — `confidence_scoring.py` 5-signal engine + `ConfidencePill` UI (orthogonal — could be re-bolted onto the old pipeline)
+- Story 13.2 — `call_snapshot.py` prompt+model audit infra + `call_prompt_snapshots` table (orthogonal)
+- Migrations 025–029 (additive schema for confidence cols, archive flag, pending_carryover, source/commit_id, commit_log)
+- All design + plan docs under `docs/project/config/2026-05-1[23]-*` + `epics/epic-13/`
+
+**What was thrown away in the rollback:**
+- `backend/services/differential_extraction.py` (K-parallel-per-prior orchestrator)
+- `backend/prompts/topic_update_check.py` (the K-parallel prompt)
+- `frontend/src/components/CarryoverReportPreview.tsx` (UI for the broken pipeline)
+- ~7 new routes on `routers/topics.py` for run-differential / commit-carryover / undo-commit / etc.
+
+**Current pipeline (what we're back to):** `extract_call_topics` → `aggregate_topics` → `run_merge_preview` → `_verify_merged_topics` → `verify_not_discussed_topics`. The 3-stage Topics UI (`CallTopicsStage` → `ProjectMatchingStage` → `ProjectUpdatesStage`). This is the EPIC-12 baseline, unchanged.
 
 ---
 
