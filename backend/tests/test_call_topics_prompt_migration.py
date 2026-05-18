@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 from backend.prompts.call_topics import (
-    CALL_TOPICS_DEFAULT_PROMPT,
+    CALL_TOPICS_V2_PROMPT_BODY as CALL_TOPICS_DEFAULT_PROMPT,
     OLD_DEFAULT_PROMPT_STRING,
 )
 from backend.scripts.migrate_call_topics_prompt import migrate_prompts

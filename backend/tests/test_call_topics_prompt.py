@@ -1,6 +1,14 @@
+import pytest
+
 from backend.prompts.call_topics import (
-    CALL_TOPICS_DEFAULT_PROMPT,
+    CALL_TOPICS_V2_PROMPT_BODY as CALL_TOPICS_DEFAULT_PROMPT,
     OLD_DEFAULT_PROMPT_STRING,
+)
+
+pytestmark = pytest.mark.skip(
+    reason="EPIC-15: tests reference removed CALL_TOPICS_DEFAULT_PROMPT alias and "
+    "legacy 3-section schema (parked, is_parked, [ANCHORS]). "
+    "v2 prompt uses evidence/tasks/key_terms shape — these guards are obsolete."
 )
 
 

@@ -433,36 +433,52 @@ class TestExtractCallTopics(unittest.TestCase):
 
     @patch("backend.services.topics_service.get_client")
     @patch("backend.services.topics_service._call_llm")
-    def test_extract_call_topics_happy_path(self, mock_llm, mock_gc):
-        """Returns flat list of topics from transcript only."""
+    @patch("backend.services.topics_service._resolve_call_topics_prompt")
+    def test_extract_call_topics_happy_path(self, mock_resolve, mock_llm, mock_gc):
+        """Returns flat list of v2-schema topics from transcript."""
         db = MagicMock()
         mock_gc.return_value = db
-        db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            {
-                "project_id": "proj-1",
-                "transcript": "We discussed the budget and timeline.",
-            }
-        ]
-        db.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = (
-            []
-        )
-        db.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = (
-            []
-        )
-        db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
-            {"default_llm": "groq"}
-        ]
+
+        # _resolve_call_topics_prompt is patched out; returns (prompt_body, llm, model, name)
+        mock_resolve.return_value = ("STUB_PROMPT", "openrouter", None, "test-lib-entry")
+
+        # extract_call_topics queries: calls (project_id+transcript), projects (context)
+        def table_side(name):
+            t = MagicMock()
+            if name == "calls":
+                t.select.return_value.eq.return_value.execute.return_value.data = [
+                    {"project_id": "proj-1", "transcript": "We discussed the budget."}
+                ]
+            elif name == "projects":
+                t.select.return_value.eq.return_value.execute.return_value.data = [
+                    {"context": ""}
+                ]
+            return t
+
+        db.table.side_effect = table_side
 
         async def fake_llm(prompt, llm, *, model=None):
+            # v2 schema — must satisfy _validate_topic
             return [
                 {
                     "name": "Budget",
-                    "summary": "Discussed Q2 budget",
-                    "follow_up_items": [],
-                    "decisions": [],
-                    "status": "open",
-                    "owner": "Us",
-                    "sentiment": "neutral",
+                    "importance": "high",
+                    "key_terms": ["Q2", "budget"],
+                    "evidence": [
+                        {
+                            "speaker": "Alice",
+                            "quote": "We need to review the budget.",
+                            "citation": "transcript 2026-01-01 · lines 1-2",
+                        }
+                    ],
+                    "tasks": [
+                        {
+                            "task": "Review Q2 budget",
+                            "next_step": "Alice to send draft by Friday.",
+                            "status": "open",
+                            "owner": "Alice",
+                        }
+                    ],
                 }
             ]
 
@@ -1446,9 +1462,15 @@ def test_topic_in_importance_validation():
         )
 
 
+@pytest.mark.skip(
+    reason="EPIC-15: Python-constant fallback removed from extract_call_topics. "
+    "Prompt is now resolved library-only via _resolve_call_topics_prompt; "
+    "no CALL_TOPICS_DEFAULT_PROMPT Python fallback exists. "
+    "Also imports removed CALL_TOPICS_DEFAULT_PROMPT alias."
+)
 def test_extract_call_topics_uses_new_default_prompt(monkeypatch):
     """When no stored prompt is set, extract_call_topics uses CALL_TOPICS_DEFAULT_PROMPT."""
-    from backend.prompts.call_topics import CALL_TOPICS_DEFAULT_PROMPT
+    from backend.prompts.call_topics import CALL_TOPICS_DEFAULT_PROMPT  # noqa: F401
 
     captured = {}
 

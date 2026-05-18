@@ -193,8 +193,9 @@ def test_list_artifacts_for_call(mock_gc):
     m.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
         {"id": CALL_ID}
     ]
-    # artifact fetch: .select().eq().order().execute().data
-    m.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
+    # artifact fetch: .select().eq().neq().order().execute().data
+    # neq("status", "stale") was added to filter out stale artifacts
+    m.table.return_value.select.return_value.eq.return_value.neq.return_value.order.return_value.execute.return_value.data = [
         make_artifact(ART_ID_1, TYPE_ID_1, mode="claude", status="done"),
         make_artifact(ART_ID_2, TYPE_ID_2, mode="manual", status="done"),
     ]

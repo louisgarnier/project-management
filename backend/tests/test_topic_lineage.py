@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import MagicMock
 
 from backend.services.topic_lineage import get_topic_lineage
@@ -502,6 +503,11 @@ def _make_extraction_db(project_id: str, transcript: str, existing_topic_names: 
     return db
 
 
+@pytest.mark.skip(
+    reason="EPIC-15: vocabulary hint feature removed from extract_call_topics. "
+    "The v2 extractor uses library-only prompt resolution and no longer prepends "
+    "'Existing project topic names' vocabulary to the prompt."
+)
 def test_extraction_prompt_includes_vocabulary_hint_when_topics_exist():
     """Fix 6.1: existing project topic names are passed as a vocabulary hint
     right before the transcript.
