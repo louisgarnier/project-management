@@ -291,3 +291,42 @@ def test_unlock_call():
         r = client.post(f"/api/calls/{CALL_ID}/unlock")
     assert r.status_code == 200
     assert r.json()["is_locked"] is False
+
+
+# --- PATCH /api/calls/{call_id}/prompt-selection ---
+
+LIB_ID = "11111111-1111-4111-8111-111111111111"
+
+
+def test_patch_call_prompt_selection_sets_uuid():
+    mc = _mock_client()
+    updated_call = {**MOCK_CALL, "call_topics_prompt_id": LIB_ID}
+    mc.table.return_value.update.return_value.eq.return_value.execute.return_value = (
+        MagicMock(data=[updated_call])
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.patch(f"/api/calls/{CALL_ID}/prompt-selection", json={"call_topics_prompt_id": LIB_ID})
+    assert r.status_code in (200, 204), r.text
+    assert r.json()["call_topics_prompt_id"] == LIB_ID
+
+
+def test_patch_call_prompt_selection_clears_to_null():
+    mc = _mock_client()
+    updated_call = {**MOCK_CALL, "call_topics_prompt_id": None}
+    mc.table.return_value.update.return_value.eq.return_value.execute.return_value = (
+        MagicMock(data=[updated_call])
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.patch(f"/api/calls/{CALL_ID}/prompt-selection", json={"call_topics_prompt_id": None})
+    assert r.status_code in (200, 204), r.text
+    assert r.json()["call_topics_prompt_id"] is None
+
+
+def test_patch_call_prompt_selection_404_on_missing_call():
+    mc = _mock_client()
+    mc.table.return_value.update.return_value.eq.return_value.execute.return_value = (
+        MagicMock(data=[])
+    )
+    with patch("backend.routers.calls.get_client", return_value=mc):
+        r = client.patch("/api/calls/missing/prompt-selection", json={"call_topics_prompt_id": None})
+    assert r.status_code == 404

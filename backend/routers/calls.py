@@ -1,6 +1,7 @@
 import json
 from typing import Literal, Optional
 from urllib.parse import quote
+from uuid import UUID
 
 from backend.database.supabase_client import get_client
 from backend.services.export_service import build_call_export
@@ -373,6 +374,29 @@ def rollback_call(call_id: str, payload: RollbackPayload):
             db_logger.info(f"🔄 [DB] Cascade-rolled back later call {lc['id']} to call_topics")
 
     return result
+
+
+class CallPromptSelection(BaseModel):
+    call_topics_prompt_id: Optional[UUID] = None
+
+
+@router.patch("/calls/{call_id}/prompt-selection")
+def patch_call_prompt_selection(call_id: str, body: CallPromptSelection):
+    """Set or clear the per-call call_topics prompt FK (artifact_library id).
+
+    EPIC-15: lets the user choose which library prompt variant runs at the next
+    extraction. None = fall back to library's seeded_by_default entry.
+    """
+    db = get_client()
+    payload = {
+        "call_topics_prompt_id": str(body.call_topics_prompt_id) if body.call_topics_prompt_id else None,
+    }
+    db_logger.info(f"🗄️ [DB] Setting call_topics_prompt_id for call: {call_id}")
+    res = db.table("calls").update(payload).eq("id", call_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="call not found")
+    db_logger.info(f"✅ [DB] call_topics_prompt_id updated: {call_id}")
+    return res.data[0]
 
 
 @router.get("/calls/{call_id}/export")
