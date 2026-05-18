@@ -159,7 +159,6 @@ import json
 import os
 
 from backend.database.supabase_client import get_client
-from backend.prompts.call_topics import CALL_TOPICS_V2_PROMPT_BODY as CALL_TOPICS_DEFAULT_PROMPT
 from backend.services.llm_service import call_llm_raw
 from backend.services.topic_lineage import build_lineage_evidence_block
 from backend.utils.logger import get_logger
@@ -253,6 +252,68 @@ def _status_rollup(tasks: list[dict]) -> str:
     if "in_progress" in statuses:
         return "in_progress"
     return "resolved"
+
+
+def _resolve_call_topics_prompt(
+    call_id: str, db,
+) -> tuple[str, str, str | None, str]:
+    """Resolve the call_topics prompt strictly from the artifact_library.
+
+    Order:
+      1. calls.call_topics_prompt_id → artifact_library row
+      2. artifact_library where category='call_topics' AND seeded_by_default=true
+      3. ValueError('no_call_topics_prompt') — no Python-side fallback.
+
+    Returns (prompt_body, llm_provider, model_id_or_None, library_entry_name).
+    """
+    call_row = (
+        db.table("calls")
+        .select("call_topics_prompt_id, project_id")
+        .eq("id", call_id)
+        .execute()
+        .data
+    )
+    if not call_row:
+        raise ValueError(f"Call {call_id} not found")
+    selected_id = call_row[0].get("call_topics_prompt_id")
+
+    if selected_id:
+        rows = (
+            db.table("artifact_library")
+            .select("id, name, prompt, model, model_id, category")
+            .eq("id", selected_id)
+            .execute()
+            .data
+        )
+        if rows and rows[0].get("category") == "call_topics":
+            r = rows[0]
+            return (
+                r["prompt"],
+                (r.get("model") or "openrouter"),
+                r.get("model_id"),
+                r.get("name") or "(unnamed)",
+            )
+
+    rows = (
+        db.table("artifact_library")
+        .select("id, name, prompt, model, model_id")
+        .eq("category", "call_topics")
+        .eq("seeded_by_default", True)
+        .execute()
+        .data
+    )
+    if rows:
+        r = rows[0]
+        return (
+            r["prompt"],
+            (r.get("model") or "openrouter"),
+            r.get("model_id"),
+            r.get("name") or "(unnamed)",
+        )
+
+    raise ValueError(
+        "no_call_topics_prompt: artifact_library has no call_topics entry"
+    )
 
 
 async def _call_llm(
@@ -462,10 +523,13 @@ def _get_topics_prompt(
 
 async def extract_call_topics(call_id: str) -> list[dict]:
     """
-    Step 1 of two-step extraction: extract topics from this call's transcript ONLY.
-    No previous project topics in context — eliminates extraction bias.
-    Returns a flat list of topic dicts (not yet saved to DB).
+    Extract topics from this call's transcript using the v2 schema.
+
+    Prompt is resolved library-only (no Python fallback). Invalid topics
+    (missing evidence/tasks/key_terms or bad enums) are dropped with a
+    logged reason. Each surviving task gets a task_id UUID.
     """
+    import time
     db = get_client()
 
     call_row = (
@@ -482,60 +546,59 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         raise ValueError("no_transcript")
 
     project_id = call_row[0]["project_id"]
-    stored_prompt, stored_llm, stored_model = _get_topics_prompt(
-        project_id, db, category="call_topics"
-    )
+    prompt_body, llm, model, lib_name = _resolve_call_topics_prompt(call_id, db)
+
     proj_rows = (
         db.table("projects")
-        .select("default_llm, default_model, context")
+        .select("context")
         .eq("id", project_id)
         .execute()
         .data
     )
-    if stored_llm is None:
-        stored_llm = proj_rows[0].get("default_llm") if proj_rows else None
-    if stored_model is None:
-        stored_model = proj_rows[0].get("default_model") if proj_rows else None
-    if not stored_llm:
-        # Inherit from system_settings (Tier 3)
-        try:
-            settings_row = (
-                db.table("system_settings")
-                .select("default_llm, default_model")
-                .eq("id", 1)
-                .execute()
-                .data
-            )
-            if settings_row:
-                stored_llm = settings_row[0].get("default_llm") or "openrouter"
-                stored_model = stored_model or settings_row[0].get("default_model")
-        except Exception:
-            stored_llm = "openrouter"
-    llm = stored_llm or "openrouter"
-    model = stored_model
     project_context = (proj_rows[0].get("context") or "").strip() if proj_rows else ""
-
-    base_instruction = stored_prompt or CALL_TOPICS_DEFAULT_PROMPT
     context_prefix = (
         f"Project context:\n{project_context}\n\n" if project_context else ""
     )
 
     prompt = (
         context_prefix
-        + f"{base_instruction}\n\n"
+        + f"{prompt_body}\n\n"
         + f"Return a JSON array where each element matches this exact schema:\n{_TOPIC_SCHEMA}\n\n"
         + f"Transcript:\n{transcript}"
     )
 
+    t0 = time.monotonic()
     raw = await _call_llm(prompt, llm, model=model)
-    # Flatten if LLM returned a dict (shouldn't happen with flat-list prompt, but safe)
+    latency_ms = int((time.monotonic() - t0) * 1000)
+
     if isinstance(raw, dict):
         flat: list[dict] = []
         for v in raw.values():
             if isinstance(v, list):
                 flat.extend(v)
-        return flat
-    return raw if isinstance(raw, list) else []
+        raw = flat
+    if not isinstance(raw, list):
+        raw = []
+
+    kept: list[dict] = []
+    rejected: list[tuple[str, str]] = []
+    for t in raw:
+        ok, reason = _validate_topic(t)
+        if not ok:
+            name = (t.get("name") if isinstance(t, dict) else "?") or "?"
+            rejected.append((name, reason))
+            continue
+        kept.append(_stamp_task_ids(t))
+
+    logger.info(
+        f"📥 [CallTopics] extract call={call_id} prompt={lib_name} "
+        f"model={llm}/{model or 'default'} topics_produced={len(kept)} "
+        f"topics_rejected={len(rejected)} latency_ms={latency_ms}"
+    )
+    for n, r in rejected:
+        logger.warning(f"⚠️ [CallTopics] rejected {n!r}: {r}")
+
+    return kept
 
 
 async def run_extraction_background(call_id: str) -> None:

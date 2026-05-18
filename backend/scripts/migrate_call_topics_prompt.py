@@ -11,7 +11,7 @@ user-customized and is left untouched.
 
 from backend.database.supabase_client import get_client
 from backend.prompts.call_topics import (
-    CALL_TOPICS_DEFAULT_PROMPT,
+    CALL_TOPICS_V2_PROMPT_BODY as CALL_TOPICS_DEFAULT_PROMPT,
     OLD_DEFAULT_PROMPT_STRING,
 )
 from backend.utils.logger import get_logger

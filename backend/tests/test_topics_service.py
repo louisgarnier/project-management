@@ -127,3 +127,86 @@ def test_status_rollup_any_in_progress_no_open():
 
 def test_status_rollup_empty():
     assert topics_service._status_rollup([]) == "open"  # safety default
+
+
+# ── Prompt resolution — library only, no Python fallback ──────────────────
+
+
+class _FakeDB:
+    """Minimal fake replicating supabase-py's chain API for these tests."""
+
+    def __init__(self, tables: dict):
+        self._tables = tables
+        self._current = None
+        self._filters = []
+
+    def table(self, name):
+        self._current = name
+        self._filters = []
+        return self
+
+    def select(self, *_args, **_kw):
+        return self
+
+    def eq(self, col, val):
+        self._filters.append((col, val))
+        return self
+
+    def execute(self):
+        rows = list(self._tables.get(self._current, []))
+        for col, val in self._filters:
+            rows = [r for r in rows if r.get(col) == val]
+
+        class _R:
+            def __init__(self, data):
+                self.data = data
+
+        return _R(rows)
+
+
+def test_resolve_prompt_uses_call_selected_id():
+    db = _FakeDB({
+        "calls": [{"id": "c1", "call_topics_prompt_id": "lib-v2", "project_id": "p1"}],
+        "artifact_library": [
+            {"id": "lib-v1", "category": "call_topics", "seeded_by_default": False,
+             "prompt": "v1 body", "model": "openrouter", "model_id": "deepseek/deepseek-v3.2",
+             "name": "v1"},
+            {"id": "lib-v2", "category": "call_topics", "seeded_by_default": True,
+             "prompt": "v2 body", "model": "openrouter", "model_id": "deepseek/deepseek-v3.2",
+             "name": "v2"},
+        ],
+    })
+    prompt, llm, model, name = topics_service._resolve_call_topics_prompt("c1", db)
+    assert prompt == "v2 body"
+    assert llm == "openrouter"
+    assert model == "deepseek/deepseek-v3.2"
+    assert name == "v2"
+
+
+def test_resolve_prompt_falls_back_to_seeded_default():
+    db = _FakeDB({
+        "calls": [{"id": "c1", "call_topics_prompt_id": None, "project_id": "p1"}],
+        "artifact_library": [
+            {"id": "lib-v2", "category": "call_topics", "seeded_by_default": True,
+             "prompt": "v2 body", "model": "openrouter", "model_id": "deepseek/deepseek-v3.2",
+             "name": "v2 default"},
+        ],
+    })
+    prompt, _llm, _model, name = topics_service._resolve_call_topics_prompt("c1", db)
+    assert prompt == "v2 body"
+    assert name == "v2 default"
+
+
+def test_resolve_prompt_hard_errors_when_library_empty():
+    db = _FakeDB({
+        "calls": [{"id": "c1", "call_topics_prompt_id": None, "project_id": "p1"}],
+        "artifact_library": [],
+    })
+    with pytest.raises(ValueError, match="no_call_topics_prompt"):
+        topics_service._resolve_call_topics_prompt("c1", db)
+
+
+def test_resolve_prompt_invalid_call_raises():
+    db = _FakeDB({"calls": [], "artifact_library": []})
+    with pytest.raises(ValueError, match="not found"):
+        topics_service._resolve_call_topics_prompt("missing", db)

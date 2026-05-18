@@ -13,7 +13,7 @@ explicitly re-apply the seed values (routers/library.py::reset_system_library).
 """
 
 from backend.prompts.artifacts import DEFAULT_ARTIFACTS  # existing EPIC-11 constant
-from backend.prompts.call_topics import CALL_TOPICS_DEFAULT_PROMPT
+from backend.prompts.call_topics import CALL_TOPICS_V2_PROMPT_BODY as CALL_TOPICS_DEFAULT_PROMPT
 from backend.prompts.merge_verification import MERGE_VERIFICATION_DEFAULT_PROMPT
 from backend.prompts.not_discussed_check import NOT_DISCUSSED_DEFAULT_PROMPT
 from backend.prompts.project_topics import PROJECT_TOPICS_DEFAULT_PROMPT

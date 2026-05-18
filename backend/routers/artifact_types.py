@@ -2,7 +2,7 @@ from typing import Literal
 
 from backend.database.supabase_client import get_client
 from backend.prompts.artifacts import DEFAULT_ARTIFACTS
-from backend.prompts.call_topics import CALL_TOPICS_DEFAULT_PROMPT
+from backend.prompts.call_topics import CALL_TOPICS_V2_PROMPT_BODY as CALL_TOPICS_DEFAULT_PROMPT
 from backend.prompts.merge_verification import MERGE_VERIFICATION_DEFAULT_PROMPT
 from backend.prompts.not_discussed_check import NOT_DISCUSSED_DEFAULT_PROMPT
 from backend.prompts.project_topics import PROJECT_TOPICS_DEFAULT_PROMPT
