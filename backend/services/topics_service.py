@@ -2076,7 +2076,7 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
             updates = (
                 db.table("topic_updates")
                 .select(
-                    "topic_id, summary, status, sentiment"
+                    "topic_id, summary, status, sentiment, importance, evidence, key_terms, tasks"
                 )
                 .eq("call_id", call_id)
                 .execute()
@@ -2153,7 +2153,7 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
                     updates = (
                         db.table("topic_updates")
                         .select(
-                            "topic_id, summary, status, sentiment"
+                            "topic_id, summary, status, sentiment, importance, evidence, key_terms, tasks"
                         )
                         .eq("call_id", call_id)
                         .execute()
