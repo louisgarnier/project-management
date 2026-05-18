@@ -515,8 +515,7 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
         updates = (
             db.table("topic_updates")
             .select(
-                "summary, follow_up_items, decisions, open_questions, "
-                "status, owner, sentiment, is_parked, importance, rationale, "
+                "summary, status, sentiment, importance, "
                 "evidence, key_terms, tasks"
             )
             .eq("topic_id", t["id"])
@@ -532,18 +531,19 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
                 "name": t["name"],
                 "calls_open": t["calls_open"],
                 "summary": latest.get("summary", ""),
-                "follow_up_items": latest.get("follow_up_items", []),
-                "decisions": latest.get("decisions", []),
-                "open_questions": latest.get("open_questions", []),
                 "status": latest.get("status", "open"),
-                "owner": latest.get("owner", "Us"),
                 "sentiment": latest.get("sentiment", "neutral"),
-                "is_parked": latest.get("is_parked", False),
                 "importance": latest.get("importance", "medium"),
-                "rationale": latest.get("rationale", ""),
                 "evidence": latest.get("evidence", []),
                 "key_terms": latest.get("key_terms", []),
                 "tasks": latest.get("tasks", []),
+                # Legacy keys kept as empty defaults for frontend compat
+                "follow_up_items": [],
+                "decisions": [],
+                "open_questions": [],
+                "is_parked": False,
+                "rationale": "",
+                "owner": "Us",
             }
         )
     return result
@@ -1787,23 +1787,8 @@ async def generate_brief(call_id: str) -> dict:
         .execute()
         .data
     )
+    # decisions column was dropped in migration 026; decisions_to_confirm is always empty for now
     decisions_to_confirm: list[dict] = []
-    if done_calls:
-        last_call_id = done_calls[0]["id"]
-        updates_with_decisions = (
-            db.table("topic_updates")
-            .select("decisions, topic_id")
-            .eq("call_id", last_call_id)
-            .execute()
-            .data
-        )
-        for u in updates_with_decisions:
-            topic_rows = (
-                db.table("topics").select("name").eq("id", u["topic_id"]).execute().data
-            )
-            topic_name = topic_rows[0]["name"] if topic_rows else "Unknown"
-            for d in u.get("decisions") or []:
-                decisions_to_confirm.append({"text": d, "topic_name": topic_name})
 
     watch_list = [i for i in priority_items if i["sentiment"] == "concern"]
 
@@ -2055,7 +2040,7 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
             updates = (
                 db.table("topic_updates")
                 .select(
-                    "topic_id, summary, follow_up_items, decisions, status, owner, sentiment"
+                    "topic_id, summary, status, sentiment"
                 )
                 .eq("call_id", call_id)
                 .execute()
@@ -2132,7 +2117,7 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
                     updates = (
                         db.table("topic_updates")
                         .select(
-                            "topic_id, summary, follow_up_items, decisions, status, owner, sentiment"
+                            "topic_id, summary, status, sentiment"
                         )
                         .eq("call_id", call_id)
                         .execute()
@@ -2212,8 +2197,8 @@ async def list_call_topics(call_id: str) -> list[dict]:
     updates = (
         db.table("topic_updates")
         .select(
-            "topic_id, summary, follow_up_items, decisions, open_questions, "
-            "status, owner, sentiment, is_parked, importance, rationale, created_at"
+            "id, topic_id, summary, status, sentiment, importance, "
+            "evidence, key_terms, tasks, created_at"
         )
         .eq("call_id", call_id)
         .order("created_at", desc=True)
@@ -2243,19 +2228,24 @@ async def list_call_topics(call_id: str) -> list[dict]:
             t = topic_rows[0]
             result.append(
                 {
+                    "id": u["id"],
                     "topic_id": t["id"],
                     "name": t["name"],
                     "calls_open": t["calls_open"],
                     "summary": u.get("summary") or "",
-                    "follow_up_items": u.get("follow_up_items") or [],
-                    "decisions": u.get("decisions") or [],
-                    "open_questions": u.get("open_questions") or [],
                     "status": u.get("status") or "open",
-                    "owner": u.get("owner") or "Us",
                     "sentiment": u.get("sentiment") or "neutral",
-                    "is_parked": u.get("is_parked") or False,
                     "importance": u.get("importance") or "medium",
-                    "rationale": u.get("rationale") or "",
+                    "evidence": u.get("evidence") or [],
+                    "key_terms": u.get("key_terms") or [],
+                    "tasks": u.get("tasks") or [],
+                    # Legacy keys kept as empty defaults for frontend compat
+                    "follow_up_items": [],
+                    "decisions": [],
+                    "open_questions": [],
+                    "is_parked": False,
+                    "rationale": "",
+                    "owner": "Us",
                 }
             )
 
@@ -2380,7 +2370,7 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
         updates = (
             db.table("topic_updates")
             .select(
-                "summary, follow_up_items, decisions, status, owner, sentiment, "
+                "summary, status, sentiment, "
                 "evidence, key_terms, tasks"
             )
             .eq("topic_id", t["id"])
@@ -2396,14 +2386,15 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
                 "name": t["name"],
                 "calls_open": t["calls_open"],
                 "summary": latest.get("summary", ""),
-                "follow_up_items": latest.get("follow_up_items", []),
-                "decisions": latest.get("decisions", []),
                 "status": latest.get("status", "open"),
-                "owner": latest.get("owner", "Us"),
                 "sentiment": latest.get("sentiment", "neutral"),
                 "evidence": latest.get("evidence", []),
                 "key_terms": latest.get("key_terms", []),
                 "tasks": latest.get("tasks", []),
+                # Legacy keys kept as empty defaults for frontend compat
+                "follow_up_items": [],
+                "decisions": [],
+                "owner": "Us",
                 "archived_later": archived_later,
                 "merged_into_name": merged_into_name,
             }
@@ -2533,7 +2524,7 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
         (
             db.table("topic_updates")
             .select(
-                "topic_id, call_id, summary, follow_up_items, decisions, status, owner, sentiment"
+                "topic_id, call_id, summary, status, sentiment"
             )
             .in_("topic_id", topic_ids)
             .in_("call_id", call_ids)
@@ -2551,11 +2542,11 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
             updates_index[tid] = {}
         updates_index[tid][cid] = u
 
-    # status/owner/sentiment live on topic_updates (not topics — dropped in migration 002)
+    # status/sentiment live on topic_updates (owner dropped in migration 026)
     latest_updates = (
         (
             db.table("topic_updates")
-            .select("topic_id, status, owner, sentiment, created_at")
+            .select("topic_id, status, sentiment, created_at")
             .in_("topic_id", topic_ids)
             .order("created_at", desc=True)
             .execute()
@@ -2593,11 +2584,12 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
                 call_updates[cid] = {
                     "type": cell_type,
                     "summary": u.get("summary", ""),
-                    "follow_up_items": u.get("follow_up_items") or [],
-                    "decisions": u.get("decisions") or [],
                     "status": u.get("status", "open"),
-                    "owner": u.get("owner", "Us"),
                     "sentiment": u.get("sentiment", "neutral"),
+                    # Legacy keys kept as empty defaults for frontend compat
+                    "follow_up_items": [],
+                    "decisions": [],
+                    "owner": "Us",
                 }
             else:
                 call_updates[cid] = {"type": "not_discussed"}
@@ -2635,7 +2627,7 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
                 "topic_id": tid,
                 "name": t["name"],
                 "status": ls.get("status", "open"),
-                "owner": ls.get("owner", "Us"),
+                "owner": "Us",  # owner dropped in migration 026; keep default for frontend compat
                 "sentiment": ls.get("sentiment", "neutral"),
                 "first_raised_call_id": first_call_id,
                 "call_updates": call_updates,
