@@ -513,7 +513,8 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
             db.table("topic_updates")
             .select(
                 "summary, follow_up_items, decisions, open_questions, "
-                "status, owner, sentiment, is_parked, importance, rationale"
+                "status, owner, sentiment, is_parked, importance, rationale, "
+                "evidence, key_terms, tasks"
             )
             .eq("topic_id", t["id"])
             .order("created_at", desc=True)
@@ -537,6 +538,9 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
                 "is_parked": latest.get("is_parked", False),
                 "importance": latest.get("importance", "medium"),
                 "rationale": latest.get("rationale", ""),
+                "evidence": latest.get("evidence", []),
+                "key_terms": latest.get("key_terms", []),
+                "tasks": latest.get("tasks", []),
             }
         )
     return result
@@ -2372,7 +2376,10 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
 
         updates = (
             db.table("topic_updates")
-            .select("summary, follow_up_items, decisions, status, owner, sentiment")
+            .select(
+                "summary, follow_up_items, decisions, status, owner, sentiment, "
+                "evidence, key_terms, tasks"
+            )
             .eq("topic_id", t["id"])
             .order("created_at", desc=True)
             .limit(1)
@@ -2391,6 +2398,9 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
                 "status": latest.get("status", "open"),
                 "owner": latest.get("owner", "Us"),
                 "sentiment": latest.get("sentiment", "neutral"),
+                "evidence": latest.get("evidence", []),
+                "key_terms": latest.get("key_terms", []),
+                "tasks": latest.get("tasks", []),
                 "archived_later": archived_later,
                 "merged_into_name": merged_into_name,
             }

@@ -485,3 +485,145 @@ def test_patch_topic_new_task_without_id_gets_stamped(monkeypatch):
     # The existing task preserves its original id (may not be UUID format)
     existing_task = next(t for t in state["row"]["tasks"] if t.get("task_id") == "task-1")
     assert existing_task["task_id"] == "task-1"
+
+
+# ── Aggregate endpoint payload — must include new fields ──────────────────
+
+
+def _build_aggregate_test_client(monkeypatch, project_id: str, topic_rows: list[dict]):
+    """
+    Stand up a TestClient with a fake supabase that serves topic_updates and
+    topics rows — used to verify that listing endpoints expose key_terms /
+    evidence / tasks in their payload.
+    """
+    topic_ids = list({r["topic_id"] for r in topic_rows if r.get("topic_id")})
+
+    class _Tbl:
+        def __init__(self, name):
+            self._name = name
+            self._filters: list = []
+            self._order_called = False
+            self._limit_val = None
+            self._lt_filter = None
+
+        def select(self, *_a, **_kw):
+            return self
+
+        def eq(self, col, val):
+            self._filters.append((col, val))
+            return self
+
+        def in_(self, col, vals):
+            # Store for use in execute (topics table scoped to prior_call_ids)
+            self._filters.append(("__in__", col, vals))
+            return self
+
+        def lt(self, col, val):
+            self._lt_filter = (col, val)
+            return self
+
+        def order(self, *_a, **_kw):
+            self._order_called = True
+            return self
+
+        def limit(self, n):
+            self._limit_val = n
+            return self
+
+        def execute(self):
+            class _R:
+                pass
+
+            r = _R()
+
+            if self._name == "topic_updates":
+                # Filter by topic_id eq when listing for a single topic
+                tid = next((v for c, v in self._filters if c == "topic_id"), None)
+                if tid:
+                    filtered = [row for row in topic_rows if row.get("topic_id") == tid]
+                else:
+                    filtered = list(topic_rows)
+                r.data = filtered[: self._limit_val] if self._limit_val else filtered
+
+            elif self._name == "topics":
+                r.data = [
+                    {
+                        "id": tid,
+                        "project_id": project_id,
+                        "name": f"topic-{tid}",
+                        "calls_open": 1,
+                        "first_raised_call_id": "c1",
+                        "archived": False,
+                        "merged_into_topic_id": None,
+                    }
+                    for tid in topic_ids
+                ]
+
+            elif self._name == "calls":
+                # Provide enough info for list_topics_prior_to_call
+                r.data = [
+                    {
+                        "id": "c1",
+                        "project_id": project_id,
+                        "created_at": "2026-01-02T00:00:00+00:00",
+                    }
+                ]
+
+            elif self._name == "projects":
+                r.data = [{"id": project_id, "name": "Project X"}]
+
+            else:
+                r.data = []
+
+            return r
+
+    class _DB:
+        def table(self, name):
+            return _Tbl(name)
+
+    monkeypatch.setattr(topics_service, "get_client", lambda: _DB())
+
+    import importlib
+
+    topics_router = importlib.import_module("backend.routers.topics")
+    monkeypatch.setattr(topics_router, "get_client", lambda: _DB())
+
+    from backend.main import app
+
+    return TestClient(app)
+
+
+_SAMPLE_TOPIC_ROW = {
+    "id": "tu1",
+    "topic_id": "t1",
+    "call_id": "c1",
+    "name": "Topic A",
+    "importance": "high",
+    "status": "open",
+    "evidence": [{"speaker": "S", "quote": "Q", "citation": "C"}],
+    "key_terms": ["alpha", "beta"],
+    "tasks": [
+        {
+            "task_id": "task-1",
+            "task": "do something",
+            "next_step": "next",
+            "status": "open",
+            "owner": "",
+        }
+    ],
+}
+
+
+def test_list_project_topics_includes_new_fields(monkeypatch):
+    """GET /api/projects/{id}/topics must return key_terms, evidence, tasks per topic."""
+    client = _build_aggregate_test_client(monkeypatch, "p1", [_SAMPLE_TOPIC_ROW])
+    r = client.get("/api/projects/p1/topics")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert isinstance(data, list) and len(data) > 0, f"expected non-empty list, got: {data!r}"
+    first = data[0]
+    for field in ("key_terms", "evidence", "tasks"):
+        assert field in first, (
+            f"GET /api/projects/p1/topics response missing '{field}'. "
+            f"Present keys: {list(first.keys())}"
+        )
