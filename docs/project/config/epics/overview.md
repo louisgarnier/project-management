@@ -14,6 +14,9 @@
 | EPIC-8 | Topics Timeline Grid | [ ] | 2 |
 | EPIC-9 | M:N Topic Merge + Not-Discussed Verification | [x] Done | 7 |
 | EPIC-10 | Topic Lineage + Full-Stage Traceability + Prompt Quality | [x] Done | 9 |
+| EPIC-11 | Call Topics Extraction Overhaul (rubric + OpenRouter) | [x] Done | 6 |
+| EPIC-12 | Artifacts Overhaul (library + templates + system seed) | [x] Done | 6 |
+| EPIC-15 | Call Topics Rebuild (v2 prompt + row-per-task UI + library selector) | [ ] Active | 4 |
 
 ---
 
@@ -40,9 +43,9 @@ EPIC-1 (Foundation + Logging)
 ## 🚦 Status
 
 ```
-Working on : — (all defined epics complete)
+Working on : EPIC-15 — Call Topics Rebuild (branch epic-15-call-topics-rebuild)
 Blocked by : —
-Next up    : TBD
+Next up    : Story 15.1 (schema + extractor + edit endpoints)
 ```
 
 ---

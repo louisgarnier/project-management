@@ -1,9 +1,23 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **No active epic.** Awaiting next plan.
-- **Branch:** `main` (working baseline)
+- **Active epic:** EPIC-15 — Call Topics Rebuild
+- **Branch:** `epic-15-call-topics-rebuild` (pushed to origin)
+- **Status:** stories defined, ready to build
+- **Brainstorm:** `docs/project/config/2026-05-18-epic-15-call-topics-rebuild-brainstorm.md` (GO)
+- **PRD:** `docs/project/config/2026-05-18-epic-15-call-topics-rebuild-prd.md` (Locked)
+- **Architecture:** `docs/project/config/2026-05-18-epic-15-call-topics-rebuild-architecture.md` (Locked)
+- **Mockup:** `call-topic-tile-v3.html` — approved 2026-05-18
+- **Next:** Story 15.1 (schema + extractor + edit endpoints)
 - **Last delivered:** EPIC-12 — Artifacts Overhaul (merged 2026-04-23)
+
+### EPIC-15 Stories (active)
+| # | Story | Status | Depends on |
+|---|---|---|---|
+| 15.1 | Schema + backend extractor + edit endpoints + prompt resolution | [ ] todo | — |
+| 15.2 | Library seed: model flip + v2 call-topics entry | [ ] todo | 15.1 |
+| 15.3 | Call Topics stage UI rewrite (v3 layout + inline edits) | [ ] todo | 15.1, 15.2 |
+| 15.4 | Matching read-only display + real-fixture + rollback regression | [ ] todo | 15.1, 15.3 |
 
 ### EPIC-12 Stories (last delivered — for reference)
 | # | Story | Status |
