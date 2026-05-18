@@ -133,12 +133,13 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
 
   const deleteTopic = async (idx: number) => {
     const topic = topics[idx];
-    const id = topic.id ?? topic.topic_id;
+    // Backend DELETE endpoint takes topics.id (parent table FK), not topic_updates.id.
+    const topicTableId = topic.topic_id;
     if (!confirm(`Delete topic "${topic.name}"?`)) return;
     setTopics((prev) => prev.filter((_, i) => i !== idx));
-    if (!id) return;
+    if (!topicTableId) return;
     try {
-      await topicsAPI.deleteTopic(id);
+      await topicsAPI.deleteTopic(call.id, topicTableId);
     } catch (e: unknown) {
       logger.error("[CallTopicsStage] delete topic failed", { data: e });
     }

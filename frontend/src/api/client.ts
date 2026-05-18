@@ -423,6 +423,10 @@ export const topicsAPI = {
       body: JSON.stringify(body),
     }),
 
-  deleteTopic: (topic_id: string): Promise<void> =>
-    proxyFetch<void>(`/api/topics/${topic_id}`, { method: "DELETE" }),
+  // Delete a topic from a specific call.
+  // Backend handles orphan cleanup: if no other call's update remains for this
+  // topic, the topics row itself is removed (see routers/topics.py).
+  // `topic_id` must be the topics.id (parent table FK), NOT topic_updates.id.
+  deleteTopic: (call_id: string, topic_id: string): Promise<void> =>
+    proxyFetch<void>(`/api/calls/${call_id}/topics/${topic_id}`, { method: "DELETE" }),
 };

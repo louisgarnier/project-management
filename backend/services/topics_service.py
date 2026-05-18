@@ -1621,6 +1621,12 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
 
     saved = 0
     for t in topics:
+        # Track whether THIS iteration just inserted a topics row so we can roll
+        # it back if the subsequent _persist_topic_update fails. Without this,
+        # a failure leaves orphan topics rows (seen in prod when migration 026
+        # exposed the legacy 'name' column bug).
+        newly_inserted_topic_id: str | None = None
+
         if t.topic_id is None:
             _rolled_status = _status_rollup(t.tasks)
             inserted = (
@@ -1638,6 +1644,7 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
                 .data
             )
             topic_id = inserted[0]["id"]
+            newly_inserted_topic_id = topic_id
             logger.info(f"🗄️ [DB] Inserted new topic: {topic_id}")
         else:
             _rolled_status = _status_rollup(t.tasks)
@@ -1679,7 +1686,22 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
             "summary": t.summary,
             "transcript_excerpt": t.transcript_excerpt,
         }
-        _persist_topic_update(topic_dict, topic_id, call_id)
+        try:
+            _persist_topic_update(topic_dict, topic_id, call_id)
+        except Exception:
+            # Roll back the orphan topics row if we created one this iteration.
+            if newly_inserted_topic_id:
+                try:
+                    db.table("topics").delete().eq("id", newly_inserted_topic_id).execute()
+                    logger.warning(
+                        f"⚠️ [DB] Rolled back orphan topics row {newly_inserted_topic_id} "
+                        f"after _persist_topic_update failure"
+                    )
+                except Exception as cleanup_err:
+                    logger.error(
+                        f"❌ [DB] Failed to clean up orphan topics row {newly_inserted_topic_id}: {cleanup_err}"
+                    )
+            raise
         logger.info(f"🗄️ [DB] Inserted topic_update for topic: {topic_id}")
         saved += 1
 
