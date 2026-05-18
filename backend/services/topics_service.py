@@ -2183,9 +2183,14 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
             },
         )
 
-        # Delete everything downstream: topic_updates (created at project_updates), match_groups, merge, verification.
+        # Roll back later kanban state ONLY. The call_topics themselves
+        # (topic_updates rows for this call) are PRESERVED — the user is going
+        # back to view/edit them in the call_topics stage. They are NOT cleared
+        # here. aggregate_topics + validate_project_updates are idempotent on
+        # the next Save & Continue, so any stale data will be cleaned up there.
+        # Confirmed by user feedback 2026-05-18: rollback dialog promises only
+        # "Project Matching, Project Updates, Artifacts" will be cleared.
         _un_merge_topics()
-        _delete_topic_updates()
         _delete_match_groups()
         _clear_merge_fields()
         _clear_verification_fields()
