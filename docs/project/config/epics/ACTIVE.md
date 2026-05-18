@@ -8,15 +8,15 @@
 - **PRD:** `docs/project/config/2026-05-18-epic-15-call-topics-rebuild-prd.md` (Locked)
 - **Architecture:** `docs/project/config/2026-05-18-epic-15-call-topics-rebuild-architecture.md` (Locked)
 - **Mockup:** `call-topic-tile-v3.html` — approved 2026-05-18
-- **Next:** Story 15.3 (Call Topics stage UI rewrite)
-- **Last delivered:** Story 15.2 — Library seed: model flip to openrouter/deepseek-v3.2 + v2 call_topics entry + scaffolding cleanup (2026-05-18)
+- **Next:** Story 15.4 (matching read-only display + real-fixture acceptance + rollback regression)
+- **Last delivered:** Story 15.3 — Call Topics stage UI rewrite (v3 flat-table, repeated topic+chips, inline edits, evidence popover, prompt selector); legacy TopicEditor + EvidenceDrawer deleted (2026-05-18)
 
 ### EPIC-15 Stories (active)
 | # | Story | Status | Depends on |
 |---|---|---|---|
 | 15.1 | Schema + backend extractor + edit endpoints + prompt resolution | [x] code-complete — awaiting migration run | — |
 | 15.2 | Library seed: model flip + v2 call-topics entry | [x] done — 2026-05-18 | 15.1 |
-| 15.3 | Call Topics stage UI rewrite (v3 layout + inline edits) | [ ] todo | 15.1, 15.2 |
+| 15.3 | Call Topics stage UI rewrite (v3 layout + inline edits) | [x] code-complete — awaiting visual smoke | 15.1, 15.2 |
 | 15.4 | Matching read-only display + real-fixture + rollback regression | [ ] todo | 15.1, 15.3 |
 
 ### EPIC-12 Stories (last delivered — for reference)
