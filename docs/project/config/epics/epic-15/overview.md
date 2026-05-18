@@ -13,7 +13,7 @@ Replace today's verbose, drifting call-topics output with sharp, evidence-anchor
 
 | # | Story | Status | Depends on |
 |---|---|---|---|
-| 15.1 | [Schema + backend extractor + edit endpoints + prompt resolution](./story-15.1.md) | [ ] todo | — |
+| 15.1 | [Schema + backend extractor + edit endpoints + prompt resolution](./story-15.1.md) | [x] code-complete — awaiting migration run | — |
 | 15.2 | [Library seed: model flip + v2 call-topics entry](./story-15.2.md) | [ ] todo | 15.1 |
 | 15.3 | [Call Topics stage UI rewrite (v3 layout + inline edits + selector + popover)](./story-15.3.md) | [ ] todo | 15.1, 15.2 |
 | 15.4 | [Matching stage read-only display + real-fixture acceptance + rollback regression](./story-15.4.md) | [ ] todo | 15.1, 15.3 |
