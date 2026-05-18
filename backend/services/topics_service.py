@@ -262,14 +262,19 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
     """Insert a single topic_updates row in the new EPIC-15 shape.
 
     Writes only the new columns + status roll-up. Legacy columns (decisions,
-    follow_up_items, open_questions, rationale, is_parked, owner, sentiment)
-    are intentionally omitted — Migration 026 drops them from the table.
+    follow_up_items, open_questions, rationale, is_parked, owner) are dropped
+    by migration 026.
 
-    Keeps summary and transcript_excerpt (architecture §6 keeps these columns).
+    NOTE: topic_updates has NO `name` column — name lives on the parent `topics`
+    table (set by save_topics on insert / by PATCH /api/topics handler on edit).
+    Do not include `name` in the payload.
+
+    NOTE: topic_updates.summary is NOT NULL (legacy schema). The v2 prompt
+    doesn't generate a summary so we default to empty string.
 
     Args:
         topic: dict containing the new-shape fields (evidence, key_terms, tasks,
-               name, importance, and optionally summary/transcript_excerpt).
+               importance, and optionally summary/transcript_excerpt).
         topic_id: UUID of the topics row this update belongs to.
         call_id: UUID of the call this update is for.
 
@@ -279,15 +284,13 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
     payload: dict = {
         "topic_id": topic_id,
         "call_id": call_id,
-        "name": topic["name"],
+        "summary": topic.get("summary") or "",
         "importance": topic.get("importance", "medium"),
         "evidence": topic.get("evidence", []),
         "key_terms": topic.get("key_terms", []),
         "tasks": topic.get("tasks", []),
         "status": _status_rollup(topic.get("tasks", [])),
     }
-    if topic.get("summary"):
-        payload["summary"] = topic["summary"]
     if topic.get("transcript_excerpt"):
         payload["transcript_excerpt"] = topic["transcript_excerpt"]
     res = db.table("topic_updates").insert(payload).execute()

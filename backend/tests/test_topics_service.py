@@ -169,10 +169,10 @@ def test_resolve_prompt_uses_call_selected_id():
         "calls": [{"id": "c1", "call_topics_prompt_id": "lib-v2", "project_id": "p1"}],
         "artifact_library": [
             {"id": "lib-v1", "category": "call_topics", "seeded_by_default": False,
-             "prompt": "v1 body", "model": "openrouter", "model_id": "deepseek/deepseek-v3.2",
+             "prompt": "v1 body", "llm": "openrouter", "model": "deepseek/deepseek-v3.2",
              "name": "v1"},
             {"id": "lib-v2", "category": "call_topics", "seeded_by_default": True,
-             "prompt": "v2 body", "model": "openrouter", "model_id": "deepseek/deepseek-v3.2",
+             "prompt": "v2 body", "llm": "openrouter", "model": "deepseek/deepseek-v3.2",
              "name": "v2"},
         ],
     })
@@ -188,7 +188,7 @@ def test_resolve_prompt_falls_back_to_seeded_default():
         "calls": [{"id": "c1", "call_topics_prompt_id": None, "project_id": "p1"}],
         "artifact_library": [
             {"id": "lib-v2", "category": "call_topics", "seeded_by_default": True,
-             "prompt": "v2 body", "model": "openrouter", "model_id": "deepseek/deepseek-v3.2",
+             "prompt": "v2 body", "llm": "openrouter", "model": "deepseek/deepseek-v3.2",
              "name": "v2 default"},
         ],
     })
@@ -271,8 +271,13 @@ def test_persistence_payload_only_has_new_columns(monkeypatch):
     payload = captured[0]
 
     # Required new-shape keys must all be present
-    for k in ("name", "importance", "evidence", "key_terms", "tasks", "status"):
+    # Note: 'name' is intentionally NOT in topic_updates payload — name lives on
+    # the parent `topics` table (written by save_topics on insert). _persist_topic_update
+    # writes only the per-call update row.
+    # 'summary' is included (NOT NULL legacy column) and defaults to "" when absent.
+    for k in ("importance", "evidence", "key_terms", "tasks", "status", "summary"):
         assert k in payload, f"required new-shape key missing: {k}"
+    assert "name" not in payload, "topic_updates has no 'name' column — must not be in payload"
 
     # Status must be rolled up from tasks — one open task → 'open'
     assert payload["status"] == "open"
