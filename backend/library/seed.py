@@ -13,7 +13,7 @@ explicitly re-apply the seed values (routers/library.py::reset_system_library).
 """
 
 from backend.prompts.artifacts import DEFAULT_ARTIFACTS  # existing EPIC-11 constant
-from backend.prompts.call_topics import CALL_TOPICS_V2_PROMPT_BODY as CALL_TOPICS_DEFAULT_PROMPT
+from backend.prompts.call_topics import CALL_TOPICS_V2_PROMPT_BODY
 from backend.prompts.merge_verification import MERGE_VERIFICATION_DEFAULT_PROMPT
 from backend.prompts.not_discussed_check import NOT_DISCUSSED_DEFAULT_PROMPT
 from backend.prompts.project_topics import PROJECT_TOPICS_DEFAULT_PROMPT
@@ -29,17 +29,23 @@ def _prompt_for(name: str) -> str | None:
 SYSTEM_LIBRARY: list[dict] = [
     # ── Tier 1: Workflow prompts (always present, editable via /library) ──
     {
-        "name": "Call Topics Extraction",
-        "description": "Runs at the Call Topics stage. Extracts structured topics (decisions / follow-ups / open-questions / ...) from a transcript per the rubric in the prompt.",
+        "name": "Call Topics — v2 (synthetic, evidence-anchored)",
+        "description": (
+            "Runs at the Call Topics stage. Extracts SHORT, evidence-anchored topics — "
+            "every topic carries verbatim transcript quotes, key terms for matching, and a "
+            "list of tasks (each with next-step, status, owner). Replaces EPIC-11's "
+            "3-section anchor structure (decisions/follow-ups/open-questions). "
+            "Rejects topics without evidence or tasks."
+        ),
         "kind": "llm",
-        "prompt": CALL_TOPICS_DEFAULT_PROMPT,
+        "prompt": CALL_TOPICS_V2_PROMPT_BODY,
         "template_id": None,
-        "llm": None,
-        "model": None,
+        "llm": "openrouter",
+        "model": "deepseek/deepseek-v3.2",
         "context_scope": "call",
         "category": "call_topics",
         "is_system": True,
-        "seeded_by_default": False,
+        "seeded_by_default": True,
     },
     {
         "name": "Project Topics Merge (base instructions)",
@@ -47,8 +53,8 @@ SYSTEM_LIBRARY: list[dict] = [
         "kind": "llm",
         "prompt": PROJECT_TOPICS_DEFAULT_PROMPT,
         "template_id": None,
-        "llm": None,
-        "model": None,
+        "llm": "openrouter",
+        "model": "deepseek/deepseek-v3.2",
         "context_scope": "call",
         "category": "project_topics",
         "is_system": True,
@@ -60,8 +66,8 @@ SYSTEM_LIBRARY: list[dict] = [
         "kind": "llm",
         "prompt": MERGE_VERIFICATION_DEFAULT_PROMPT,
         "template_id": None,
-        "llm": None,
-        "model": None,
+        "llm": "openrouter",
+        "model": "deepseek/deepseek-v3.2",
         "context_scope": "call",
         "category": "merge_verification",
         "is_system": True,
@@ -73,8 +79,8 @@ SYSTEM_LIBRARY: list[dict] = [
         "kind": "llm",
         "prompt": NOT_DISCUSSED_DEFAULT_PROMPT,
         "template_id": None,
-        "llm": None,
-        "model": None,
+        "llm": "openrouter",
+        "model": "deepseek/deepseek-v3.2",
         "context_scope": "call",
         "category": "not_discussed_check",
         "is_system": True,
