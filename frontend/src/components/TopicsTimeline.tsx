@@ -5,7 +5,6 @@ import { topicsAPI } from "@/api/client";
 import type { TopicsTimelineData, TimelineCell, TopicStatus, TopicSentiment, TimelineTopic } from "@/types";
 import { resolveProvenance, type CellHistory } from "@/utils/provenance";
 import ProvenancePill from "./ProvenancePill";
-import TopicEvidenceDrawer from "./TopicEvidenceDrawer";
 
 type Props = { projectId: string; refreshKey?: number };
 
@@ -247,7 +246,6 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
   const [data, setData] = useState<TopicsTimelineData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [drawerTopicId, setDrawerTopicId] = useState<string | null>(null);
   const [expandedLineageIds, setExpandedLineageIds] = useState<Set<string>>(new Set());
 
   function toggleLineage(topicId: string) {
@@ -449,10 +447,7 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
                       <span style={{ width: 14, display: "inline-block" }} />
                     )}
                     <span
-                      onClick={() => setDrawerTopicId(topic.topic_id)}
-                      style={{ cursor: "pointer" }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLSpanElement).style.textDecoration = isArchived ? "line-through underline" : "underline"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLSpanElement).style.textDecoration = isArchived ? "line-through" : "none"; }}
+                      style={{ textDecoration: isArchived ? "line-through" : undefined }}
                     >
                       {topic.name}
                     </span>
@@ -538,11 +533,6 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
       </table>
     </div>
     </div>
-    <TopicEvidenceDrawer
-      open={!!drawerTopicId}
-      topicId={drawerTopicId}
-      onClose={() => setDrawerTopicId(null)}
-    />
     </>
   );
 }

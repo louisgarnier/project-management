@@ -4,17 +4,6 @@ import { useEffect, useState } from "react";
 import { topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { TopicData, MatchGroup } from "@/types";
-import TopicEvidenceDrawer from "./TopicEvidenceDrawer";
-
-type MatchingDrawerState = {
-  topicId: string | null;
-  pendingTopic: TopicData | null;
-  kind: "followed_up" | "new" | "not_discussed";
-};
-
-type SourceDrawerState = {
-  pendingTopic: TopicData;
-};
 
 type Props = {
   callId: string;
@@ -64,8 +53,6 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
   const [groups, setGroups] = useState<MatchGroup[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [matchingDrawer, setMatchingDrawer] = useState<MatchingDrawerState | null>(null);
-  const [sourceDrawer, setSourceDrawer] = useState<SourceDrawerState | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -163,75 +150,6 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
 
   function groupIndex(group: MatchGroup): number {
     return groups.indexOf(group);
-  }
-
-  // Pick the first call topic in a group to show as "this call's extraction".
-  // Multi-merge groups only show one pending_topic on the right pane —
-  // sufficient for evidence view (user can open each matched topic individually).
-  function pendingTopicForGroup(g: MatchGroup): TopicData | null {
-    for (const name of g.call_topic_names) {
-      const t = callTopics.find((c) => c.name === name);
-      if (t) return t;
-    }
-    return null;
-  }
-
-  // Pick the first project topic in a group to show as "existing project topic".
-  function projectTopicForGroup(g: MatchGroup): TopicData | null {
-    for (const id of g.project_topic_ids) {
-      const t = projectTopics.find((p) => p.topic_id === id);
-      if (t) return t;
-    }
-    return null;
-  }
-
-  // Open matching-mode evidence drawer from the LEFT (project topic) pane.
-  function openEvidenceForProjectTopic(t: TopicData) {
-    const g = getProjectTopicGroup(t.topic_id ?? "");
-    if (g) {
-      // Classified: followed_up (has project + call topics) or theoretically
-      // a project-only group (shouldn't exist in this workflow).
-      const pending = pendingTopicForGroup(g);
-      setMatchingDrawer({
-        topicId: t.topic_id ?? null,
-        pendingTopic: pending,
-        kind: pending ? "followed_up" : "not_discussed",
-      });
-    } else {
-      // Not yet in any group → will be not-discussed on save.
-      setMatchingDrawer({
-        topicId: t.topic_id ?? null,
-        pendingTopic: null,
-        kind: "not_discussed",
-      });
-    }
-  }
-
-  // Open matching-mode evidence drawer from the RIGHT (call topic) pane.
-  function openEvidenceForCallTopic(t: TopicData) {
-    const g = getCallTopicGroup(t.name);
-    if (!g) {
-      // Unclassified call topic: no classification yet — show the source-only
-      // view (mode="call_topic") as a useful fallback.
-      setSourceDrawer({ pendingTopic: t });
-      return;
-    }
-    if (g.project_topic_ids.length === 0) {
-      // Marked new: no existing project topic.
-      setMatchingDrawer({
-        topicId: null,
-        pendingTopic: t,
-        kind: "new",
-      });
-    } else {
-      // Linked (followed_up): show first project topic + this call topic.
-      const proj = projectTopicForGroup(g);
-      setMatchingDrawer({
-        topicId: proj?.topic_id ?? null,
-        pendingTopic: t,
-        kind: "followed_up",
-      });
-    }
   }
 
   return (
@@ -343,27 +261,6 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                       ↔ {group!.call_topic_names.join(", ")}
                     </div>
                   )}
-                  <div style={{ marginTop: 6 }}>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEvidenceForProjectTopic(t);
-                      }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        fontSize: 11,
-                        color: "#0052cc",
-                        textDecoration: "underline",
-                        cursor: "pointer",
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      Show evidence
-                    </button>
-                  </div>
                 </div>
               );
             })}
@@ -466,27 +363,6 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                       ↔ {group!.project_topic_ids.map((pid) => projectTopics.find((p) => p.topic_id === pid)?.name).filter(Boolean).join(", ")}
                     </div>
                   )}
-                  <div style={{ marginTop: 6 }}>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEvidenceForCallTopic(t);
-                      }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        fontSize: 11,
-                        color: "#0052cc",
-                        textDecoration: "underline",
-                        cursor: "pointer",
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      Show evidence
-                    </button>
-                  </div>
                 </div>
               );
             })}
@@ -522,20 +398,6 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
       </div>
 
     </div>
-    <TopicEvidenceDrawer
-      open={!!matchingDrawer}
-      mode="matching"
-      topicId={matchingDrawer?.topicId ?? null}
-      pendingTopic={matchingDrawer?.pendingTopic ?? null}
-      kind={matchingDrawer?.kind ?? "followed_up"}
-      onClose={() => setMatchingDrawer(null)}
-    />
-    <TopicEvidenceDrawer
-      open={!!sourceDrawer}
-      mode="call_topic"
-      pendingTopic={sourceDrawer?.pendingTopic ?? null}
-      onClose={() => setSourceDrawer(null)}
-    />
     </>
   );
 }

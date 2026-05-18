@@ -5,7 +5,6 @@ import { topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { Call, TopicData, TopicSavePayload, TopicDisposition, ExtractionResult } from "@/types";
 import PreCallBrief from "@/components/PreCallBrief";
-import TopicEditor from "@/components/TopicEditor";
 import AddTopicForm from "@/components/AddTopicForm";
 
 type Phase = "choice" | "extracting" | "reviewing" | "manual" | "validating";
@@ -67,18 +66,6 @@ export default function TopicsStage({ call, onAdvance }: Props) {
   }
 
   // ── Topic mutations ───────────────────────────────────────────────────────
-  function updateTopic(key: string, updated: TopicData) {
-    setTopics((prev) => prev.map((t) => t._key === key ? { ...t, ...updated } : t));
-  }
-
-  function setDisposition(key: string, d: TopicDisposition) {
-    setTopics((prev) => prev.map((t) => t._key === key ? { ...t, _disposition: d } : t));
-  }
-
-  function removeTopic(key: string) {
-    setTopics((prev) => prev.filter((t) => t._key !== key));
-  }
-
   function addTopic(topic: TopicData) {
     setTopics((prev) => [...prev, {
       ...topic, _bucket: "manual", _disposition: null, _key: mkKey(),
@@ -195,13 +182,6 @@ export default function TopicsStage({ call, onAdvance }: Props) {
               {/* Bucket: Followed-up */}
               {followedUp.length > 0 && (
                 <Bucket title="Followed-up" count={followedUp.length} variant="normal">
-                  {followedUp.map((t) => (
-                    <TopicEditor key={t._key} topic={t} bucket="followed_up"
-                      disposition={t._disposition}
-                      onUpdate={(u) => updateTopic(t._key, u)}
-                      onDisposition={(d) => setDisposition(t._key, d)}
-                      onRemove={() => removeTopic(t._key)} />
-                  ))}
                   <AddTopicForm onAdd={addTopic} />
                 </Bucket>
               )}
@@ -213,26 +193,12 @@ export default function TopicsStage({ call, onAdvance }: Props) {
                     padding: "6px 14px", borderBottom: "1px solid #ffe0a0" }}>
                     Set a disposition for each topic before validating.
                   </div>
-                  {notDiscussed.map((t) => (
-                    <TopicEditor key={t._key} topic={t} bucket="not_discussed"
-                      disposition={t._disposition}
-                      onUpdate={(u) => updateTopic(t._key, u)}
-                      onDisposition={(d) => setDisposition(t._key, d)}
-                      onRemove={() => removeTopic(t._key)} />
-                  ))}
                 </Bucket>
               )}
 
               {/* Bucket: New */}
               {newTopics.length > 0 && (
                 <Bucket title="New this call" count={newTopics.length} variant="blue">
-                  {newTopics.map((t) => (
-                    <TopicEditor key={t._key} topic={t} bucket="new"
-                      disposition={t._disposition}
-                      onUpdate={(u) => updateTopic(t._key, u)}
-                      onDisposition={(d) => setDisposition(t._key, d)}
-                      onRemove={() => removeTopic(t._key)} />
-                  ))}
                   <AddTopicForm onAdd={addTopic} />
                 </Bucket>
               )}
@@ -244,13 +210,6 @@ export default function TopicsStage({ call, onAdvance }: Props) {
                 fontSize: 11, fontWeight: 700, color: "#172b4d" }}>
                 Topics ({topics.length})
               </div>
-              {topics.map((t) => (
-                <TopicEditor key={t._key} topic={t} bucket="followed_up"
-                  disposition={t._disposition}
-                  onUpdate={(u) => updateTopic(t._key, u)}
-                  onDisposition={(d) => setDisposition(t._key, d)}
-                  onRemove={() => removeTopic(t._key)} />
-              ))}
               <AddTopicForm onAdd={addTopic} />
             </div>
           )}
@@ -274,13 +233,6 @@ export default function TopicsStage({ call, onAdvance }: Props) {
               fontSize: 11, fontWeight: 700, color: "#172b4d" }}>
               Topics ({manualTopics.length})
             </div>
-            {manualTopics.map((t) => (
-              <TopicEditor key={t._key} topic={t} bucket="followed_up"
-                disposition={t._disposition}
-                onUpdate={(u) => updateTopic(t._key, u)}
-                onDisposition={(d) => setDisposition(t._key, d)}
-                onRemove={() => removeTopic(t._key)} />
-            ))}
             <AddTopicForm onAdd={addTopic} />
           </div>
           <ActionBar
