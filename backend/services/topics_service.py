@@ -78,16 +78,25 @@ def _normalize_sentiment(v: str) -> str:
 
 
 class TopicIn(BaseModel):
-    """One topic as submitted by the frontend (save endpoint)."""
+    """One topic as submitted by the frontend (save endpoint).
+
+    Legacy EPIC-9/EPIC-11 fields (summary, follow_up_items, decisions,
+    open_questions, status, owner, sentiment, is_parked, rationale) are kept
+    OPTIONAL with sensible defaults so the EPIC-15 new-shape extract output —
+    which only carries name/importance/key_terms/evidence/tasks — validates
+    without surface-level breakage. Status defaults to "open" and the legacy
+    list fields default to empty lists; downstream rendering treats them as
+    no-ops.
+    """
 
     name: str
-    summary: str
-    follow_up_items: list[str]
-    decisions: list[str]
+    summary: str = ""
+    follow_up_items: list[str] = []
+    decisions: list[str] = []
     open_questions: list[str] = []
-    status: Literal["open", "in_progress", "resolved"]
-    owner: Literal["Us", "Client", "Both"]
-    sentiment: Literal["positive", "neutral", "concern"]
+    status: Literal["open", "in_progress", "resolved"] = "open"
+    owner: Literal["Us", "Client", "Both"] = "Us"
+    sentiment: Literal["positive", "neutral", "concern"] = "neutral"
     transcript_excerpt: Optional[str] = None
     is_parked: bool = False
     importance: Literal["high", "medium", "low"] = "medium"
