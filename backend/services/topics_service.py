@@ -1969,21 +1969,29 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
             )
 
     def _un_merge_topics() -> None:
-        """Reverse M:N merge: un-archive source topics, delete merged-into topics created at this call."""
-        # Find topics that were created by the merge in this call (first_raised_call_id = call_id)
-        merged_targets = (
+        """Reverse M:N merge: un-archive source topics, delete merged-into topics created at this call.
+
+        IMPORTANT: only delete topics that are ACTUAL merge targets — i.e. have at least one
+        archived source topic pointing at them via merged_into_topic_id. Regular new topics
+        (Call 1 auto-advance path) also have first_raised_call_id=call_id but are NOT merge
+        targets — they must be preserved. Previously this function deleted all of them.
+        """
+        # Find topics that were created at this call (first_raised_call_id = call_id).
+        # This INCLUDES both regular new topics AND merge targets — we filter below.
+        candidates = (
             db.table("topics")
             .select("id")
             .eq("first_raised_call_id", call_id)
             .execute()
             .data
         )
-        if not merged_targets:
+        if not candidates:
             return
 
-        target_ids = [t["id"] for t in merged_targets]
+        target_ids = [t["id"] for t in candidates]
+        actual_merge_target_ids: list[str] = []
 
-        # Find all archived topics that point to these targets
+        # Un-archive sources + collect IDs of topics that ARE merge targets
         for tid in target_ids:
             source_topics = (
                 db.table("topics")
@@ -1993,6 +2001,12 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
                 .execute()
                 .data
             )
+            if not source_topics:
+                # No archived sources point at this topic → it's a regular new topic, NOT a
+                # merge target. Skip it. (This is the Call 1 auto-advance fix.)
+                continue
+
+            actual_merge_target_ids.append(tid)
             for src in source_topics:
                 payload = json.dumps({"archived": False, "merged_into_topic_id": None})
                 db.postgrest.session.patch(
@@ -2007,8 +2021,8 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
                     f"🗄️ [Rollback] Un-archived source topic {src['id']} (was merged into {tid})"
                 )
 
-        # Delete topic_updates for merged targets, then delete the target topics themselves
-        for tid in target_ids:
+        # Only delete TRUE merge-target topics — regular new topics are preserved.
+        for tid in actual_merge_target_ids:
             db.table("topic_updates").delete().eq("topic_id", tid).execute()
             db.table("topics").delete().eq("id", tid).execute()
             logger.info(
