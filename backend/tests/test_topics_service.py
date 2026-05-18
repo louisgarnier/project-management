@@ -627,3 +627,64 @@ def test_list_project_topics_includes_new_fields(monkeypatch):
             f"GET /api/projects/p1/topics response missing '{field}'. "
             f"Present keys: {list(first.keys())}"
         )
+
+
+# ── Round-trip integration: PATCH then verify ──────────────────────────────
+
+
+def test_round_trip_patch_persists_new_shape(monkeypatch):
+    """PATCH a topic with the full new-shape body, then verify all fields persisted.
+
+    Architecture §7 integration seam — ensures backend round-trips don't strip
+    fields silently. Mocks supabase; doesn't require migration 026 applied.
+    """
+    existing = {
+        "id": "tu-rt", "call_id": "c1", "topic_id": "t-rt",
+        "name": "Original",
+        "importance": "medium",
+        "key_terms": ["old-term"],
+        "evidence": [{"speaker": "Old", "quote": "Old quote", "citation": "Old"}],
+        "tasks": [
+            {"task_id": "t-old", "task": "old task", "next_step": "old next", "status": "open", "owner": "Old"},
+        ],
+        "status": "open",
+    }
+    client, state = _build_patch_test_client(monkeypatch, existing)
+
+    new_body = {
+        "name": "RoundTrip",
+        "importance": "low",
+        "key_terms": ["alpha", "beta", "gamma"],
+        "evidence": [
+            {"speaker": "S1", "quote": "Q1", "citation": "C1"},
+            {"speaker": "S2", "quote": "Q2", "citation": "C2"},
+        ],
+        "tasks": [
+            {"task": "t1", "next_step": "n1", "status": "open",     "owner": "Nick"},
+            {"task": "t2", "next_step": "n2", "status": "resolved", "owner": ""},
+        ],
+    }
+    r = client.patch("/api/topics/tu-rt", json=new_body)
+    assert r.status_code in (200, 204), r.text
+
+    # Re-fetch the same row through the fake DB (state replicates the persisted row)
+    row = state["row"]
+    assert row["name"] == "RoundTrip"
+    assert row["importance"] == "low"
+    assert row["key_terms"] == ["alpha", "beta", "gamma"]
+    assert len(row["evidence"]) == 2
+    assert row["evidence"][0] == {"speaker": "S1", "quote": "Q1", "citation": "C1"}
+    assert len(row["tasks"]) == 2
+
+    # Status rollup: one task open + one resolved → rolled up to "open"
+    assert row["status"] == "open"
+
+    # Every task carries a task_id (stamped because new tasks lacked one)
+    import uuid
+    for task in row["tasks"]:
+        assert task.get("task_id")
+        uuid.UUID(task["task_id"])
+
+    # Verify no legacy fields leaked into the persisted row from somewhere
+    for legacy in ("decisions", "follow_up_items", "open_questions", "rationale", "is_parked", "sentiment"):
+        assert legacy not in row, f"legacy field appeared in persisted row: {legacy}"
