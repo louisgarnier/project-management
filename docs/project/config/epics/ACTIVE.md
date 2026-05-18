@@ -1,23 +1,32 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Active epic:** EPIC-15 — Call Topics Rebuild
-- **Branch:** `epic-15-call-topics-rebuild` (pushed to origin)
-- **Status:** stories defined, ready to build
-- **Brainstorm:** `docs/project/config/2026-05-18-epic-15-call-topics-rebuild-brainstorm.md` (GO)
-- **PRD:** `docs/project/config/2026-05-18-epic-15-call-topics-rebuild-prd.md` (Locked)
-- **Architecture:** `docs/project/config/2026-05-18-epic-15-call-topics-rebuild-architecture.md` (Locked)
-- **Mockup:** `call-topic-tile-v3.html` — approved 2026-05-18
-- **Next:** Story 15.4 (matching read-only display + real-fixture acceptance + rollback regression)
+- **Active epic:** EPIC-15 — Call Topics Rebuild (Phase 2 — Artifacts Rebuild + xlsx Tracker)
+- **Branch:** `epic-15-phase-2-artifacts` (Phase 1 stories 15.1–15.4 baseline; Phase 2 stories 15.5–15.8 land on this branch)
+- **Status:** Phase 2 stories scoped (4 files written 2026-05-19) — ready to build
+- **Phase 1 docs:** brainstorm + PRD + architecture all locked (`docs/project/config/2026-05-18-epic-15-call-topics-rebuild-*.md`)
+- **Phase 2 docs:** brainstorm + PRD + architecture all locked (`docs/project/config/2026-05-18-epic-15-phase-2-*.md`)
+- **Mockups:** `call-topic-tile-v3.html` (Phase 1), `phase2-call-topics-extended.html`, `phase2-project-tracker-tab-v3.html` (Phase 2, both approved 2026-05-18)
+- **Next:** Story 15.5 (P2-A — call_topics extension: open_questions + decisions + migration 027 + 3-section UI)
 - **Last delivered:** Story 15.3 — Call Topics stage UI rewrite (v3 flat-table, repeated topic+chips, inline edits, evidence popover, prompt selector); legacy TopicEditor + EvidenceDrawer deleted (2026-05-18)
 
-### EPIC-15 Stories (active)
+### EPIC-15 Phase 1 (baseline)
 | # | Story | Status | Depends on |
 |---|---|---|---|
 | 15.1 | Schema + backend extractor + edit endpoints + prompt resolution | [x] code-complete — awaiting migration run | — |
 | 15.2 | Library seed: model flip + v2 call-topics entry | [x] done — 2026-05-18 | 15.1 |
 | 15.3 | Call Topics stage UI rewrite (v3 layout + inline edits) | [x] code-complete — awaiting visual smoke | 15.1, 15.2 |
 | 15.4 | Matching read-only display + real-fixture + rollback regression | [ ] todo | 15.1, 15.3 |
+
+### EPIC-15 Phase 2 (active)
+| # | Story | Workstream | Status | Depends on |
+|---|---|---|---|---|
+| 15.5 | Call-topics extension: open_questions + decisions | P2-A | [ ] todo | — |
+| 15.6 | `context_scope` 4-value enum + context-assembly seam | P2-B | [ ] todo | — (parallel-safe) |
+| 15.7 | Per-item lifecycle + chronology + RAG verification + accumulator | P2-C | [ ] todo | 15.5, 15.6 |
+| 15.8 | xlsx tracker exporter + ProjectTrackerTab + smoke acceptance | P2-D | [ ] todo | 15.7 |
+
+**Dependency order:** 15.5 → 15.7 → 15.8 sequential; 15.6 parallel.
 
 ### EPIC-12 Stories (last delivered — for reference)
 | # | Story | Status |
