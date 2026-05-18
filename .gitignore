@@ -11,6 +11,7 @@ ENV/
 *.egg-info/
 dist/
 build/
+backend/tests/output/
 
 # Node.js
 node_modules/

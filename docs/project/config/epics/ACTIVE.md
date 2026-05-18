@@ -4,13 +4,6 @@
 - **No active epic.** Awaiting next plan.
 - **Branch:** `main` (working baseline)
 - **Last delivered:** EPIC-12 — Artifacts Overhaul (merged 2026-04-23)
-- **Last attempt:** EPIC-13 — Pipeline Trust + Differential Extraction. Rolled back 2026-05-13. Archive branch: `epic-13-pipeline-trust`. See `docs/project/config/build-log.md` top entry + ADR-003 + ERR-005.
-
-### Next-epic guidance
-The original trust problem from EPIC-13 still stands: after several calls, the user can't confidently track what carried forward, what changed, and what's missed. EPIC-13's solution failed because Step 2 (K parallel "did MY prior come up?" calls, each blind to the others) produced cross-bleed and paraphrase-as-new. The next attempt should:
-1. Run **one global pass over the call** (extract → for each extracted topic, match to ≤1 prior or mark new), not K independent passes from each prior's perspective.
-2. Reuse the existing infrastructure on the branch where it's orthogonal: `confidence_scoring.py`, `call_prompt_snapshots`, archive flag, `commit_log` table — all already migrated in Supabase.
-3. Start with brainstorm → PRD → architecture per the global step-by-step process. Do not start coding before alignment.
 
 ### EPIC-12 Stories (last delivered — for reference)
 | # | Story | Status |
