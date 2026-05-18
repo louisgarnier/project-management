@@ -471,58 +471,55 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                             : undefined
                         }
                       >
-                        {/* Topic + key terms — only on first task row */}
-                        {taskIdx === 0 ? (
-                          <td
-                            rowSpan={tasks.length + 1}
+                        {/* Topic + key terms — repeated on every task row per spec Q2(c) */}
+                        <td
+                          style={{
+                            ...td,
+                            verticalAlign: "top",
+                            borderRight: "1px solid #f0f1f3",
+                          }}
+                        >
+                          <div
                             style={{
-                              ...td,
-                              verticalAlign: "top",
-                              borderRight: "1px solid #f0f1f3",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              marginBottom: 8,
                             }}
                           >
-                            <div
+                            <input
+                              value={topic.name}
+                              onChange={(e) =>
+                                patchTopic(ti, { name: e.target.value })
+                              }
+                              style={topicNameStyle}
+                            />
+                            <select
+                              value={importance}
+                              onChange={(e) =>
+                                patchTopic(ti, {
+                                  importance: e.target.value as TopicData["importance"],
+                                })
+                              }
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                                marginBottom: 8,
+                                ...impSelect,
+                                background: IMP_BG[importance],
+                                color: IMP_FG[importance],
                               }}
                             >
-                              <input
-                                value={topic.name}
-                                onChange={(e) =>
-                                  patchTopic(ti, { name: e.target.value })
-                                }
-                                style={topicNameStyle}
-                              />
-                              <select
-                                value={importance}
-                                onChange={(e) =>
-                                  patchTopic(ti, {
-                                    importance: e.target.value as TopicData["importance"],
-                                  })
-                                }
-                                style={{
-                                  ...impSelect,
-                                  background: IMP_BG[importance],
-                                  color: IMP_FG[importance],
-                                }}
-                              >
-                                <option value="high">HIGH</option>
-                                <option value="medium">MED</option>
-                                <option value="low">LOW</option>
-                              </select>
-                            </div>
-                            <KeyTermChips
-                              terms={keyTerms}
-                              editable
-                              onChange={(next) =>
-                                patchTopic(ti, { key_terms: next })
-                              }
-                            />
-                          </td>
-                        ) : null}
+                              <option value="high">HIGH</option>
+                              <option value="medium">MED</option>
+                              <option value="low">LOW</option>
+                            </select>
+                          </div>
+                          <KeyTermChips
+                            terms={keyTerms}
+                            editable
+                            onChange={(next) =>
+                              patchTopic(ti, { key_terms: next })
+                            }
+                          />
+                        </td>
 
                         {/* Task */}
                         <td style={td}>
@@ -640,59 +637,57 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                         key={`${ti}-footer`}
                         style={{ background: "#fafbfc" }}
                       >
-                        {/* Skip topic cell (covered by rowSpan) when tasks exist */}
-                        {tasks.length === 0 ? (
-                          <td
+                        {/* Topic cell always present — footer is its own row, not covered by any rowSpan */}
+                        <td
+                          style={{
+                            ...td,
+                            borderTop: tasks.length === 0 ? "2px solid #dfe1e6" : undefined,
+                            borderRight: "1px solid #f0f1f3",
+                          }}
+                        >
+                          <div
                             style={{
-                              ...td,
-                              borderTop: "2px solid #dfe1e6",
-                              borderRight: "1px solid #f0f1f3",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              marginBottom: 8,
                             }}
                           >
-                            <div
+                            <input
+                              value={topic.name}
+                              onChange={(e) =>
+                                patchTopic(ti, { name: e.target.value })
+                              }
+                              style={topicNameStyle}
+                            />
+                            <select
+                              value={importance}
+                              onChange={(e) =>
+                                patchTopic(ti, {
+                                  importance: e.target.value as TopicData["importance"],
+                                })
+                              }
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                                marginBottom: 8,
+                                ...impSelect,
+                                background: IMP_BG[importance],
+                                color: IMP_FG[importance],
                               }}
                             >
-                              <input
-                                value={topic.name}
-                                onChange={(e) =>
-                                  patchTopic(ti, { name: e.target.value })
-                                }
-                                style={topicNameStyle}
-                              />
-                              <select
-                                value={importance}
-                                onChange={(e) =>
-                                  patchTopic(ti, {
-                                    importance: e.target.value as TopicData["importance"],
-                                  })
-                                }
-                                style={{
-                                  ...impSelect,
-                                  background: IMP_BG[importance],
-                                  color: IMP_FG[importance],
-                                }}
-                              >
-                                <option value="high">HIGH</option>
-                                <option value="medium">MED</option>
-                                <option value="low">LOW</option>
-                              </select>
-                            </div>
-                            <KeyTermChips
-                              terms={keyTerms}
-                              editable
-                              onChange={(next) =>
-                                patchTopic(ti, { key_terms: next })
-                              }
-                            />
-                          </td>
-                        ) : null}
+                              <option value="high">HIGH</option>
+                              <option value="medium">MED</option>
+                              <option value="low">LOW</option>
+                            </select>
+                          </div>
+                          <KeyTermChips
+                            terms={keyTerms}
+                            editable
+                            onChange={(next) =>
+                              patchTopic(ti, { key_terms: next })
+                            }
+                          />
+                        </td>
                         <td
-                          colSpan={tasks.length === 0 ? 6 : 7}
+                          colSpan={6}
                           style={{ padding: "7px 14px" }}
                         >
                           <button
