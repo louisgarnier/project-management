@@ -20,13 +20,13 @@ Update the artifact library seed so new projects start on `openrouter / deepseek
   - [x] `seeded_by_default = true`
   - [x] `prompt` body = `CALL_TOPICS_V2_PROMPT_BODY` imported from `backend/prompts/call_topics.py`
   - [x] `model = "openrouter"`, `model_id = "deepseek/deepseek-v3.2"`
-- [x] The pre-existing v1 call_topics entry stays in the seed, but with `seeded_by_default = false`. (User can re-enable manually via /library.)
+- [ ] ~~The pre-existing v1 call_topics entry stays in the seed, but with `seeded_by_default = false`.~~ **PRD drift, documented:** the EPIC-11 v1 prompt body was deliberately deleted in Story 15.1 T3 (only `OLD_DEFAULT_PROMPT_STRING`, a pre-EPIC-11 string, remains). The seed therefore ships v2-only. Existing projects whose `artifact_types` row was seeded earlier retain their EPIC-11 prompt content. If the user wants v1 in the library, paste the EPIC-11 prompt into a new entry via `/library` — no code change needed.
 - [x] `upsert_system_library` (existing idempotent function) cleanly applies the new seed on existing DBs without duplicating rows.
-- [x] `/library` "Reset system to defaults" button preserves v1 demotion (v1 remains `seeded_by_default=false` after reset, not flipped back to true).
+- [x] `/library` "Reset system to defaults" button preserves v1 demotion (vacuously true — v1 is not in the seed; the v2 default is unambiguous after reset).
 - [x] Unit tests:
-  - [x] `backend/tests/test_library_seed.py` (new or extended): assert every LLM/hybrid system entry resolves to `openrouter / deepseek/deepseek-v3.2`.
+  - [x] `backend/tests/test_library_seed.py`: assert every LLM/hybrid system entry resolves to `openrouter / deepseek/deepseek-v3.2`.
   - [x] Assert v2 call_topics entry exists and is `seeded_by_default=true`.
-  - [x] Assert v1 call_topics entry exists and is `seeded_by_default=false`.
+  - [ ] ~~Assert v1 call_topics entry exists and is `seeded_by_default=false`.~~ N/A — see PRD drift above. Replaced with: assert there is **exactly one** seeded-by-default call_topics entry (`test_only_one_call_topics_default`).
   - [x] Assert no existing project's `default_model` is modified by the seed call.
 
 ## Out of scope (in this story)
