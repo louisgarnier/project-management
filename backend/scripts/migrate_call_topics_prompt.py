@@ -10,8 +10,12 @@ user-customized and is left untouched.
 """
 
 from backend.database.supabase_client import get_client
+# DEPRECATED — EPIC-15 retired CALL_TOPICS_DEFAULT_PROMPT. This migration ran
+# pre-EPIC-15 on all known DBs and is preserved for history. The alias below
+# keeps the script importable for testing; the script itself should not be
+# rerun.
 from backend.prompts.call_topics import (
-    CALL_TOPICS_V2_PROMPT_BODY as CALL_TOPICS_DEFAULT_PROMPT,
+    CALL_TOPICS_V2_PROMPT_BODY as CALL_TOPICS_DEFAULT_PROMPT,  # noqa: F401 — legacy alias
     OLD_DEFAULT_PROMPT_STRING,
 )
 from backend.utils.logger import get_logger
