@@ -1,119 +1,77 @@
 """
-Single source of truth for the call_topics extraction prompt.
+Source-of-truth for the v2 call_topics extraction prompt.
 
-Consumed in three places — all reference the same constant:
-1. Seed for new projects — DEFAULT_CALL_TOPICS_PROMPT in routers/artifact_types.py
-2. Fallback in extract_call_topics — topics_service.py
-3. GET /api/artifact-types/defaults/{category} — for the "Reset to default" button
+The library (`artifact_library` rows where category=call_topics) is the runtime
+source for the prompt. This module only EXPORTS the v2 body so Story 15.2's
+SYSTEM_LIBRARY seed can pick it up.
 
-OLD_DEFAULT_PROMPT_STRING is a frozen snapshot of the pre-migration prompt;
-used by migration 020 to identify unedited rows that should be migrated.
+`OLD_DEFAULT_PROMPT_STRING` is kept frozen — migration 020 uses it to identify
+unedited pre-EPIC-11 rows.
 """
 
-CALL_TOPICS_DEFAULT_PROMPT: str = """[ROLE]
-You are an expert analyst of business call transcripts. Your output shapes a living project tracker that must be reliable enough to ship without cleanup. Precision and discipline matter more than coverage.
+CALL_TOPICS_V2_PROMPT_BODY: str = """[ROLE]
+You are an expert analyst of business call transcripts. Your output feeds a project tracker
+that must be reliable enough to ship without cleanup. Every topic you produce must be SHORT,
+SYNTHETIC, and ANCHORED to verbatim transcript quotes. No padding. No drift. No speculation.
 
-[RUBRIC]
-A candidate is a topic worth extracting only when it meets AT LEAST 3 of these 4 criteria:
+[ANTI-PATTERN — DO NOT PRODUCE]
+The previous extractor produced over-detailed, drifting topics — 3-6 sentence summaries that
+restated context the transcript never contained, and topic names like "Risk model selection
+— LMAC vs MC Mac vs FV Mac (architectural deep-dive over Phase 2 with EDS+ memory dependency)".
+THIS IS THE FAILURE MODE. If you find yourself writing a topic name longer than 8 words or a
+summary that paraphrases beyond what the transcript explicitly says, STOP and tighten.
 
-1. FORWARD LIFE — will this need attention after this call? Something uttered and complete the moment it was spoken (a greeting, a clarification, a one-line acknowledgement) does NOT qualify.
+[RUBRIC — what counts as a topic]
+A topic is valid only when ALL of these are true:
+1. EVIDENCE — you can quote >=1 verbatim line from the transcript that anchors it (with speaker).
+2. ACTION — it produces >=1 concrete task. A "task" has a short description and a next step.
+3. SHARPNESS — the topic name is <= 8 words, names something specific (a system, person, decision).
 
-2. ANCHOR TYPE — has at least one of:
-   - a decision pending (someone needs to decide something)
-   - an action outstanding (someone needs to do something)
-   - an open question or uncertainty (needs investigation)
+If you cannot produce both evidence AND >=1 task with a clear next step, DROP the candidate.
 
-3. SPECIFICITY — references named systems, metrics, people, frequencies, deadlines, or other concrete parameters. Vague statements like "we need to think about efficiency" only qualify if they got grounded in specifics later in the same discussion.
+[OUTPUT SHAPE — return ONLY a JSON array of these objects, no markdown]
+{
+  "name": "short, <= 8 words, names a specific thing",
+  "importance": "high" | "medium" | "low",
+  "key_terms": ["acronyms", "proper nouns", "distinctive phrases — as many as the topic supports, no upper limit"],
+  "evidence": [
+    {
+      "speaker": "Name from the transcript",
+      "quote": "verbatim line(s) from the transcript — do not paraphrase",
+      "citation": "transcript {call_date_iso} · lines {N}-{M}"
+    }
+  ],
+  "tasks": [
+    {
+      "task": "short — 2-6 words",
+      "next_step": "one sentence — what specifically happens next",
+      "status": "open" | "in_progress" | "resolved",
+      "owner": "Name from the transcript, or empty string if unsure"
+    }
+  ]
+}
 
-4. DIALOGUE DEPTH — at least 2 substantive turns (raised + responded to with information, pushback, question, or commitment). A single statement with no reaction is not a topic yet.
+[REQUIRED FIELDS]
+- name (required, non-empty)
+- importance (required, one of high/medium/low)
+- key_terms (required, >=1 entries)
+- evidence (required, >=1 entries)
+- tasks (required, >=1 entries)
+- task.task / task.next_step / task.status (required per task)
+- task.owner (OPTIONAL — empty string allowed)
 
-Candidates meeting only 1-2 criteria are filler or nested action items under a real topic — do NOT extract them as separate topics.
+A topic missing evidence or tasks will be REJECTED and dropped.
 
-SPLITTING RULES — break into separate topics when sub-items have different owners, different timelines, or could be decided independently. Keep together when sub-items are inputs to one decision.
+[KEY TERMS — what to extract]
+Produce as many anchoring terms as the topic supports — acronyms, proper nouns, distinctive
+phrases. These become the matching dictionary for future calls. More is better. Do not cap.
 
-FILTERS — DO NOT extract:
-- Re-explanations or onboarding narration. Test: "did anything new get decided or raised?" If no, skip.
-- Pure logistics resolved in-call (meeting reschedules, CC lists, access provisioning) unless they remain open or depend on something technical.
-- Pleasantries, tangents, and single-statement mentions with no reaction.
+[STATUS — per task, not per topic]
+- "open" — newly raised, not yet acted on.
+- "in_progress" — actively being worked on right now (per the call).
+- "resolved" — concluded in this call.
 
-PARKED ITEMS — items flagged for later but with no current action ("we'll look at fat-tail modeling later"): EXTRACT these with is_parked=true. No actions, no decisions — just the open question and a summary.
-
-[ANCHORS]
-Every topic distributes its content across EXACTLY THREE distinct fields — do NOT merge:
-- decisions[] — anything explicitly agreed or concluded in this call. Terse, declarative sentences.
-- follow_up_items[] — concrete actions. When the owner is named, inline as prefix: "Nick: run benchmark", "Hassan: share EDS+ evidence". Strings only — no object structure.
-- open_questions[] — unresolved uncertainties needing investigation. Phrase as questions.
-
-DUAL-CLASSIFY RULE — when a follow-up is phrased as an investigation (verbs like *investigate, determine, confirm, validate, check, clarify, verify, assess*) OR depends on an unknown outcome, you MUST ALSO record the underlying uncertainty in open_questions[]. The action stays in follow_up_items[]; the question ALSO goes in open_questions[]. Both entries are expected — not either/or. An investigation IS an unresolved question with an owner attached.
-
-Example: follow-up "Nick: investigate whether the memory boost option resolves the Monte Carlo Mac failure" → ALSO add open_question "Does the memory boost option resolve the Monte Carlo Mac memory failure?"
-
-If a topic ends up with only follow_up_items full of "investigate/confirm/check" verbs and open_questions empty, you have violated this rule — revisit and populate open_questions[].
-
-If a thread has none of these three, it is not a topic.
-
-[FEW-SHOT]
-
-GOOD extraction (shape and discipline to mirror):
-[
-  {
-    "name": "Risk model selection — LMAC vs MC Mac",
-    "summary": "Nick raised that LMAC's composite handling may not scale to the full book of private assets. MC Mac was proposed as a fallback but has a documented 40GB-memory ceiling the EDS+ team already hit on a similar load. A benchmark run is required before committing — the outcome gates Phase 2 kickoff.",
-    "transcript_excerpt": "Nick: I'm not convinced LMAC handles composites at full scale... Hassan: we hit the 40GB ceiling on MC Mac with the EDS+ load last quarter... Charlie: so we need the benchmark before we can move to Phase 2.",
-    "decisions": ["Phase 2 kickoff gated on benchmark outcome."],
-    "follow_up_items": ["Nick: run LMAC vs MC Mac benchmark on full book", "Hassan: share EDS+ memory-ceiling evidence with team"],
-    "open_questions": ["Does MC Mac's 40GB ceiling apply with EDS+'s caching layer in front?", "Can FV Mac handle the private-markets piece separately if split?"],
-    "status": "open",
-    "owner": "Us",
-    "sentiment": "concern",
-    "is_parked": false,
-    "importance": "high",
-    "rationale": "All 4 criteria met — named systems (LMAC/MC Mac/FV Mac), named people, explicit decision gate, 5+ substantive turns."
-  }
-]
-
-PARKED extraction (shape to mirror for future-life items with no current decision or action):
-[
-  {
-    "name": "Fat-Tail Modeling — Future Extension",
-    "summary": "Hassan briefly raised fat-tail modeling as a longer-term consideration beyond the current Monte Carlo baseline. Mentioned twice with no current commitment, no decision, no owner attached — flagged as something to revisit when the Phase 2 work stabilizes.",
-    "transcript_excerpt": "Hassan: at some point we should think about fat-tail modeling, but that's not this phase... Nick: yeah, let's park it.",
-    "decisions": [],
-    "follow_up_items": [],
-    "open_questions": ["When should fat-tail modeling be revisited and what project milestone triggers the conversation?"],
-    "status": "open",
-    "owner": "Us",
-    "sentiment": "neutral",
-    "is_parked": true,
-    "importance": "low",
-    "rationale": "Parked — future-life and named system (fat-tail modeling) but no current anchor action or decision; carries one unresolved question."
-  }
-]
-
-BAD extraction (fragmentation — do NOT produce output shaped like this):
-[
-  {"name": "LMAC feasibility"},
-  {"name": "MC Mac memory issue"},
-  {"name": "Phase 2 timeline"},
-  {"name": "FV Mac caching"}
-]
-Correction: these are all inputs to one decision (risk model selection) with shared owners and one timeline. Merge into a single topic per the SPLITTING RULES.
-
-[PROCESS]
-Work in five internal steps (do not expose the steps — just return the final JSON array):
-
-Step 1 — List every candidate thread in the transcript. Do not yet filter.
-Step 2 — Cluster near-duplicates by shared subject AND shared commitments. Apply the SPLITTING RULES.
-Step 3 — Apply the 3-of-4 RUBRIC to each cluster. Drop clusters meeting only 1-2 criteria.
-Step 4 — For each surviving cluster:
-  - Write a 3-6 sentence summary covering EVERY concrete detail (numbers, names, frequencies, deadlines, commitments). Do not compress. Completeness beats brevity.
-  - Classify each anchor into decisions / follow_up_items / open_questions — NEVER merge them.
-  - Copy the verbatim transcript excerpt covering the discussion (2-8 sentences). Use exact words.
-  - Set importance: "high" if all 4 rubric criteria met, "medium" if exactly 3 of 4, "low" for parked items or weak edge cases.
-  - Write a one-line rationale explaining which criteria were met (shown to the user as a tooltip).
-Step 5 — For clusters with future life but no current decision/action/substantive turn, set is_parked=true. Leave follow_up_items empty; open_questions may hold the "what for later" hint.
-
-Return ONLY a valid JSON array matching the schema. No markdown, no explanation."""
+Return ONLY a valid JSON array. No markdown fences. No explanation. No prose."""
 
 
 OLD_DEFAULT_PROMPT_STRING: str = (
