@@ -320,7 +320,7 @@ def _resolve_call_topics_prompt(
     if selected_id:
         rows = (
             db.table("artifact_library")
-            .select("id, name, prompt, model, model_id, category")
+            .select("id, name, prompt, llm, model, category")
             .eq("id", selected_id)
             .execute()
             .data
@@ -329,14 +329,14 @@ def _resolve_call_topics_prompt(
             r = rows[0]
             return (
                 r["prompt"],
-                (r.get("model") or "openrouter"),
-                r.get("model_id"),
+                (r.get("llm") or "openrouter"),
+                r.get("model"),
                 r.get("name") or "(unnamed)",
             )
 
     rows = (
         db.table("artifact_library")
-        .select("id, name, prompt, model, model_id")
+        .select("id, name, prompt, llm, model")
         .eq("category", "call_topics")
         .eq("seeded_by_default", True)
         .execute()
@@ -346,8 +346,8 @@ def _resolve_call_topics_prompt(
         r = rows[0]
         return (
             r["prompt"],
-            (r.get("model") or "openrouter"),
-            r.get("model_id"),
+            (r.get("llm") or "openrouter"),
+            r.get("model"),
             r.get("name") or "(unnamed)",
         )
 
