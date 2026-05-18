@@ -210,3 +210,86 @@ def test_resolve_prompt_invalid_call_raises():
     db = _FakeDB({"calls": [], "artifact_library": []})
     with pytest.raises(ValueError, match="not found"):
         topics_service._resolve_call_topics_prompt("missing", db)
+
+
+# ── Persistence — only new-shape columns, no legacy keys ──────────────────
+
+
+def test_persistence_payload_only_has_new_columns(monkeypatch):
+    """Captures the dict sent to supabase insert/upsert. Asserts no legacy keys."""
+    captured: list[dict] = []
+
+    class _Tbl:
+        def __init__(self):
+            self._filters = []
+
+        def insert(self, payload):
+            if isinstance(payload, list):
+                captured.extend(payload)
+            else:
+                captured.append(payload)
+            return self
+
+        def upsert(self, payload):
+            return self.insert(payload)
+
+        def update(self, _payload):
+            return self
+
+        def select(self, *_a, **_kw):
+            return self
+
+        def eq(self, *_a, **_kw):
+            return self
+
+        def order(self, *_a, **_kw):
+            return self
+
+        def execute(self):
+            class _R:
+                data = [{"id": "tu-stub"}]
+
+            return _R()
+
+    class _DB:
+        def table(self, _n):
+            return _Tbl()
+
+    monkeypatch.setattr(topics_service, "get_client", lambda: _DB())
+
+    # Build a valid extracted topic and stamp task_ids (mirrors extract_call_topics)
+    topic = _valid_topic()
+    topic = topics_service._stamp_task_ids(topic)
+
+    topics_service._persist_topic_update(
+        topic=topic,
+        topic_id="pt-stub",
+        call_id="c1",
+    )
+
+    assert captured, "no payload captured — check _persist_topic_update signature"
+    payload = captured[0]
+
+    # Required new-shape keys must all be present
+    for k in ("name", "importance", "evidence", "key_terms", "tasks", "status"):
+        assert k in payload, f"required new-shape key missing: {k}"
+
+    # Status must be rolled up from tasks — one open task → 'open'
+    assert payload["status"] == "open"
+
+    # Forbidden legacy keys must not appear
+    for legacy in (
+        "decisions",
+        "follow_up_items",
+        "open_questions",
+        "rationale",
+        "is_parked",
+        "owner",
+        "sentiment",
+    ):
+        assert legacy not in payload, f"legacy field leaked into persistence: {legacy}"
+
+    # Every task in the payload must carry a task_id UUID
+    for task in payload["tasks"]:
+        assert task.get("task_id"), f"task missing task_id: {task}"
+        uuid.UUID(task["task_id"])  # raises ValueError if not a valid UUID

@@ -114,6 +114,10 @@ class TopicUpdate(TopicIn):
 
     topic_id: Optional[str] = None  # None → brand new topic
     disposition: Optional[Literal["keep_as_is", "archive"]] = None
+    # EPIC-15 new-shape fields — optional so old callers don't break
+    evidence: list[dict] = []
+    key_terms: list[str] = []
+    tasks: list[dict] = []
 
 
 class TopicOut(BaseModel):
@@ -252,6 +256,42 @@ def _status_rollup(tasks: list[dict]) -> str:
     if "in_progress" in statuses:
         return "in_progress"
     return "resolved"
+
+
+def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
+    """Insert a single topic_updates row in the new EPIC-15 shape.
+
+    Writes only the new columns + status roll-up. Legacy columns (decisions,
+    follow_up_items, open_questions, rationale, is_parked, owner, sentiment)
+    are intentionally omitted — Migration 026 drops them from the table.
+
+    Keeps summary and transcript_excerpt (architecture §6 keeps these columns).
+
+    Args:
+        topic: dict containing the new-shape fields (evidence, key_terms, tasks,
+               name, importance, and optionally summary/transcript_excerpt).
+        topic_id: UUID of the topics row this update belongs to.
+        call_id: UUID of the call this update is for.
+
+    Returns the new row id.
+    """
+    db = get_client()
+    payload: dict = {
+        "topic_id": topic_id,
+        "call_id": call_id,
+        "name": topic["name"],
+        "importance": topic.get("importance", "medium"),
+        "evidence": topic.get("evidence", []),
+        "key_terms": topic.get("key_terms", []),
+        "tasks": topic.get("tasks", []),
+        "status": _status_rollup(topic.get("tasks", [])),
+    }
+    if topic.get("summary"):
+        payload["summary"] = topic["summary"]
+    if topic.get("transcript_excerpt"):
+        payload["transcript_excerpt"] = topic["transcript_excerpt"]
+    res = db.table("topic_updates").insert(payload).execute()
+    return res.data[0]["id"]
 
 
 def _resolve_call_topics_prompt(
@@ -1575,6 +1615,7 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
     saved = 0
     for t in topics:
         if t.topic_id is None:
+            _rolled_status = _status_rollup(t.tasks)
             inserted = (
                 db.table("topics")
                 .insert(
@@ -1582,7 +1623,7 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
                         "project_id": project_id,
                         "name": t.name,
                         "first_raised_call_id": call_id,
-                        "calls_open": 0 if t.status == "resolved" else 1,
+                        "calls_open": 0 if _rolled_status == "resolved" else 1,
                         "archived": False,
                     }
                 )
@@ -1592,6 +1633,7 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
             topic_id = inserted[0]["id"]
             logger.info(f"🗄️ [DB] Inserted new topic: {topic_id}")
         else:
+            _rolled_status = _status_rollup(t.tasks)
             topic_id = t.topic_id
             if t.disposition == "archive":
                 db.table("topics").update({"archived": True}).eq(
@@ -1600,7 +1642,7 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
                 logger.info(f"🗄️ [DB] Archived topic: {topic_id}")
                 saved += 1
                 continue
-            if t.status == "resolved":
+            if _rolled_status == "resolved":
                 db.table("topics").update({"calls_open": 0}).eq(
                     "id", topic_id
                 ).execute()
@@ -1618,23 +1660,19 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
                     "id", topic_id
                 ).execute()
 
-        update_row = {
-            "topic_id": topic_id,
-            "call_id": call_id,
-            "summary": t.summary,
-            "follow_up_items": t.follow_up_items,
-            "decisions": t.decisions,
-            "open_questions": t.open_questions,
-            "status": t.status,
-            "owner": t.owner,
-            "sentiment": t.sentiment,
-            "is_parked": t.is_parked,
+        # Build the new-shape topic dict from the TopicUpdate model fields.
+        # _persist_topic_update is the single source of truth for what gets
+        # persisted — it writes only the EPIC-15 columns and rolls up status.
+        topic_dict = {
+            "name": t.name,
             "importance": t.importance,
-            "rationale": t.rationale,
+            "evidence": t.evidence,
+            "key_terms": t.key_terms,
+            "tasks": t.tasks,
+            "summary": t.summary,
+            "transcript_excerpt": t.transcript_excerpt,
         }
-        if t.transcript_excerpt:
-            update_row["transcript_excerpt"] = t.transcript_excerpt
-        db.table("topic_updates").insert(update_row).execute()
+        _persist_topic_update(topic_dict, topic_id, call_id)
         logger.info(f"🗄️ [DB] Inserted topic_update for topic: {topic_id}")
         saved += 1
 
