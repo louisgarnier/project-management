@@ -13,6 +13,7 @@ from backend.services.topics_service import (
     list_topics_timeline,
     list_topics_prior_to_call, rollback_to_stage,
     TopicUpdate,
+    _stamp_task_ids, _status_rollup,
 )
 from backend.utils.logger import get_logger
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -605,6 +606,55 @@ async def get_topic_evidence(topic_id: str):
         lineage=lineage,
         calls=calls,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Story 15.1 — PATCH /api/topics/{topic_id}  (partial new-shape body)
+# --------------------------------------------------------------------------- #
+
+
+class TopicPatch(PydanticBaseModel):
+    name: Optional[str] = None
+    importance: Optional[str] = None
+    key_terms: Optional[list[str]] = None
+    evidence: Optional[list[dict]] = None
+    tasks: Optional[list[dict]] = None
+
+
+@router.patch("/topics/{topic_id}")
+async def patch_topic(topic_id: str, body: TopicPatch):
+    """Partially update a topic_updates row by its row id.
+
+    Accepts any subset of: name, importance, key_terms, evidence, tasks.
+    When tasks are supplied, task_ids are stamped on any new tasks and
+    status is auto-rolled-up from task statuses.
+    """
+    logger.info(f"📥 [Topics] PATCH requested: topic_updates.id={topic_id}")
+    db = get_client()
+
+    payload: dict = {}
+    if body.name is not None:
+        payload["name"] = body.name
+    if body.importance is not None:
+        payload["importance"] = body.importance
+    if body.key_terms is not None:
+        payload["key_terms"] = body.key_terms
+    if body.evidence is not None:
+        payload["evidence"] = body.evidence
+    if body.tasks is not None:
+        stamped = _stamp_task_ids({"tasks": body.tasks})["tasks"]
+        payload["tasks"] = stamped
+        payload["status"] = _status_rollup(stamped)
+
+    if not payload:
+        raise HTTPException(status_code=400, detail="no fields to update")
+
+    res = db.table("topic_updates").update(payload).eq("id", topic_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="topic not found")
+
+    logger.info(f"✅ [Topics] PATCH applied: topic_updates.id={topic_id}, fields={list(payload)}")
+    return res.data[0]
 
 
 @router.get("/calls/{call_id}/brief")

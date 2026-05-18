@@ -293,3 +293,195 @@ def test_persistence_payload_only_has_new_columns(monkeypatch):
     for task in payload["tasks"]:
         assert task.get("task_id"), f"task missing task_id: {task}"
         uuid.UUID(task["task_id"])  # raises ValueError if not a valid UUID
+
+
+# ── PATCH /api/topics/{id} — partial body, status rollup, task_id stamping ──
+
+import importlib
+
+from fastapi.testclient import TestClient
+
+
+def _build_patch_test_client(monkeypatch, existing_topic_row: dict):
+    """Stand up a TestClient with a fake supabase that returns/updates a single topic_updates row."""
+    state = {"row": dict(existing_topic_row)}
+
+    class _Tbl:
+        def __init__(self, name):
+            self._name = name
+            self._filters = []
+            self._update_payload = None
+
+        def select(self, *_a, **_kw):
+            return self
+
+        def eq(self, col, val):
+            self._filters.append((col, val))
+            return self
+
+        def update(self, payload):
+            self._update_payload = payload
+            return self
+
+        def delete(self):
+            self._update_payload = "DELETE"
+            return self
+
+        def execute(self):
+            class _R:
+                pass
+
+            r = _R()
+            if self._name != "topic_updates":
+                r.data = []
+                return r
+            # SELECT
+            if self._update_payload is None:
+                rid = next((v for c, v in self._filters if c == "id"), None)
+                r.data = [state["row"]] if rid == state["row"]["id"] else []
+                return r
+            if self._update_payload == "DELETE":
+                state["row"] = None
+                r.data = []
+                return r
+            # UPDATE
+            state["row"] = {**state["row"], **self._update_payload}
+            r.data = [state["row"]]
+            return r
+
+    class _DB:
+        def table(self, name):
+            return _Tbl(name)
+
+    monkeypatch.setattr(topics_service, "get_client", lambda: _DB())
+
+    try:
+        topics_router = importlib.import_module("backend.routers.topics")
+        monkeypatch.setattr(topics_router, "get_client", lambda: _DB())
+    except Exception:
+        pass
+
+    from backend.main import app
+
+    return TestClient(app), state
+
+
+def test_patch_topic_partial_updates_name_only(monkeypatch):
+    existing = {
+        "id": "tu1",
+        "call_id": "c1",
+        "topic_id": "t1",
+        "name": "Old name",
+        "importance": "medium",
+        "key_terms": ["a"],
+        "evidence": [{"speaker": "X", "quote": "Y", "citation": "Z"}],
+        "tasks": [
+            {
+                "task_id": "task-1",
+                "task": "old",
+                "next_step": "x",
+                "status": "open",
+                "owner": "",
+            }
+        ],
+        "status": "open",
+    }
+    client, state = _build_patch_test_client(monkeypatch, existing)
+    r = client.patch("/api/topics/tu1", json={"name": "New name"})
+    assert r.status_code in (200, 204), r.text
+    assert state["row"]["name"] == "New name"
+    # Untouched fields stay
+    assert state["row"]["importance"] == "medium"
+
+
+def test_patch_topic_tasks_triggers_status_rollup(monkeypatch):
+    existing = {
+        "id": "tu1",
+        "call_id": "c1",
+        "topic_id": "t1",
+        "name": "T",
+        "importance": "low",
+        "key_terms": ["a"],
+        "evidence": [{"speaker": "X", "quote": "Y", "citation": "Z"}],
+        "tasks": [
+            {
+                "task_id": "task-1",
+                "task": "a",
+                "next_step": "b",
+                "status": "open",
+                "owner": "",
+            }
+        ],
+        "status": "open",
+    }
+    client, state = _build_patch_test_client(monkeypatch, existing)
+    new_tasks = [
+        {
+            "task_id": "task-1",
+            "task": "a",
+            "next_step": "b",
+            "status": "resolved",
+            "owner": "",
+        },
+        {
+            "task_id": "task-2",
+            "task": "c",
+            "next_step": "d",
+            "status": "resolved",
+            "owner": "Nick",
+        },
+    ]
+    r = client.patch("/api/topics/tu1", json={"tasks": new_tasks})
+    assert r.status_code in (200, 204), r.text
+    assert state["row"]["status"] == "resolved"  # rolled up
+    assert len(state["row"]["tasks"]) == 2
+
+
+def test_patch_topic_new_task_without_id_gets_stamped(monkeypatch):
+    existing = {
+        "id": "tu1",
+        "call_id": "c1",
+        "topic_id": "t1",
+        "name": "T",
+        "importance": "low",
+        "key_terms": ["a"],
+        "evidence": [{"speaker": "X", "quote": "Y", "citation": "Z"}],
+        "tasks": [
+            {
+                "task_id": "task-1",
+                "task": "a",
+                "next_step": "b",
+                "status": "open",
+                "owner": "",
+            }
+        ],
+        "status": "open",
+    }
+    client, state = _build_patch_test_client(monkeypatch, existing)
+    new_tasks = [
+        {
+            "task_id": "task-1",
+            "task": "a",
+            "next_step": "b",
+            "status": "open",
+            "owner": "",
+        },
+        {
+            "task": "fresh task",
+            "next_step": "fresh next step",
+            "status": "open",
+            "owner": "",
+        },  # no task_id
+    ]
+    r = client.patch("/api/topics/tu1", json={"tasks": new_tasks})
+    assert r.status_code in (200, 204), r.text
+    # Both tasks should have task_id
+    assert len(state["row"]["tasks"]) == 2
+    for task in state["row"]["tasks"]:
+        assert task.get("task_id"), f"task missing task_id: {task}"
+    # The new task (no task_id supplied) must have been stamped with a real UUID
+    new_task = next(t for t in state["row"]["tasks"] if t.get("task") == "fresh task")
+    uuid.UUID(new_task["task_id"])  # raises ValueError if not a valid UUID
+    # The existing task preserves its original id (may not be UUID format)
+    existing_task = next(t for t in state["row"]["tasks"] if t.get("task_id") == "task-1")
+    assert existing_task["task_id"] == "task-1"
