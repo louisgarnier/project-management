@@ -46,6 +46,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   const [polling, setPolling] = useState(
     () => call.extraction_status === "processing"
   );
+  const [menu, setMenu] = useState<{ ti: number; x: number; y: number } | null>(null);
 
   // ── Load library prompts ──
   useEffect(() => {
@@ -225,7 +226,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
 
   // ── Render ──
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
 
       {/* ── Header ── */}
       <div
@@ -471,7 +472,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                             : undefined
                         }
                       >
-                        {/* Topic + key terms — repeated on every task row per spec Q2(c) */}
+                        {/* Topic — repeated on every task row; chips moved to Task cell */}
                         <td
                           style={{
                             ...td,
@@ -480,11 +481,14 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                           }}
                         >
                           <div
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setMenu({ ti, x: e.clientX, y: e.clientY });
+                            }}
                             style={{
                               display: "flex",
                               alignItems: "center",
                               gap: 6,
-                              marginBottom: 8,
                             }}
                           >
                             <input
@@ -512,16 +516,9 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                               <option value="low">LOW</option>
                             </select>
                           </div>
-                          <KeyTermChips
-                            terms={keyTerms}
-                            editable
-                            onChange={(next) =>
-                              patchTopic(ti, { key_terms: next })
-                            }
-                          />
                         </td>
 
-                        {/* Task */}
+                        {/* Task + key-term chips (topic-level, shown under each task row) */}
                         <td style={td}>
                           <input
                             value={task.task}
@@ -538,6 +535,15 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                             style={cellInput}
                             placeholder="Describe task…"
                           />
+                          <div style={{ marginTop: 6 }}>
+                            <KeyTermChips
+                              terms={keyTerms}
+                              editable
+                              onChange={(next) =>
+                                patchTopic(ti, { key_terms: next })
+                              }
+                            />
+                          </div>
                         </td>
 
                         {/* Next step */}
@@ -631,99 +637,6 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                       </tr>
                     ));
 
-                    // Footer row: + Add task / Delete topic
-                    rows.push(
-                      <tr
-                        key={`${ti}-footer`}
-                        style={{ background: "#fafbfc" }}
-                      >
-                        {/* Topic cell always present — footer is its own row, not covered by any rowSpan */}
-                        <td
-                          style={{
-                            ...td,
-                            borderTop: tasks.length === 0 ? "2px solid #dfe1e6" : undefined,
-                            borderRight: "1px solid #f0f1f3",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                              marginBottom: 8,
-                            }}
-                          >
-                            <input
-                              value={topic.name}
-                              onChange={(e) =>
-                                patchTopic(ti, { name: e.target.value })
-                              }
-                              style={topicNameStyle}
-                            />
-                            <select
-                              value={importance}
-                              onChange={(e) =>
-                                patchTopic(ti, {
-                                  importance: e.target.value as TopicData["importance"],
-                                })
-                              }
-                              style={{
-                                ...impSelect,
-                                background: IMP_BG[importance],
-                                color: IMP_FG[importance],
-                              }}
-                            >
-                              <option value="high">HIGH</option>
-                              <option value="medium">MED</option>
-                              <option value="low">LOW</option>
-                            </select>
-                          </div>
-                          <KeyTermChips
-                            terms={keyTerms}
-                            editable
-                            onChange={(next) =>
-                              patchTopic(ti, { key_terms: next })
-                            }
-                          />
-                        </td>
-                        <td
-                          colSpan={6}
-                          style={{ padding: "7px 14px" }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateTasks(ti, [
-                                ...tasks,
-                                {
-                                  task_id: crypto.randomUUID(),
-                                  task: "",
-                                  next_step: "",
-                                  status: "open",
-                                  owner: "",
-                                },
-                              ])
-                            }
-                            style={addTaskBtn}
-                          >
-                            + Add task to &ldquo;{topic.name}&rdquo;
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteTopic(ti)}
-                            style={{
-                              ...iconBtn,
-                              marginLeft: 8,
-                              color: "#bf2600",
-                              fontSize: 11,
-                            }}
-                          >
-                            Delete topic
-                          </button>
-                        </td>
-                      </tr>
-                    );
-
                     return rows;
                   })}
                 </tbody>
@@ -731,6 +644,57 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Right-click context menu ── */}
+      {menu && (
+        <>
+          {/* Backdrop — closes menu on outside click */}
+          <div
+            onClick={() => setMenu(null)}
+            style={{ position: "fixed", inset: 0, zIndex: 99 }}
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: menu.y,
+              left: menu.x,
+              zIndex: 100,
+              background: "white",
+              border: "1px solid #c1c7d0",
+              borderRadius: 4,
+              boxShadow: "0 4px 12px rgba(9,30,66,.15)",
+              padding: 4,
+              minWidth: 180,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const topic = topics[menu.ti];
+                updateTasks(menu.ti, [
+                  ...(topic.tasks ?? []),
+                  { task_id: crypto.randomUUID(), task: "", next_step: "", status: "open", owner: "" },
+                ]);
+                setMenu(null);
+              }}
+              style={menuItem}
+            >
+              + Add task
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const ti = menu.ti;
+                setMenu(null);
+                deleteTopic(ti);
+              }}
+              style={{ ...menuItem, color: "#bf2600" }}
+            >
+              🗑 Delete topic
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
@@ -802,14 +766,17 @@ const iconBtn: React.CSSProperties = {
   borderRadius: 3,
   fontSize: 13,
 };
-const addTaskBtn: React.CSSProperties = {
-  fontSize: 11,
-  color: "#0052cc",
+const menuItem: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  padding: "6px 10px",
+  border: "none",
   background: "none",
-  border: "1px dashed #c1c7d0",
-  padding: "5px 12px",
-  borderRadius: 4,
+  fontSize: 12,
+  color: "#172b4d",
   cursor: "pointer",
+  borderRadius: 3,
 };
 const btn: React.CSSProperties = {
   fontSize: 11,
