@@ -5,6 +5,8 @@ import { topicsAPI } from "@/api/client";
 import type { TopicsTimelineData, TimelineCell, TopicStatus, TopicSentiment, TimelineTopic } from "@/types";
 import { resolveProvenance, type CellHistory } from "@/utils/provenance";
 import ProvenancePill from "./ProvenancePill";
+import KeyTermChips from "./KeyTermChips";
+import EvidenceRefPopover from "./EvidenceRefPopover";
 
 type Props = { projectId: string; refreshKey?: number };
 
@@ -171,6 +173,38 @@ function Cell({ cell, hasSources, sourceNames, isFirstRaisedCell, history, calls
 
         {canExpand && expanded && (
           <div style={{ marginTop: 6, borderTop: "1px solid #dfe1e6", paddingTop: 6 }}>
+            {/* EPIC-15: Key terms chips */}
+            {(cell.key_terms ?? []).length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <KeyTermChips terms={cell.key_terms ?? []} />
+              </div>
+            )}
+
+            {/* EPIC-15: Evidence popover */}
+            {(cell.evidence ?? []).length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <EvidenceRefPopover evidence={cell.evidence ?? []} />
+              </div>
+            )}
+
+            {/* EPIC-15: Tasks list */}
+            {(cell.tasks ?? []).length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#5e6c84", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>
+                  Tasks ({(cell.tasks ?? []).length})
+                </div>
+                {(cell.tasks ?? []).map((task) => (
+                  <div key={task.task_id} style={{ fontSize: 11, marginBottom: 4, lineHeight: 1.4 }}>
+                    <span style={{ fontWeight: 600 }}>{task.task}</span>
+                    <span style={{ color: "#5e6c84" }}> — {task.next_step}</span>
+                    {task.owner && <span style={{ color: "#5e6c84" }}> · {task.owner}</span>}
+                    <span style={{ ...BADGE_BASE, marginLeft: 6, ...(STATUS_BADGE[task.status as keyof typeof STATUS_BADGE]) }}>{task.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Legacy: follow-ups (shown only when present) */}
             {(cell.follow_up_items ?? []).length > 0 && (
               <>
                 <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
@@ -199,6 +233,7 @@ function Cell({ cell, hasSources, sourceNames, isFirstRaisedCell, history, calls
                 })()}
               </>
             )}
+            {/* Legacy: decisions (shown only when present) */}
             {(cell.decisions ?? []).length > 0 && (
               <>
                 <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",

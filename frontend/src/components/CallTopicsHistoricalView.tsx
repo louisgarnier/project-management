@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type { Call, TopicData } from "@/types";
+import KeyTermChips from "./KeyTermChips";
+import EvidenceRefPopover from "./EvidenceRefPopover";
 
 type Props = {
   callId: string;
@@ -58,7 +60,11 @@ function ReadOnlyTopicRow({ topic }: { topic: TopicData }) {
   const decisionsCount = topic.decisions?.length ?? 0;
   const actionsCount = parked ? 0 : (topic.follow_up_items?.length ?? 0);
   const questionsCount = topic.open_questions?.length ?? 0;
-  const totalCount = decisionsCount + actionsCount + questionsCount;
+  const legacyCount = decisionsCount + actionsCount + questionsCount;
+  const keyTermsCount = (topic.key_terms ?? []).length;
+  const tasksCount = (topic.tasks ?? []).length;
+  const evidenceCount = (topic.evidence ?? []).length;
+  const totalCount = legacyCount + keyTermsCount + tasksCount + evidenceCount;
 
   const renderOwnerHighlight = (text: string): React.ReactNode => {
     const m = text.match(/^([A-Z][a-z]+(?:\s[A-Z][a-z]+)?):\s*(.*)$/);
@@ -82,6 +88,7 @@ function ReadOnlyTopicRow({ topic }: { topic: TopicData }) {
             style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, display: "inline-block", flexShrink: 0 }}
           />
           <strong style={{ fontSize: 13, color: "#172b4d" }}>{topic.name}</strong>
+          {evidenceCount > 0 && <EvidenceRefPopover evidence={topic.evidence ?? []} />}
           {parked ? (
             <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", background: "#f4f5f7", color: "#5e6c84", borderRadius: 3 }}>
               ⏸ PARKED
@@ -117,8 +124,15 @@ function ReadOnlyTopicRow({ topic }: { topic: TopicData }) {
         </p>
       )}
 
+      {/* Key terms chips (always visible) */}
+      {keyTermsCount > 0 && (
+        <div style={{ margin: "6px 0 8px" }}>
+          <KeyTermChips terms={topic.key_terms ?? []} />
+        </div>
+      )}
+
       {/* Collapsed: compact counts row */}
-      {!detailsOpen && totalCount > 0 && (
+      {!detailsOpen && (tasksCount > 0 || legacyCount > 0) && (
         <button
           type="button"
           onClick={() => setDetailsOpen(true)}
@@ -128,6 +142,9 @@ function ReadOnlyTopicRow({ topic }: { topic: TopicData }) {
             fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
           }}
         >
+          {tasksCount > 0 && (
+            <span style={{ color: "#0052cc" }}>⬡ {tasksCount} task{tasksCount > 1 ? "s" : ""}</span>
+          )}
           {decisionsCount > 0 && (
             <span style={{ color: "#5e6c84" }}>✓ {decisionsCount} decision{decisionsCount > 1 ? "s" : ""}</span>
           )}
@@ -144,6 +161,51 @@ function ReadOnlyTopicRow({ topic }: { topic: TopicData }) {
       {/* Expanded details */}
       {detailsOpen && (
         <>
+          {/* Tasks table (EPIC-15) */}
+          {tasksCount > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#5e6c84", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 5 }}>
+                Tasks ({tasksCount})
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <thead>
+                  <tr style={{ color: "#97a0af", fontWeight: 700, textAlign: "left" }}>
+                    <th style={{ padding: "2px 6px 4px 0", fontSize: 9, textTransform: "uppercase" }}>Task</th>
+                    <th style={{ padding: "2px 6px 4px 0", fontSize: 9, textTransform: "uppercase" }}>Next step</th>
+                    <th style={{ padding: "2px 6px 4px 0", fontSize: 9, textTransform: "uppercase" }}>Owner</th>
+                    <th style={{ padding: "2px 0 4px 0", fontSize: 9, textTransform: "uppercase" }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(topic.tasks ?? []).map((task) => {
+                    const STATUS_BG = { open: "#e9f0ff", in_progress: "#fff4e6", resolved: "#e3fcef" } as const;
+                    const STATUS_FG = { open: "#0052cc", in_progress: "#974f0c", resolved: "#006644" } as const;
+                    const bgKey = task.status as keyof typeof STATUS_BG;
+                    const fgKey = task.status as keyof typeof STATUS_FG;
+                    return (
+                      <tr key={task.task_id} style={{ verticalAlign: "top", borderTop: "1px solid #f0f1f3" }}>
+                        <td style={{ padding: "4px 6px 4px 0", color: "#172b4d", fontWeight: 600, lineHeight: 1.4 }}>{task.task}</td>
+                        <td style={{ padding: "4px 6px 4px 0", color: "#5e6c84", lineHeight: 1.4 }}>{task.next_step}</td>
+                        <td style={{ padding: "4px 6px 4px 0", color: "#5e6c84", lineHeight: 1.4 }}>{task.owner || "—"}</td>
+                        <td style={{ padding: "4px 0", whiteSpace: "nowrap" }}>
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, textTransform: "uppercase",
+                            padding: "2px 6px", borderRadius: 3,
+                            background: STATUS_BG[bgKey] ?? "#e9f0ff",
+                            color: STATUS_FG[fgKey] ?? "#0052cc",
+                          }}>
+                            {task.status.replace("_", " ")}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Legacy fields — shown only when present (old data) */}
           {decisionsCount > 0 && (
             <ReadOnlySectionBlock
               label="Decisions" count={decisionsCount}

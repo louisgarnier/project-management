@@ -215,6 +215,10 @@ export interface TimelineCell {
   sentiment?: string;
   merged_into_name?: string;
   merged_into_topic_id?: string;
+  // EPIC-15 fields
+  key_terms?: string[];
+  evidence?: EvidenceRef[];
+  tasks?: TaskData[];
 }
 
 export interface TimelineTopic {
