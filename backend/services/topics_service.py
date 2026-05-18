@@ -2524,7 +2524,8 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
         (
             db.table("topic_updates")
             .select(
-                "topic_id, call_id, summary, status, sentiment"
+                "topic_id, call_id, summary, status, sentiment, importance, "
+                "transcript_excerpt, evidence, key_terms, tasks"
             )
             .in_("topic_id", topic_ids)
             .in_("call_id", call_ids)
@@ -2586,6 +2587,12 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
                     "summary": u.get("summary", ""),
                     "status": u.get("status", "open"),
                     "sentiment": u.get("sentiment", "neutral"),
+                    "importance": u.get("importance", "medium"),
+                    "transcript_excerpt": u.get("transcript_excerpt", ""),
+                    # New EPIC-15 shape
+                    "evidence": u.get("evidence") or [],
+                    "key_terms": u.get("key_terms") or [],
+                    "tasks": u.get("tasks") or [],
                     # Legacy keys kept as empty defaults for frontend compat
                     "follow_up_items": [],
                     "decisions": [],
