@@ -70,8 +70,24 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
       call.extraction_cache.length > 0 &&
       !extracted
     ) {
-      setTopics(call.extraction_cache);
-      setExtracted(true);
+      // Detect stale stripped cache (rollback rebuild written before the
+      // EPIC-15 fix that widened the SELECT). If every topic has no tasks AND
+      // no evidence AND no key_terms, the cache lost its EPIC-15 data —
+      // bypass it and fetch fresh from topic_updates via listForCall.
+      const cacheLooksStripped = call.extraction_cache.every(
+        (t) =>
+          (!t.tasks || t.tasks.length === 0) &&
+          (!t.evidence || t.evidence.length === 0) &&
+          (!t.key_terms || t.key_terms.length === 0),
+      );
+      if (cacheLooksStripped) {
+        logger.info("[CallTopicsStage] stale stripped cache detected — falling back to listForCall");
+        setExtracted(true);
+        refresh();
+      } else {
+        setTopics(call.extraction_cache);
+        setExtracted(true);
+      }
     }
     if (call.extraction_status === "failed" && !extracted) {
       setError("Extraction failed in background. Please try again.");
