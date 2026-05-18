@@ -159,7 +159,7 @@ import json
 import os
 
 from backend.database.supabase_client import get_client
-from backend.prompts.call_topics import CALL_TOPICS_DEFAULT_PROMPT
+from backend.prompts.call_topics import CALL_TOPICS_V2_PROMPT_BODY as CALL_TOPICS_DEFAULT_PROMPT
 from backend.services.llm_service import call_llm_raw
 from backend.services.topic_lineage import build_lineage_evidence_block
 from backend.utils.logger import get_logger
