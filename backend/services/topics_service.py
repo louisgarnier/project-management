@@ -172,19 +172,87 @@ _EXTRACT_SYSTEM = (
 )
 
 _TOPIC_SCHEMA = (
-    '{"name":"string",'
-    '"summary":"string — 3–6 sentences covering every concrete detail",'
-    '"transcript_excerpt":"string — verbatim relevant section of the transcript, 2–8 sentences",'
-    '"decisions":["string"],'
-    '"follow_up_items":["string — action, with owner as prefix when named"],'
-    '"open_questions":["string — phrased as a question"],'
-    '"status":"open|in_progress|resolved",'
-    '"owner":"Us|Client|Both",'
-    '"sentiment":"positive|neutral|concern",'
-    '"is_parked":false,'
+    '{'
+    '"name":"string — <= 8 words",'
     '"importance":"high|medium|low",'
-    '"rationale":"one sentence — which rubric criteria were met"}'
+    '"key_terms":["string"],'
+    '"evidence":[{"speaker":"string","quote":"verbatim string","citation":"transcript {call_date} · lines {N}-{M}"}],'
+    '"tasks":[{"task":"string","next_step":"string","status":"open|in_progress|resolved","owner":"string (may be empty)"}]'
+    '}'
 )
+
+
+_IMPORTANCE_VALUES = {"high", "medium", "low"}
+_STATUS_VALUES = {"open", "in_progress", "resolved"}
+
+
+def _validate_topic(t: dict) -> tuple[bool, str]:
+    """Return (True, '') if t matches the v2 schema, else (False, reason)."""
+    if not isinstance(t, dict):
+        return False, "topic is not a dict"
+    name = (t.get("name") or "").strip()
+    if not name:
+        return False, "missing name"
+    importance = t.get("importance")
+    if importance not in _IMPORTANCE_VALUES:
+        return False, f"importance must be one of {sorted(_IMPORTANCE_VALUES)}, got {importance!r}"
+    key_terms = t.get("key_terms") or []
+    if not isinstance(key_terms, list) or not key_terms:
+        return False, "key_terms must be a non-empty list"
+    evidence = t.get("evidence") or []
+    if not isinstance(evidence, list) or not evidence:
+        return False, "evidence must be a non-empty list"
+    for i, e in enumerate(evidence):
+        if not isinstance(e, dict):
+            return False, f"evidence[{i}] is not a dict"
+        for k in ("speaker", "quote", "citation"):
+            if not (e.get(k) or "").strip():
+                return False, f"evidence[{i}].{k} is empty"
+    tasks = t.get("tasks") or []
+    if not isinstance(tasks, list) or not tasks:
+        return False, "tasks must be a non-empty list"
+    for i, task in enumerate(tasks):
+        if not isinstance(task, dict):
+            return False, f"tasks[{i}] is not a dict"
+        if not (task.get("task") or "").strip():
+            return False, f"tasks[{i}].task is empty"
+        if not (task.get("next_step") or "").strip():
+            return False, f"tasks[{i}].next_step is empty"
+        if task.get("status") not in _STATUS_VALUES:
+            return False, f"tasks[{i}].status must be in {sorted(_STATUS_VALUES)}, got {task.get('status')!r}"
+        if "owner" in task and not isinstance(task.get("owner"), str):
+            return False, f"tasks[{i}].owner must be a string"
+    return True, ""
+
+
+def _stamp_task_ids(t: dict) -> dict:
+    """Return a copy of t with a task_id UUID on every task that lacks one.
+
+    Existing task_ids are preserved.
+    """
+    import uuid as _uuid
+    out = dict(t)
+    out["tasks"] = [
+        {**task, "task_id": task.get("task_id") or str(_uuid.uuid4())}
+        for task in (t.get("tasks") or [])
+    ]
+    return out
+
+
+def _status_rollup(tasks: list[dict]) -> str:
+    """Roll up per-task statuses to a single topic-level status.
+
+    Rule: open if any task is open; else in_progress if any in_progress; else resolved.
+    Empty task list → 'open' (defensive default).
+    """
+    if not tasks:
+        return "open"
+    statuses = {(t.get("status") or "open") for t in tasks}
+    if "open" in statuses:
+        return "open"
+    if "in_progress" in statuses:
+        return "in_progress"
+    return "resolved"
 
 
 async def _call_llm(
