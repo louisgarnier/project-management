@@ -13,7 +13,7 @@
 | Layer | Choice | Notes |
 |---|---|---|
 | Backend framework | FastAPI (existing) | — |
-| DB | Supabase Postgres (existing) | Single new migration `024_epic15_call_topics_schema.sql` |
+| DB | Supabase Postgres (existing) | Single new migration `026_epic15_call_topics_schema.sql` |
 | LLM provider | OpenRouter (existing, EPIC-11) | Default model flips to `deepseek/deepseek-v3.2` for system-seed entries only |
 | Frontend | Next.js (existing) | No new component library |
 | Testing | pytest + jest (existing) | New unit tests on extractor; extended real-fixture test for rollback regression |
@@ -92,7 +92,7 @@ USER (call topics stage UI)                                    USER (project mat
 - New endpoint `PATCH /api/calls/{call_id}/prompt-selection` body `{call_topics_prompt_id: UUID|null}`. Persists the per-call prompt choice.
 - Alternatively reuse an existing `PATCH /api/calls/{id}` if one exists — decided at implementation.
 
-**`backend/database/migrations/024_epic15_call_topics_schema.sql`** — single migration
+**`backend/database/migrations/026_epic15_call_topics_schema.sql`** — single migration
 ```sql
 ALTER TABLE topic_updates
   ADD COLUMN evidence  JSONB NOT NULL DEFAULT '[]'::jsonb,
