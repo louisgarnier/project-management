@@ -36,6 +36,7 @@ export interface Call {
   merge_status: "idle" | "processing" | "done" | "failed";
   verification_cache: Record<string, { discussed: boolean | null; transcript_excerpt: string | null; reasoning: string; error: string | null }> | null;
   verification_status: "idle" | "processing" | "done" | "failed";
+  call_topics_prompt_id: string | null;
   created_at: string;
 }
 
@@ -101,30 +102,56 @@ export type TopicOwner     = "Us" | "Client" | "Both";
 export type TopicSentiment = "positive" | "neutral" | "concern";
 export type TopicDisposition = "keep_as_is" | "archive" | null;
 
+export interface EvidenceRef {
+  speaker: string;
+  quote: string;
+  citation: string;
+}
+
+export interface TaskData {
+  task_id: string;
+  task: string;
+  next_step: string;
+  status: TopicStatus;  // "open" | "in_progress" | "resolved"
+  owner: string;        // empty string allowed
+}
+
 /** One topic as returned by extract or dashboard endpoints */
 export interface TopicData {
-  topic_id?: string | null;  // null / absent = brand new (not yet in DB)
+  topic_id?: string | null;          // null/absent = new topic not yet linked
+  id?: string | null;                // topic_updates row id from /api/topics
   name: string;
-  summary: string;
-  follow_up_items: string[];
-  decisions: string[];
-  open_questions: string[];
+  importance?: "high" | "medium" | "low";
+  key_terms?: string[];
+  evidence?: EvidenceRef[];
+  tasks?: TaskData[];
+
+  // Legacy / matching-stage-only fields kept temporarily for compile compatibility.
+  // Story 15.4 may revisit these. The Call Topics stage no longer renders them.
+  summary?: string;
+  // status + sentiment are required so Record<string,...> index lookups in
+  // ProjectTopicsStage / ProjectUpdatesStage / CallTopicsHistoricalView compile.
+  // New Call Topics stage ignores these; they default to "open" / "neutral" at extraction.
   status: TopicStatus;
-  owner: TopicOwner;
   sentiment: TopicSentiment;
-  is_parked: boolean;
-  importance: "high" | "medium" | "low";
-  rationale: string;
+  transcript_excerpt?: string | null;
   calls_open?: number;
   not_discussed?: boolean;
   pending_merge?: boolean;
   verification_status?: "pending" | "confirmed" | "flagged";
   _source_topic_ids?: string[];
-  transcript_excerpt?: string | null;  // verbatim transcript chunk captured at extraction (EPIC-9)
-  // From list_topics_prior_to_call: topic was active at this call's matching
-  // time but has since been merged away in a later call. UI shows a badge.
   archived_later?: boolean;
   merged_into_name?: string | null;
+  // Legacy fields from pre-15.3 schema — kept for compile compatibility with
+  // ProjectUpdatesStage, CallTopicsHistoricalView, etc. until those are rewritten.
+  // follow_up_items / decisions / open_questions are required (non-optional string[]) so
+  // CallTopicsHistoricalView.tsx's ReadOnlySectionBlock (items: string[]) compiles.
+  follow_up_items: string[];
+  decisions: string[];
+  open_questions: string[];
+  owner?: TopicOwner | string;
+  is_parked?: boolean;
+  rationale?: string;
 }
 
 /** Response from POST /extract */

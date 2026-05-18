@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory, LibraryEntry, SystemSettings } from "@/types";
+import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory, LibraryEntry, SystemSettings, EvidenceRef, TaskData, TopicData } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -110,6 +110,11 @@ export const callsAPI = {
     proxyFetch<{ rolled_back_to: string }>(`/api/calls/${callId}/rollback`, {
       method: "POST",
       body: JSON.stringify({ target_stage: targetStage }),
+    }),
+  patchPromptSelection: (callId: string, call_topics_prompt_id: string | null): Promise<Call> =>
+    proxyFetch<Call>(`/api/calls/${callId}/prompt-selection`, {
+      method: "PATCH",
+      body: JSON.stringify({ call_topics_prompt_id }),
     }),
 };
 
@@ -281,6 +286,8 @@ export const settingsAPI = {
 export const libraryAPI = {
   list: (): Promise<LibraryEntry[]> =>
     proxyFetch<LibraryEntry[]>("/api/library"),
+  listByCategory: (category: string): Promise<LibraryEntry[]> =>
+    proxyFetch<LibraryEntry[]>(`/api/library?category=${encodeURIComponent(category)}`),
   create: (entry: Partial<LibraryEntry>): Promise<LibraryEntry> =>
     proxyFetch<LibraryEntry>("/api/library", {
       method: "POST",
@@ -403,4 +410,19 @@ export const topicsAPI = {
 
   getEvidence: (topicId: string) =>
     proxyFetch<import("@/types").TopicEvidence>(`/api/topics/${topicId}/evidence`),
+
+  patch: (topic_id: string, body: Partial<{
+    name: string;
+    importance: "high" | "medium" | "low";
+    key_terms: string[];
+    evidence: EvidenceRef[];
+    tasks: TaskData[];
+  }>): Promise<TopicData> =>
+    proxyFetch<TopicData>(`/api/topics/${topic_id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deleteTopic: (topic_id: string): Promise<void> =>
+    proxyFetch<void>(`/api/topics/${topic_id}`, { method: "DELETE" }),
 };
