@@ -60,6 +60,10 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
 
   // ── Sync extraction_cache → topics when call prop updates ──
   useEffect(() => {
+    // Don't auto-restore from a stale parent `call` prop while the user is
+    // mid-re-extract. Otherwise clicking Re-extract immediately gets clobbered
+    // by the previous (still-cached) extraction_status="done" + extraction_cache.
+    if (extracting || polling) return;
     if (
       call.extraction_status === "done" &&
       call.extraction_cache &&
@@ -72,7 +76,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
     if (call.extraction_status === "failed" && !extracted) {
       setError("Extraction failed in background. Please try again.");
     }
-  }, [call.extraction_status, call.extraction_cache, extracted]);
+  }, [call.extraction_status, call.extraction_cache, extracted, extracting, polling]);
 
   // ── Polling loop ──
   useEffect(() => {
@@ -180,15 +184,18 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
     setError(null);
     setRateLimited(false);
     setExtracting(true);
+    // Flip polling on IMMEDIATELY so the "Generating…" UI shows during the
+    // ~57s LLM round-trip — don't wait for the API POST to return first.
+    setPolling(true);
     try {
       logger.info("[CallTopicsStage] re-extracting call topics", { data: { callId: call.id } });
       await topicsAPI.extractCall(call.id);
-      setPolling(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Extraction failed";
       logger.error("[CallTopicsStage] re-extraction failed", { data: err });
       if (msg.includes("wait a moment")) setRateLimited(true);
       setError(msg);
+      setPolling(false);  // unset on error so the user can retry
     } finally {
       setExtracting(false);
     }
