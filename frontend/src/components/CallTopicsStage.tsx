@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { callsAPI, libraryAPI, topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type {
@@ -103,11 +103,31 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   }, [call.extraction_status, call.extraction_cache, extracted, extracting, polling]);
 
   // ── Polling loop ──
+  // We only allow the polling loop to KILL polling once we've confirmed the
+  // parent has fetched fresh data showing the backend is actually working
+  // (i.e. extraction_status transitioned through "processing"). Without this
+  // gate, clicking Re-extract reads the parent's STALE "done" + immediately
+  // kills polling — masking the spinner until the user hits refresh. See
+  // workflow/ERRORS.md ERR-005.
+  const sawProcessingRef = useRef(false);
   useEffect(() => {
-    if (!polling) return;
+    if (call.extraction_status === "processing") {
+      sawProcessingRef.current = true;
+    }
+  }, [call.extraction_status]);
+
+  useEffect(() => {
+    if (!polling) {
+      sawProcessingRef.current = false;
+      return;
+    }
+    // Only honor a "done"/"failed" status after the parent has refreshed at
+    // least once into "processing". Otherwise a fresh click on Re-extract
+    // would read the pre-click stale "done" and abort polling instantly.
     if (
-      call.extraction_status === "done" ||
-      call.extraction_status === "failed"
+      sawProcessingRef.current &&
+      (call.extraction_status === "done" ||
+        call.extraction_status === "failed")
     ) {
       setPolling(false);
       return;
