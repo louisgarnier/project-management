@@ -184,6 +184,52 @@ def test_export_xlsx_endpoint_returns_200_with_correct_headers(monkeypatch):
     assert ".xlsx" in resp.headers["content-disposition"]
 
 
+def test_tracker_data_endpoint_returns_per_call_shape(monkeypatch):
+    """The GET /tracker-data endpoint returns the per-(topic, call) shape."""
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    from backend.routers import projects as projects_router
+
+    fake_db = type("DB", (), {
+        "table": lambda self, name: type("T", (), {
+            "select": lambda self, _: self,
+            "eq": lambda self, _k, _v: self,
+            "execute": lambda self: type("R", (), {"data": [{"id": "p1"}]})()
+        })()
+    })()
+    monkeypatch.setattr(projects_router, "get_client", lambda: fake_db)
+    monkeypatch.setattr(
+        "backend.services.project_tracker_data.list_project_topics_with_call_history",
+        lambda _pid: [{"id": "t1", "name": "T", "key_terms": [], "calls": []}]
+    )
+    with TestClient(app) as client:
+        resp = client.get("/api/projects/p1/tracker-data")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data, list)
+    assert data[0]["name"] == "T"
+
+
+def test_tracker_data_endpoint_404_on_missing_project(monkeypatch):
+    """Missing project → 404 on /tracker-data."""
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    from backend.routers import projects as projects_router
+
+    fake_db = type("DB", (), {
+        "table": lambda self, name: type("T", (), {
+            "select": lambda self, _: self,
+            "eq": lambda self, _k, _v: self,
+            "execute": lambda self: type("R", (), {"data": []})()
+        })()
+    })()
+    monkeypatch.setattr(projects_router, "get_client", lambda: fake_db)
+
+    with TestClient(app) as client:
+        resp = client.get("/api/projects/missing/tracker-data")
+    assert resp.status_code == 404
+
+
 def test_export_xlsx_endpoint_404_on_missing_project(monkeypatch):
     """Missing project → 404."""
     from fastapi.testclient import TestClient

@@ -90,6 +90,25 @@ def delete_project(project_id: str):
     return Response(status_code=204)
 
 
+@router.get("/{project_id}/tracker-data")
+def get_tracker_data(project_id: str):
+    """Per-(topic, call) data for the Project Tracker sub-views (Story 15.8).
+
+    Returns the same shape the xlsx exporter consumes — one entry per topic,
+    each with a `calls[]` list of per-call topic_updates (chronology_narrative,
+    rag_verification_note, tasks, open_questions, decisions, evidence).
+    """
+    client = get_client()
+    db_logger.info(f"🗄️ [DB] Fetching tracker data for project: {project_id}")
+    rows = client.table("projects").select("id").eq("id", project_id).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+    from backend.services.project_tracker_data import list_project_topics_with_call_history
+    data = list_project_topics_with_call_history(project_id)
+    db_logger.info(f"✅ [DB] Tracker data: {len(data)} topics for project {project_id}")
+    return data
+
+
 @router.get("/{project_id}/export.xlsx")
 def export_tracker_xlsx(project_id: str):
     """Streaming xlsx download for the project tracker (Story 15.8)."""

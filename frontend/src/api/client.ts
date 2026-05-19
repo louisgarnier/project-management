@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory, LibraryEntry, SystemSettings, EvidenceRef, TaskData, TopicData, OpenQuestionData, DecisionData } from "@/types";
+import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory, LibraryEntry, SystemSettings, EvidenceRef, TaskData, TopicData, OpenQuestionData, DecisionData, TopicWithCallHistory } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -69,6 +69,9 @@ export const projectsAPI = {
     return res.json();
   },
   delete: (id: string) => proxyFetch<void>(`/api/projects/${id}`, { method: "DELETE" }),
+  // Story 15.8 — per-(topic, call) data for the Project Tracker sub-views
+  getTrackerData: (id: string) =>
+    proxyFetch<TopicWithCallHistory[]>(`/api/projects/${id}/tracker-data`),
 };
 
 export const callsAPI = {

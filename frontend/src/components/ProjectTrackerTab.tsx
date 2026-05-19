@@ -1,6 +1,13 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { logger } from "@/utils/logger";
+import { projectsAPI } from "@/api/client";
+import type { TopicWithCallHistory } from "@/types";
+import DashboardView from "./tracker/DashboardView";
+import ChronologyView from "./tracker/ChronologyView";
+import AnchorsLifecycleView from "./tracker/AnchorsLifecycleView";
+import DecisionsLogView from "./tracker/DecisionsLogView";
+import KeyTermsRegistryView from "./tracker/KeyTermsRegistryView";
 
 type SubView = "dashboard" | "chronology" | "anchors" | "decisions" | "key-terms";
 
@@ -26,10 +33,8 @@ type Props = { projectId: string };
 
 export default function ProjectTrackerTab({ projectId }: Props) {
   const [currentView, setCurrentView] = useState<SubView>("dashboard");
-  // (Data fetch wired in Task 5; placeholder for now.)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [loading, setLoading] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [topics, setTopics] = useState<TopicWithCallHistory[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Read hash on mount and on hashchange
@@ -39,6 +44,32 @@ export default function ProjectTrackerTab({ projectId }: Props) {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+
+  // Fetch per-(topic, call) data once on mount (or when projectId changes)
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    projectsAPI
+      .getTrackerData(projectId)
+      .then((data) => {
+        if (cancelled) return;
+        setTopics(data);
+        logger.info("[ProjectTrackerTab] Tracker data loaded", {
+          data: { projectId, topicCount: data.length },
+        });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error("[ProjectTrackerTab] Tracker data fetch failed", { data: { projectId, error: msg } });
+        setError(msg);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const onTabClick = (id: SubView) => {
     if (typeof window !== "undefined") {
@@ -53,6 +84,8 @@ export default function ProjectTrackerTab({ projectId }: Props) {
     window.location.href = `/api/proxy/projects/${projectId}/export.xlsx`;
   };
 
+  // Kept for accessibility / potential future header rendering, but body now uses sub-views.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const activeTab = useMemo(
     () => TABS.find((t) => t.id === currentView) ?? TABS[0],
     [currentView],
@@ -150,12 +183,13 @@ export default function ProjectTrackerTab({ projectId }: Props) {
           </div>
         )}
         {!loading && !error && (
-          <div>
-            {/* Placeholder until Task 5 wires real sub-views */}
-            <div style={{ fontSize: 13, color: "#5e6c84" }}>
-              <strong>{activeTab.label}</strong> — sub-view coming in Task 5.
-            </div>
-          </div>
+          <>
+            {currentView === "dashboard" && <DashboardView topics={topics} />}
+            {currentView === "chronology" && <ChronologyView topics={topics} />}
+            {currentView === "anchors" && <AnchorsLifecycleView topics={topics} />}
+            {currentView === "decisions" && <DecisionsLogView topics={topics} />}
+            {currentView === "key-terms" && <KeyTermsRegistryView topics={topics} />}
+          </>
         )}
       </div>
     </div>

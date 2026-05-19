@@ -326,3 +326,23 @@ export interface SystemSettings {
   default_llm: LLMProvider | null;
   default_model: string | null;
 }
+
+// ── Story 15.8: Project Tracker per-(topic, call) data ────────────────────
+
+export interface TopicCallData {
+  call_id: string;
+  call_date: string;
+  chronology_narrative: string | null;
+  rag_verification_note: string | null;
+  tasks: TaskData[];
+  open_questions: OpenQuestionData[];
+  decisions: DecisionData[];
+  evidence?: EvidenceRef[];
+}
+
+export interface TopicWithCallHistory {
+  id: string;
+  name: string;
+  key_terms: string[];
+  calls: TopicCallData[];
+}
