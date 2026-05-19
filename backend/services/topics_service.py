@@ -306,6 +306,45 @@ def _stamp_item_ids(t: dict, call_id: str) -> dict:
     return out
 
 
+def _apply_lifecycle_on_resolve(
+    prev_items: list[dict], new_items: list[dict], current_call_id: str
+) -> list[dict]:
+    """Stamp closed_in_call_id on items whose status flipped open→resolved.
+
+    Returns a COPY of new_items (does not mutate inputs).
+
+    Rules:
+    - For each item in new_items, find the matching item in prev_items by id
+      (try 'task_id' first for tasks, fall back to 'id' for open_questions).
+    - If new.status == 'resolved' and prev.status != 'resolved' (or no prev):
+        set closed_in_call_id = current_call_id (latest wins on re-resolve).
+    - If new.status != 'resolved':
+        clear closed_in_call_id = None (covers resolved→open reopens).
+    - Otherwise (resolved→resolved unchanged): preserve whatever closed_in_call_id
+      new_items already has.
+    """
+
+    def _key(item: dict) -> str | None:
+        return item.get("task_id") or item.get("id")
+
+    prev_by_key = {_key(p): p for p in prev_items if _key(p)}
+    out = []
+    for n in new_items:
+        n_copy = dict(n)
+        k = _key(n_copy)
+        prev = prev_by_key.get(k) if k else None
+        new_status = n_copy.get("status", "open")
+        prev_status = (prev or {}).get("status", "open")
+        if new_status == "resolved" and prev_status != "resolved":
+            n_copy["closed_in_call_id"] = current_call_id
+        elif new_status != "resolved":
+            # Reopen — clear any stale closed_in_call_id
+            n_copy["closed_in_call_id"] = None
+        # Else: status unchanged or resolved→resolved — preserve existing closed_in
+        out.append(n_copy)
+    return out
+
+
 def _status_rollup(tasks: list[dict]) -> str:
     """Roll up per-task statuses to a single topic-level status.
 
