@@ -318,6 +318,14 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   const callTitle = call.title ?? "Untitled";
   const callDate = (call.created_at ?? "").slice(0, 10);
 
+  // Resolve the effective prompt + model: selected, else seeded-default.
+  const effectivePrompt = useMemo(() => {
+    if (selectedPromptId) {
+      return libraryPrompts.find((p) => p.id === selectedPromptId) ?? null;
+    }
+    return libraryPrompts.find((p) => p.seeded_by_default) ?? null;
+  }, [selectedPromptId, libraryPrompts]);
+
   // ── Render ──
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
@@ -340,6 +348,19 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
           }}
         >
           Call Topics · {callTitle} · {callDate}
+          {effectivePrompt && (
+            <>
+              {" · "}
+              <span style={{ color: "#42526e", textTransform: "none", letterSpacing: 0 }}>
+                {effectivePrompt.name}
+              </span>
+              {effectivePrompt.model && (
+                <span style={{ color: "#7a869a", textTransform: "none", letterSpacing: 0 }}>
+                  {" "}({effectivePrompt.llm ?? "?"}/{effectivePrompt.model})
+                </span>
+              )}
+            </>
+          )}
         </div>
         <div
           style={{
