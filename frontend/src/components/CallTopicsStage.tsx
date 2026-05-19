@@ -838,7 +838,7 @@ function TasksSection({
     onUpdate([
       ...tasks,
       {
-        task_id: "",
+        task_id: crypto.randomUUID(),
         task: "",
         next_step: "",
         status: "open",
@@ -878,27 +878,40 @@ function TasksSection({
               >
                 <td style={MINI_TD}>
                   <input
-                    value={task.task}
-                    onChange={(e) => updateAt(i, { task: e.target.value })}
+                    key={task.task_id}
+                    type="text"
+                    defaultValue={task.task}
+                    onBlur={(e) => {
+                      if (e.target.value !== task.task)
+                        updateAt(i, { task: e.target.value });
+                    }}
                     style={MINI_CELL_INPUT}
                     placeholder="Describe task…"
                   />
                 </td>
                 <td style={{ ...MINI_TD, color: "#42526e" }}>
                   <input
-                    value={task.next_step}
-                    onChange={(e) =>
-                      updateAt(i, { next_step: e.target.value })
-                    }
+                    key={task.task_id + "-ns"}
+                    type="text"
+                    defaultValue={task.next_step}
+                    onBlur={(e) => {
+                      if (e.target.value !== task.next_step)
+                        updateAt(i, { next_step: e.target.value });
+                    }}
                     style={MINI_CELL_INPUT}
                     placeholder="Next action…"
                   />
                 </td>
                 <td style={MINI_TD}>
                   <input
-                    value={task.owner}
+                    key={task.task_id + "-ow"}
+                    type="text"
+                    defaultValue={task.owner}
                     placeholder="— add"
-                    onChange={(e) => updateAt(i, { owner: e.target.value })}
+                    onBlur={(e) => {
+                      if (e.target.value !== task.owner)
+                        updateAt(i, { owner: e.target.value });
+                    }}
                     style={MINI_CELL_INPUT}
                   />
                 </td>
@@ -966,7 +979,7 @@ function OpenQuestionsSection({
   const add = () =>
     onUpdate([
       ...openQuestions,
-      { id: "", text: "", owner: "", status: "open" },
+      { id: crypto.randomUUID(), text: "", owner: "", status: "open" },
     ]);
 
   return (
@@ -989,17 +1002,27 @@ function OpenQuestionsSection({
               >
                 <td style={MINI_TD}>
                   <input
-                    value={q.text}
-                    onChange={(e) => updateAt(i, { text: e.target.value })}
+                    key={q.id + "-txt"}
+                    type="text"
+                    defaultValue={q.text}
+                    onBlur={(e) => {
+                      if (e.target.value !== q.text)
+                        updateAt(i, { text: e.target.value });
+                    }}
                     style={MINI_CELL_INPUT}
                     placeholder="Open question…"
                   />
                 </td>
                 <td style={{ ...MINI_TD, width: 80 }}>
                   <input
-                    value={q.owner}
+                    key={q.id + "-ow"}
+                    type="text"
+                    defaultValue={q.owner}
                     placeholder="— add owner"
-                    onChange={(e) => updateAt(i, { owner: e.target.value })}
+                    onBlur={(e) => {
+                      if (e.target.value !== q.owner)
+                        updateAt(i, { owner: e.target.value });
+                    }}
                     style={MINI_CELL_INPUT}
                   />
                 </td>
@@ -1062,7 +1085,7 @@ function DecisionsSection({
     onUpdate(decisions.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
   const deleteAt = (i: number) =>
     onUpdate(decisions.filter((_, idx) => idx !== i));
-  const add = () => onUpdate([...decisions, { id: "", text: "" }]);
+  const add = () => onUpdate([...decisions, { id: crypto.randomUUID(), text: "" }]);
 
   return (
     <div style={{ padding: "6px 16px 12px 16px" }}>
@@ -1082,8 +1105,13 @@ function DecisionsSection({
               >
                 <td style={MINI_TD}>
                   <input
-                    value={d.text}
-                    onChange={(e) => updateAt(i, { text: e.target.value })}
+                    key={d.id + "-txt"}
+                    type="text"
+                    defaultValue={d.text}
+                    onBlur={(e) => {
+                      if (e.target.value !== d.text)
+                        updateAt(i, { text: e.target.value });
+                    }}
                     style={MINI_CELL_INPUT}
                     placeholder="Decision…"
                   />
