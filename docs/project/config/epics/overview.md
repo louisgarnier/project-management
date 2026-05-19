@@ -16,7 +16,9 @@
 | EPIC-10 | Topic Lineage + Full-Stage Traceability + Prompt Quality | [x] Done | 9 |
 | EPIC-11 | Call Topics Extraction Overhaul (rubric + OpenRouter) | [x] Done | 6 |
 | EPIC-12 | Artifacts Overhaul (library + templates + system seed) | [x] Done | 6 |
-| EPIC-15 | Call Topics Rebuild (v2 prompt + row-per-task UI + library selector) | [ ] Active | 4 |
+| EPIC-15 | Call Topics Rebuild — Phase 1 (call_topics) | [x] code-complete | 3 (15.1–15.3) |
+| EPIC-15 | Call Topics Rebuild — Phase 2 (artifacts compatibility + xlsx tracker) | [ ] Active | 4 (15.5–15.8) |
+| EPIC-15 | Call Topics Rebuild — Phase 3 (matching UI polish + real-fixture + rollback non-reg) | [ ] Deferred | 1 (15.4) + new |
 
 ---
 
@@ -43,9 +45,11 @@ EPIC-1 (Foundation + Logging)
 ## 🚦 Status
 
 ```
-Working on : EPIC-15 — Call Topics Rebuild (branch epic-15-call-topics-rebuild)
+Working on : EPIC-15 Phase 2 — Artifacts compatibility + xlsx tracker (branch epic-15-phase-2-artifacts)
 Blocked by : —
-Next up    : Story 15.1 (schema + extractor + edit endpoints)
+Next up    : Story 15.5 (call_topics extension: open_questions + decisions + migration 027 + 3-section UI)
+Deferred   : Story 15.4 → Phase 3 (matching UI read-only + real-fixture + rollback non-reg test).
+             Reason: Call 1 has no matching phase, and tests need a working end-to-end pipeline (Phase 2's job).
 ```
 
 ---

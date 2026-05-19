@@ -1,11 +1,12 @@
 # Story 15.4 — Matching Stage Read-Only Display + Real-Fixture Acceptance + Rollback Regression
 
 **Epic:** EPIC-15 — Call Topics Rebuild
-**Status:** [ ] todo
+**Status:** [ ] DEFERRED to Phase 3 (moved 2026-05-19)
 **Spec:** `docs/project/config/2026-05-18-epic-15-call-topics-rebuild-architecture.md` §3.2 (matching display) + §10 (test strategy)
 **PRD:** `docs/project/config/2026-05-18-epic-15-call-topics-rebuild-prd.md` G6, G9, G10, US-08, US-09, US-10
-**Depends on:** Story 15.1 (aggregate endpoint must return new fields), Story 15.3 (popover component must exist for reuse)
-**Closes the epic.**
+**Depends on:** Story 15.1 (aggregate endpoint must return new fields), Story 15.3 (popover component must exist for reuse), **Phase 2 closing the pipeline end-to-end**
+
+**Deferral rationale (user, 2026-05-19):** Call 1 has no matching phase, so the matching-UI gap does not block Phase 2 / artifacts work. The real-fixture and rollback tests require an end-to-end working pipeline, which Phase 2 must deliver first. Do not start this story during Phase 2. When Phase 2 closes, re-scope as the opener for Phase 3.
 
 ## Goal
 1. Surface the new topic fields (`key_terms` / `evidence` / `tasks`) **read-only** in the project-matching stage UI so the user can use them during manual matching.

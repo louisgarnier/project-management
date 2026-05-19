@@ -16,7 +16,7 @@
 | 15.1 | Schema + backend extractor + edit endpoints + prompt resolution | [x] code-complete — awaiting migration run | — |
 | 15.2 | Library seed: model flip + v2 call-topics entry | [x] done — 2026-05-18 | 15.1 |
 | 15.3 | Call Topics stage UI rewrite (v3 layout + inline edits) | [x] code-complete — awaiting visual smoke | 15.1, 15.2 |
-| 15.4 | Matching read-only display + real-fixture + rollback regression | [ ] todo | 15.1, 15.3 |
+| 15.4 | Matching read-only display + real-fixture + rollback regression | [ ] DEFERRED → Phase 3 (2026-05-19) | 15.1, 15.3, Phase 2 closed |
 
 ### EPIC-15 Phase 2 (active)
 | # | Story | Workstream | Status | Depends on |
@@ -27,6 +27,16 @@
 | 15.8 | xlsx tracker exporter + ProjectTrackerTab + smoke acceptance | P2-D | [ ] todo | 15.7 |
 
 **Dependency order:** 15.5 → 15.7 → 15.8 sequential; 15.6 parallel.
+
+### EPIC-15 Phase 3 (deferred — opens after Phase 2 closes)
+| # | Story | Notes |
+|---|---|---|
+| 15.4 | Matching UI read-only display (key_terms + evidence popover + tasks) on `ProjectMatchingStage` / `TopicsDashboard` / `TopicsPanel` / `ProjectUpdatesStage` | Deferred 2026-05-19 — Call 1 has no matching phase, so doesn't block Phase 2. |
+| 15.4 | Real-fixture acceptance test (`backend/tests/test_real_fixture_4calls.py`) running the 4 FactSet transcripts end-to-end on smoke-test project `17e2687f-bdd8-43ee-88a7-d2bd79a13925` | Deferred 2026-05-19 — needs working end-to-end pipeline (Phase 2 delivers). |
+| 15.4 | Rollback regression test: re-extract Call 2, assert Calls 3+4 roll back to call_topics stage | Deferred 2026-05-19 — behaviour works today (user confirmed), formal non-reg test deferred. **User flagged non-regression coverage as KEY for Phase 3.** |
+| 15.4 | Manual-test doc `docs/project/config/2026-05-18-epic-15-manual-tests.md` covering all 4 calls end-to-end | Deferred 2026-05-19 — written after Phase 2 stabilises. |
+
+**Phase 3 entry condition:** Phase 2 stories 15.5–15.8 all `[x] done` AND Call 1 artifacts smoke-test clean.
 
 ### EPIC-12 Stories (last delivered — for reference)
 | # | Story | Status |
