@@ -351,6 +351,8 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
         "evidence": topic.get("evidence", []),
         "key_terms": topic.get("key_terms", []),
         "tasks": topic.get("tasks", []),
+        "open_questions": topic.get("open_questions", []),
+        "decisions": topic.get("decisions", []),
         "status": _status_rollup(topic.get("tasks", [])),
     }
     if topic.get("transcript_excerpt"):

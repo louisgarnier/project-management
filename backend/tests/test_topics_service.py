@@ -354,18 +354,19 @@ def test_persistence_payload_only_has_new_columns(monkeypatch):
     # the parent `topics` table (written by save_topics on insert). _persist_topic_update
     # writes only the per-call update row.
     # 'summary' is included (NOT NULL legacy column) and defaults to "" when absent.
-    for k in ("importance", "evidence", "key_terms", "tasks", "status", "summary"):
+    # open_questions + decisions were re-added as proper JSONB columns in migration 027 (Story 15.5).
+    for k in ("importance", "evidence", "key_terms", "tasks", "status", "summary",
+              "open_questions", "decisions"):
         assert k in payload, f"required new-shape key missing: {k}"
     assert "name" not in payload, "topic_updates has no 'name' column — must not be in payload"
 
     # Status must be rolled up from tasks — one open task → 'open'
     assert payload["status"] == "open"
 
-    # Forbidden legacy keys must not appear
+    # Forbidden legacy keys must not appear (decisions + open_questions are no longer
+    # legacy — they were re-added as proper JSONB columns by migration 027 / Story 15.5)
     for legacy in (
-        "decisions",
         "follow_up_items",
-        "open_questions",
         "rationale",
         "is_parked",
         "owner",
@@ -853,3 +854,95 @@ def test_stamp_item_ids_handles_missing_arrays():
     stamped = topics_service._stamp_item_ids(t, CALL_ID_SAMPLE)
     assert stamped["open_questions"] == []
     assert stamped["decisions"] == []
+
+
+# ── Story 15.5 — _persist_topic_update writes open_questions + decisions ──
+
+
+def test_persist_payload_includes_open_questions_and_decisions(monkeypatch):
+    """_persist_topic_update writes open_questions + decisions to the topic_updates payload."""
+    captured = {}
+
+    class _FakeExec:
+        def __init__(self, payload):
+            self._payload = payload
+        def execute(self):
+            class _R:
+                data = [{"id": "row-1"}]
+            return _R()
+
+    class _FakeTable:
+        def insert(self, payload):
+            captured["payload"] = payload
+            return _FakeExec(payload)
+
+    class _FakeClient:
+        def table(self, name):
+            assert name == "topic_updates"
+            return _FakeTable()
+
+    monkeypatch.setattr(topics_service, "get_client", lambda: _FakeClient())
+
+    topic = _valid_v3_topic()
+    topics_service._persist_topic_update(topic, "topic-1", "call-1")
+
+    assert "open_questions" in captured["payload"]
+    assert "decisions" in captured["payload"]
+    assert captured["payload"]["open_questions"] == topic["open_questions"]
+    assert captured["payload"]["decisions"] == topic["decisions"]
+
+
+def test_persist_payload_handles_missing_arrays_as_empty(monkeypatch):
+    """When extraction returns a topic without the new keys, persist []."""
+    captured = {}
+
+    class _FakeExec:
+        def execute(self):
+            class _R:
+                data = [{"id": "row-1"}]
+            return _R()
+
+    class _FakeTable:
+        def insert(self, payload):
+            captured["payload"] = payload
+            return _FakeExec()
+
+    class _FakeClient:
+        def table(self, name):
+            assert name == "topic_updates"
+            return _FakeTable()
+
+    monkeypatch.setattr(topics_service, "get_client", lambda: _FakeClient())
+
+    topic = _valid_topic()  # no open_questions/decisions keys
+    topics_service._persist_topic_update(topic, "topic-1", "call-1")
+
+    assert captured["payload"]["open_questions"] == []
+    assert captured["payload"]["decisions"] == []
+
+
+def test_persist_payload_does_not_write_chronology_fields(monkeypatch):
+    """Story 15.7 owns chronology_narrative + rag_verification_note. Story 15.5 must not write them."""
+    captured = {}
+
+    class _FakeExec:
+        def execute(self):
+            class _R:
+                data = [{"id": "row-1"}]
+            return _R()
+
+    class _FakeTable:
+        def insert(self, payload):
+            captured["payload"] = payload
+            return _FakeExec()
+
+    class _FakeClient:
+        def table(self, name):
+            return _FakeTable()
+
+    monkeypatch.setattr(topics_service, "get_client", lambda: _FakeClient())
+
+    topics_service._persist_topic_update(_valid_v3_topic(), "topic-1", "call-1")
+
+    assert "chronology_narrative" not in captured["payload"]
+    assert "rag_verification_note" not in captured["payload"]
