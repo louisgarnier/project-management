@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { callsAPI, libraryAPI, topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { Call, TopicData, TaskData, LibraryEntry } from "@/types";
+import type {
+  Call,
+  TopicData,
+  TaskData,
+  OpenQuestionData,
+  DecisionData,
+  LibraryEntry,
+} from "@/types";
 import KeyTermChips from "./KeyTermChips";
 import EvidenceRefPopover from "./EvidenceRefPopover";
 
@@ -151,6 +158,40 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
     }
   };
 
+  const updateOpenQuestions = async (
+    idx: number,
+    newOQ: OpenQuestionData[],
+  ) => {
+    const topic = topics[idx];
+    const id = topic.id ?? topic.topic_id;
+    setTopics((prev) =>
+      prev.map((t, i) => (i === idx ? { ...t, open_questions: newOQ } : t))
+    );
+    if (!id) return;
+    try {
+      await topicsAPI.patch(id, { open_questions: newOQ });
+    } catch (e: unknown) {
+      logger.error("[CallTopicsStage] open_questions patch failed", { data: e });
+    }
+  };
+
+  const updateDecisions = async (
+    idx: number,
+    newDec: DecisionData[],
+  ) => {
+    const topic = topics[idx];
+    const id = topic.id ?? topic.topic_id;
+    setTopics((prev) =>
+      prev.map((t, i) => (i === idx ? { ...t, decisions: newDec } : t))
+    );
+    if (!id) return;
+    try {
+      await topicsAPI.patch(id, { decisions: newDec });
+    } catch (e: unknown) {
+      logger.error("[CallTopicsStage] decisions patch failed", { data: e });
+    }
+  };
+
   const deleteTopic = async (idx: number) => {
     const topic = topics[idx];
     // Backend DELETE endpoint takes topics.id (parent table FK), not topic_updates.id.
@@ -245,6 +286,14 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
     () => topics.reduce((n, t) => n + (t.tasks?.length ?? 0), 0),
     [topics]
   );
+  const oqCount = useMemo(
+    () => topics.reduce((n, t) => n + (t.open_questions?.length ?? 0), 0),
+    [topics]
+  );
+  const decisionCount = useMemo(
+    () => topics.reduce((n, t) => n + (t.decisions?.length ?? 0), 0),
+    [topics]
+  );
   const callTitle = call.title ?? "Untitled";
   const callDate = (call.created_at ?? "").slice(0, 10);
 
@@ -282,7 +331,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
         >
           <h2 style={{ fontSize: 15, fontWeight: 700, color: "#172b4d", margin: 0 }}>
             {extracted
-              ? `Extracted tasks (${taskCount} task${taskCount === 1 ? "" : "s"} across ${topics.length} topic${topics.length === 1 ? "" : "s"})`
+              ? `Extracted (${topics.length} topic${topics.length === 1 ? "" : "s"} · ${taskCount} task${taskCount === 1 ? "" : "s"} · ${oqCount} open question${oqCount === 1 ? "" : "s"} · ${decisionCount} decision${decisionCount === 1 ? "" : "s"})`
               : "Call Topics"}
           </h2>
 
@@ -427,7 +476,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
           )}
         </div>
       ) : (
-        /* ── Topic table ── */
+        /* ── Per-topic blocks (Tasks / Open questions / Decisions) ── */
         <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
           {loading ? (
             <div style={{ color: "#5e6c84", fontSize: 13 }}>Loading topics…</div>
@@ -444,227 +493,21 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                 overflow: "visible",
               }}
             >
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 13,
-                  tableLayout: "fixed",
-                }}
-              >
-                <colgroup>
-                  <col style={{ width: 280 }} />
-                  <col />
-                  <col style={{ width: 260 }} />
-                  <col style={{ width: 92 }} />
-                  <col style={{ width: 108 }} />
-                  <col style={{ width: 46 }} />
-                  <col style={{ width: 50 }} />
-                </colgroup>
-                <thead>
-                  <tr
-                    style={{
-                      background: "#fafbfc",
-                      color: "#5e6c84",
-                      fontSize: 10,
-                      textTransform: "uppercase",
-                      letterSpacing: ".05em",
-                    }}
-                  >
-                    <th style={th}>Topic / key terms</th>
-                    <th style={th}>Task</th>
-                    <th style={th}>Next step</th>
-                    <th style={th}>Owner</th>
-                    <th style={th}>Status</th>
-                    <th style={{ ...th, textAlign: "center" }}>Ev.</th>
-                    <th style={{ ...th, textAlign: "center" }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topics.flatMap((topic, ti) => {
-                    const importance = topic.importance ?? "medium";
-                    const keyTerms = topic.key_terms ?? [];
-                    const evidence = topic.evidence ?? [];
-                    const tasks = topic.tasks ?? [];
-
-                    const rows = tasks.map((task, taskIdx) => (
-                      <tr
-                        key={`${ti}-${task.task_id}`}
-                        style={
-                          taskIdx === 0
-                            ? { borderTop: "2px solid #dfe1e6" }
-                            : undefined
-                        }
-                      >
-                        {/* Topic — repeated on every task row; chips moved to Task cell */}
-                        <td
-                          style={{
-                            ...td,
-                            verticalAlign: "top",
-                            borderRight: "1px solid #f0f1f3",
-                          }}
-                        >
-                          <div
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              setMenu({ ti, x: e.clientX, y: e.clientY });
-                            }}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                            }}
-                          >
-                            <input
-                              value={topic.name}
-                              onChange={(e) =>
-                                patchTopic(ti, { name: e.target.value })
-                              }
-                              style={topicNameStyle}
-                            />
-                            <select
-                              value={importance}
-                              onChange={(e) =>
-                                patchTopic(ti, {
-                                  importance: e.target.value as TopicData["importance"],
-                                })
-                              }
-                              style={{
-                                ...impSelect,
-                                background: IMP_BG[importance],
-                                color: IMP_FG[importance],
-                              }}
-                            >
-                              <option value="high">HIGH</option>
-                              <option value="medium">MED</option>
-                              <option value="low">LOW</option>
-                            </select>
-                          </div>
-                        </td>
-
-                        {/* Task + key-term chips (topic-level, shown under each task row) */}
-                        <td style={td}>
-                          <input
-                            value={task.task}
-                            onChange={(e) =>
-                              updateTasks(
-                                ti,
-                                tasks.map((t, i) =>
-                                  i === taskIdx
-                                    ? { ...t, task: e.target.value }
-                                    : t
-                                )
-                              )
-                            }
-                            style={cellInput}
-                            placeholder="Describe task…"
-                          />
-                          <div style={{ marginTop: 6 }}>
-                            <KeyTermChips
-                              terms={keyTerms}
-                              editable
-                              onChange={(next) =>
-                                patchTopic(ti, { key_terms: next })
-                              }
-                            />
-                          </div>
-                        </td>
-
-                        {/* Next step */}
-                        <td style={td}>
-                          <input
-                            value={task.next_step}
-                            onChange={(e) =>
-                              updateTasks(
-                                ti,
-                                tasks.map((t, i) =>
-                                  i === taskIdx
-                                    ? { ...t, next_step: e.target.value }
-                                    : t
-                                )
-                              )
-                            }
-                            style={cellInput}
-                            placeholder="Next action…"
-                          />
-                        </td>
-
-                        {/* Owner */}
-                        <td style={td}>
-                          <input
-                            value={task.owner}
-                            placeholder="— add"
-                            onChange={(e) =>
-                              updateTasks(
-                                ti,
-                                tasks.map((t, i) =>
-                                  i === taskIdx
-                                    ? { ...t, owner: e.target.value }
-                                    : t
-                                )
-                              )
-                            }
-                            style={cellInput}
-                          />
-                        </td>
-
-                        {/* Status */}
-                        <td style={td}>
-                          <select
-                            value={task.status}
-                            onChange={(e) =>
-                              updateTasks(
-                                ti,
-                                tasks.map((t, i) =>
-                                  i === taskIdx
-                                    ? {
-                                        ...t,
-                                        status: e.target.value as TaskData["status"],
-                                      }
-                                    : t
-                                )
-                              )
-                            }
-                            style={{
-                              ...statusSelect,
-                              background: STATUS_BG[task.status] ?? STATUS_BG.open,
-                              color: STATUS_FG[task.status] ?? STATUS_FG.open,
-                            }}
-                          >
-                            <option value="open">OPEN</option>
-                            <option value="in_progress">IN PROGRESS</option>
-                            <option value="resolved">RESOLVED</option>
-                          </select>
-                        </td>
-
-                        {/* Evidence popover */}
-                        <td style={{ ...td, textAlign: "center" }}>
-                          <EvidenceRefPopover evidence={evidence} />
-                        </td>
-
-                        {/* Delete task */}
-                        <td style={{ ...td, textAlign: "center" }}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateTasks(
-                                ti,
-                                tasks.filter((_, i) => i !== taskIdx)
-                              )
-                            }
-                            style={iconBtn}
-                            title="Delete task"
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    ));
-
-                    return rows;
-                  })}
-                </tbody>
-              </table>
+              {topics.map((topic, ti) => (
+                <TopicBlock
+                  key={topic.id ?? topic.topic_id ?? `topic-${ti}`}
+                  topic={topic}
+                  isLast={ti === topics.length - 1}
+                  onPatchTopic={(partial) => patchTopic(ti, partial)}
+                  onUpdateTasks={(next) => updateTasks(ti, next)}
+                  onUpdateOpenQuestions={(next) => updateOpenQuestions(ti, next)}
+                  onUpdateDecisions={(next) => updateDecisions(ti, next)}
+                  onContextMenuTopic={(e) => {
+                    e.preventDefault();
+                    setMenu({ ti, x: e.clientX, y: e.clientY });
+                  }}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -726,25 +569,6 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
 
 // ── Style constants ────────────────────────────────────────────────────────────
 
-const th: React.CSSProperties = {
-  padding: "10px 12px",
-  textAlign: "left",
-  fontWeight: 600,
-  borderBottom: "1px solid #dfe1e6",
-};
-const td: React.CSSProperties = {
-  padding: "11px 12px",
-  verticalAlign: "top",
-};
-const cellInput: React.CSSProperties = {
-  width: "100%",
-  border: "none",
-  background: "transparent",
-  fontSize: 13,
-  padding: 2,
-  color: "#172b4d",
-  fontFamily: "inherit",
-};
 const topicNameStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
@@ -821,3 +645,472 @@ const primaryBtn: React.CSSProperties = {
   cursor: "pointer",
   fontWeight: 600,
 };
+
+// ── Per-topic block sub-components ─────────────────────────────────────────────
+
+const OQ_ROW_TINT       = "#fff8e6";
+const DECISION_ROW_TINT = "#f1f8ee";
+
+const SECTION_LABEL_STYLE: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  color: "#5e6c84",
+  letterSpacing: ".05em",
+  marginBottom: 6,
+};
+const EMPTY_SECTION_STYLE: React.CSSProperties = {
+  fontSize: 11,
+  color: "#97a0af",
+  fontStyle: "italic",
+  padding: "4px 8px",
+};
+const ADD_ROW_BUTTON_STYLE: React.CSSProperties = {
+  marginTop: 6,
+  fontSize: 11,
+  color: "#0052cc",
+  background: "none",
+  border: "1px dashed #c1c7d0",
+  padding: "4px 10px",
+  borderRadius: 4,
+  cursor: "pointer",
+};
+const MINI_TABLE_STYLE: React.CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: 12.5,
+};
+const MINI_TH: React.CSSProperties = {
+  padding: "6px 8px",
+  textAlign: "left",
+  fontWeight: 600,
+};
+const MINI_TD: React.CSSProperties = {
+  padding: "8px",
+  verticalAlign: "top",
+};
+const MINI_CELL_INPUT: React.CSSProperties = {
+  width: "100%",
+  border: "none",
+  background: "transparent",
+  fontSize: 12.5,
+  padding: 0,
+  color: "#172b4d",
+  fontFamily: "inherit",
+};
+
+// Back-compat adapters: legacy DB rows may store decisions/open_questions as
+// plain string[]. Coerce to structured shapes for editing.
+function normalizeOpenQuestions(
+  raw: (string | OpenQuestionData)[] | undefined,
+): OpenQuestionData[] {
+  return (raw ?? []).map((q) =>
+    typeof q === "string"
+      ? { id: "", text: q, owner: "", status: "open" as const }
+      : q,
+  );
+}
+function normalizeDecisions(
+  raw: (string | DecisionData)[] | undefined,
+): DecisionData[] {
+  return (raw ?? []).map((d) =>
+    typeof d === "string" ? { id: "", text: d } : d,
+  );
+}
+
+// ── TopicBlock ────────────────────────────────────────────────────────────────
+
+function TopicBlock({
+  topic,
+  isLast,
+  onPatchTopic,
+  onUpdateTasks,
+  onUpdateOpenQuestions,
+  onUpdateDecisions,
+  onContextMenuTopic,
+}: {
+  topic: TopicData;
+  isLast: boolean;
+  onPatchTopic: (partial: Partial<TopicData>) => void;
+  onUpdateTasks: (next: TaskData[]) => void;
+  onUpdateOpenQuestions: (next: OpenQuestionData[]) => void;
+  onUpdateDecisions: (next: DecisionData[]) => void;
+  onContextMenuTopic: (e: React.MouseEvent) => void;
+}) {
+  const importance = topic.importance ?? "medium";
+  const keyTerms = topic.key_terms ?? [];
+  const evidence = topic.evidence ?? [];
+  const tasks = topic.tasks ?? [];
+  const openQuestions = normalizeOpenQuestions(topic.open_questions);
+  const decisions = normalizeDecisions(topic.decisions);
+
+  return (
+    <div
+      style={{
+        borderBottom: isLast ? "none" : "2px solid #dfe1e6",
+      }}
+    >
+      {/* Topic header row */}
+      <div
+        style={{
+          padding: "14px 16px 8px 16px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 12,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            onContextMenu={onContextMenuTopic}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
+            <input
+              value={topic.name}
+              onChange={(e) => onPatchTopic({ name: e.target.value })}
+              style={topicNameStyle}
+            />
+            <select
+              value={importance}
+              onChange={(e) =>
+                onPatchTopic({
+                  importance: e.target.value as TopicData["importance"],
+                })
+              }
+              style={{
+                ...impSelect,
+                background: IMP_BG[importance],
+                color: IMP_FG[importance],
+              }}
+            >
+              <option value="high">HIGH</option>
+              <option value="medium">MED</option>
+              <option value="low">LOW</option>
+            </select>
+            <EvidenceRefPopover evidence={evidence} />
+          </div>
+
+          <KeyTermChips
+            terms={keyTerms}
+            editable
+            onChange={(next) => onPatchTopic({ key_terms: next })}
+          />
+        </div>
+      </div>
+
+      {/* Tasks section */}
+      <TasksSection tasks={tasks} onUpdate={onUpdateTasks} />
+
+      {/* Open questions section */}
+      <OpenQuestionsSection
+        openQuestions={openQuestions}
+        onUpdate={onUpdateOpenQuestions}
+      />
+
+      {/* Decisions section */}
+      <DecisionsSection
+        decisions={decisions}
+        onUpdate={onUpdateDecisions}
+      />
+    </div>
+  );
+}
+
+// ── TasksSection ──────────────────────────────────────────────────────────────
+
+function TasksSection({
+  tasks,
+  onUpdate,
+}: {
+  tasks: TaskData[];
+  onUpdate: (next: TaskData[]) => void;
+}) {
+  const updateAt = (i: number, patch: Partial<TaskData>) =>
+    onUpdate(tasks.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
+  const deleteAt = (i: number) =>
+    onUpdate(tasks.filter((_, idx) => idx !== i));
+  const add = () =>
+    onUpdate([
+      ...tasks,
+      {
+        task_id: "",
+        task: "",
+        next_step: "",
+        status: "open",
+        owner: "",
+      },
+    ]);
+
+  return (
+    <div style={{ padding: "6px 16px 8px 16px" }}>
+      <div style={SECTION_LABEL_STYLE}>Tasks ({tasks.length})</div>
+      {tasks.length === 0 ? (
+        <div style={EMPTY_SECTION_STYLE}>— no tasks in this call</div>
+      ) : (
+        <table style={MINI_TABLE_STYLE}>
+          <thead>
+            <tr
+              style={{
+                color: "#5e6c84",
+                fontSize: 10,
+                textTransform: "uppercase",
+                letterSpacing: ".04em",
+                background: "#fafbfc",
+              }}
+            >
+              <th style={{ ...MINI_TH, width: "32%" }}>Task</th>
+              <th style={MINI_TH}>Next step</th>
+              <th style={{ ...MINI_TH, width: 80 }}>Owner</th>
+              <th style={{ ...MINI_TH, width: 108 }}>Status</th>
+              <th style={{ ...MINI_TH, width: 32 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {tasks.map((task, i) => (
+              <tr
+                key={task.task_id || `new-${i}`}
+                style={{ borderTop: "1px solid #f1f2f4" }}
+              >
+                <td style={MINI_TD}>
+                  <input
+                    value={task.task}
+                    onChange={(e) => updateAt(i, { task: e.target.value })}
+                    style={MINI_CELL_INPUT}
+                    placeholder="Describe task…"
+                  />
+                </td>
+                <td style={{ ...MINI_TD, color: "#42526e" }}>
+                  <input
+                    value={task.next_step}
+                    onChange={(e) =>
+                      updateAt(i, { next_step: e.target.value })
+                    }
+                    style={MINI_CELL_INPUT}
+                    placeholder="Next action…"
+                  />
+                </td>
+                <td style={MINI_TD}>
+                  <input
+                    value={task.owner}
+                    placeholder="— add"
+                    onChange={(e) => updateAt(i, { owner: e.target.value })}
+                    style={MINI_CELL_INPUT}
+                  />
+                </td>
+                <td style={MINI_TD}>
+                  <select
+                    value={task.status}
+                    onChange={(e) =>
+                      updateAt(i, {
+                        status: e.target.value as TaskData["status"],
+                      })
+                    }
+                    style={{
+                      ...statusSelect,
+                      background: STATUS_BG[task.status] ?? STATUS_BG.open,
+                      color: STATUS_FG[task.status] ?? STATUS_FG.open,
+                    }}
+                  >
+                    <option value="open">OPEN</option>
+                    <option value="in_progress">IN PROGRESS</option>
+                    <option value="resolved">RESOLVED</option>
+                  </select>
+                </td>
+                <td style={{ ...MINI_TD, textAlign: "center" }}>
+                  <button
+                    type="button"
+                    onClick={() => deleteAt(i)}
+                    style={iconBtn}
+                    title="Delete task"
+                  >
+                    ×
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <button
+        type="button"
+        onClick={add}
+        style={ADD_ROW_BUTTON_STYLE}
+        title="Add task"
+      >
+        + Add task
+      </button>
+    </div>
+  );
+}
+
+// ── OpenQuestionsSection ──────────────────────────────────────────────────────
+
+function OpenQuestionsSection({
+  openQuestions,
+  onUpdate,
+}: {
+  openQuestions: OpenQuestionData[];
+  onUpdate: (next: OpenQuestionData[]) => void;
+}) {
+  const updateAt = (i: number, patch: Partial<OpenQuestionData>) =>
+    onUpdate(
+      openQuestions.map((q, idx) => (idx === i ? { ...q, ...patch } : q)),
+    );
+  const deleteAt = (i: number) =>
+    onUpdate(openQuestions.filter((_, idx) => idx !== i));
+  const add = () =>
+    onUpdate([
+      ...openQuestions,
+      { id: "", text: "", owner: "", status: "open" },
+    ]);
+
+  return (
+    <div style={{ padding: "6px 16px 8px 16px" }}>
+      <div style={SECTION_LABEL_STYLE}>
+        Open questions ({openQuestions.length})
+      </div>
+      {openQuestions.length === 0 ? (
+        <div style={EMPTY_SECTION_STYLE}>— no open questions in this call</div>
+      ) : (
+        <table style={MINI_TABLE_STYLE}>
+          <tbody>
+            {openQuestions.map((q, i) => (
+              <tr
+                key={q.id || `new-${i}`}
+                style={{
+                  borderTop: "1px solid #f1f2f4",
+                  background: OQ_ROW_TINT,
+                }}
+              >
+                <td style={MINI_TD}>
+                  <input
+                    value={q.text}
+                    onChange={(e) => updateAt(i, { text: e.target.value })}
+                    style={MINI_CELL_INPUT}
+                    placeholder="Open question…"
+                  />
+                </td>
+                <td style={{ ...MINI_TD, width: 80 }}>
+                  <input
+                    value={q.owner}
+                    placeholder="— add owner"
+                    onChange={(e) => updateAt(i, { owner: e.target.value })}
+                    style={MINI_CELL_INPUT}
+                  />
+                </td>
+                <td style={{ ...MINI_TD, width: 108 }}>
+                  <select
+                    value={q.status}
+                    onChange={(e) =>
+                      updateAt(i, {
+                        status: e.target.value as OpenQuestionData["status"],
+                      })
+                    }
+                    style={{
+                      ...statusSelect,
+                      background: STATUS_BG[q.status] ?? STATUS_BG.open,
+                      color: STATUS_FG[q.status] ?? STATUS_FG.open,
+                    }}
+                  >
+                    <option value="open">OPEN</option>
+                    <option value="in_progress">IN PROGRESS</option>
+                    <option value="resolved">RESOLVED</option>
+                  </select>
+                </td>
+                <td style={{ ...MINI_TD, width: 32, textAlign: "center" }}>
+                  <button
+                    type="button"
+                    onClick={() => deleteAt(i)}
+                    style={iconBtn}
+                    title="Delete open question"
+                  >
+                    ×
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <button
+        type="button"
+        onClick={add}
+        style={ADD_ROW_BUTTON_STYLE}
+        title="Add open question"
+      >
+        + Add open question
+      </button>
+    </div>
+  );
+}
+
+// ── DecisionsSection ──────────────────────────────────────────────────────────
+
+function DecisionsSection({
+  decisions,
+  onUpdate,
+}: {
+  decisions: DecisionData[];
+  onUpdate: (next: DecisionData[]) => void;
+}) {
+  const updateAt = (i: number, patch: Partial<DecisionData>) =>
+    onUpdate(decisions.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
+  const deleteAt = (i: number) =>
+    onUpdate(decisions.filter((_, idx) => idx !== i));
+  const add = () => onUpdate([...decisions, { id: "", text: "" }]);
+
+  return (
+    <div style={{ padding: "6px 16px 12px 16px" }}>
+      <div style={SECTION_LABEL_STYLE}>Decisions ({decisions.length})</div>
+      {decisions.length === 0 ? (
+        <div style={EMPTY_SECTION_STYLE}>— no decisions in this call</div>
+      ) : (
+        <table style={MINI_TABLE_STYLE}>
+          <tbody>
+            {decisions.map((d, i) => (
+              <tr
+                key={d.id || `new-${i}`}
+                style={{
+                  borderTop: "1px solid #f1f2f4",
+                  background: DECISION_ROW_TINT,
+                }}
+              >
+                <td style={MINI_TD}>
+                  <input
+                    value={d.text}
+                    onChange={(e) => updateAt(i, { text: e.target.value })}
+                    style={MINI_CELL_INPUT}
+                    placeholder="Decision…"
+                  />
+                </td>
+                <td style={{ ...MINI_TD, width: 32, textAlign: "center" }}>
+                  <button
+                    type="button"
+                    onClick={() => deleteAt(i)}
+                    style={iconBtn}
+                    title="Delete decision"
+                  >
+                    ×
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <button
+        type="button"
+        onClick={add}
+        style={ADD_ROW_BUTTON_STYLE}
+        title="Add decision"
+      >
+        + Add decision
+      </button>
+    </div>
+  );
+}
