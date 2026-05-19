@@ -1,10 +1,14 @@
+from datetime import datetime, timezone
+from io import BytesIO
 from typing import Literal, Optional
 
 from backend.database.supabase_client import get_client
+from backend.exporters.xlsx_tracker import build_tracker_xlsx
 from backend.routers.artifact_types import seed_defaults
+from backend.services.export_service import _slugify
 from backend.utils.logger import db_logger, get_logger
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 logger = get_logger("projects")
@@ -84,3 +88,26 @@ def delete_project(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
     db_logger.info(f"✅ [DB] Deleted project: {project_id}")
     return Response(status_code=204)
+
+
+@router.get("/{project_id}/export.xlsx")
+def export_tracker_xlsx(project_id: str):
+    """Streaming xlsx download for the project tracker (Story 15.8)."""
+    client = get_client()
+    rows = client.table("projects").select("name").eq("id", project_id).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+    project_name = rows[0]["name"]
+    try:
+        blob = build_tracker_xlsx(project_id)
+    except Exception as e:
+        logger.exception(f"❌ [Export] xlsx build failed for project={project_id}: {e}")
+        raise HTTPException(status_code=500, detail="xlsx generation failed")
+    slug = _slugify(project_name)
+    iso_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    filename = f"{slug}-tracker-{iso_date}.xlsx"
+    return StreamingResponse(
+        BytesIO(blob),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

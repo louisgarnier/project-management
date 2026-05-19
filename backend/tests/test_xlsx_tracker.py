@@ -155,3 +155,50 @@ def test_build_tracker_xlsx_with_empty_project(monkeypatch):
     # Each sheet has at least the header row
     for name in wb.sheetnames:
         assert wb[name].max_row >= 1
+
+
+def test_export_xlsx_endpoint_returns_200_with_correct_headers(monkeypatch):
+    """The GET endpoint returns 200, correct mime + Content-Disposition."""
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    from backend.routers import projects as projects_router
+
+    fake_db = type("DB", (), {
+        "table": lambda self, name: type("T", (), {
+            "select": lambda self, _: self,
+            "eq": lambda self, _k, _v: self,
+            "execute": lambda self: type("R", (), {"data": [{"name": "FactSet SWIB"}]})()
+        })()
+    })()
+    monkeypatch.setattr(projects_router, "get_client", lambda: fake_db)
+    monkeypatch.setattr(
+        "backend.exporters.xlsx_tracker.list_project_topics",
+        lambda _pid: []
+    )
+
+    with TestClient(app) as client:
+        resp = client.get("/api/projects/abc/export.xlsx")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert "attachment" in resp.headers["content-disposition"]
+    assert ".xlsx" in resp.headers["content-disposition"]
+
+
+def test_export_xlsx_endpoint_404_on_missing_project(monkeypatch):
+    """Missing project → 404."""
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    from backend.routers import projects as projects_router
+
+    fake_db = type("DB", (), {
+        "table": lambda self, name: type("T", (), {
+            "select": lambda self, _: self,
+            "eq": lambda self, _k, _v: self,
+            "execute": lambda self: type("R", (), {"data": []})()
+        })()
+    })()
+    monkeypatch.setattr(projects_router, "get_client", lambda: fake_db)
+
+    with TestClient(app) as client:
+        resp = client.get("/api/projects/missing/export.xlsx")
+    assert resp.status_code == 404

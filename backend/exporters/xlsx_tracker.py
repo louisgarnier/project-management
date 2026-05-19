@@ -4,36 +4,21 @@ build_tracker_xlsx(project_id) -> bytes: renders 5 sheets via openpyxl.
 No disk writes; everything goes through BytesIO.
 """
 
-import asyncio
 from io import BytesIO
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-# Sync wrappers around async helpers (mirrors backend/services/artifact_generation.py).
-from backend.services import topics_service
+from backend.services.project_tracker_data import list_project_topics_with_call_history
+
+# Re-exported at module level so tests can monkeypatch xlsx_tracker.list_project_topics:
+list_project_topics = list_project_topics_with_call_history
 
 
-def _sync_list_project_topics(project_id: str) -> list[dict]:
-    coro = topics_service.list_project_topics(project_id)
-    if asyncio.iscoroutine(coro):
-        return asyncio.run(coro)
-    return coro
-
-
-def _sync_list_topics_timeline(project_id: str) -> dict | None:
-    if not hasattr(topics_service, "list_topics_timeline"):
-        return None
-    coro = topics_service.list_topics_timeline(project_id)
-    if asyncio.iscoroutine(coro):
-        return asyncio.run(coro)
-    return coro
-
-
-# Tests monkeypatch these module-level names directly:
-list_project_topics = _sync_list_project_topics
-list_topics_timeline = _sync_list_topics_timeline
+def list_topics_timeline(project_id: str) -> dict | None:  # noqa: ARG001
+    """Placeholder — reserved for future timeline aggregation (Story 15.8+)."""
+    return None
 
 
 HEADER_FONT = Font(bold=True)
