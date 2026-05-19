@@ -4,6 +4,25 @@
 
 - **2026-05-19 — pre-existing merge-prompt bug** (`backend/services/topics_service.py:1071-1080`, `1133-1142`): `call_excerpts_parts` builder in 1:1 and M:N merge paths still iterates `m.get("follow_up_items")` (always empty under EPIC-15 new shape) and renders `m.get("decisions")` as `f"  - {d}"` where `d` is now a dict — produces literal `{'id': ..., 'text': '...'}` strings in the merge prompt, degrading merge quality silently. Pre-existing — predates Story 15.5. Fix during Story 15.7 alongside the chronology+RAG plumbing rewrite.
 
+### 2026-05-19 — EPIC-15 Phase 2 / Story 15.7: per-item lifecycle + chronology + RAG verification + accumulator
+
+**Backend:**
+- `backend/prompts/chronology.py` (new) — CHRONOLOGY_NARRATIVE_PROMPT_BODY (2-3 sentence / ≤400 char per-cell summary with anti-padding guards) + CHRONOLOGY_RAG_VERIFICATION_PROMPT_BODY (verified-vs-drift audit; refuses default-verified on empty input).
+- `backend/library/seed.py` — 2 new SYSTEM_LIBRARY entries (Chronology Narrative + RAG Verification, kind=llm, category=chronology, seeded_by_default=true). Total entries 13 → 15.
+- `backend/services/chronology_service.py` (new) — `generate_chronology_cell(project_topic_id, call_id, db)` runs 2 LLM calls sequentially per (topic, call); truncates narrative at 600 chars defensively; catches all LLM errors and persists (`""`, `"(generation failed: ...)"`) marker per NFR-P2-03. Structured log line with topic/call/narrative_chars/rag_status/latency_ms.
+- `backend/services/topic_updates_accumulator.py` (new) — `accumulate_into_project_state(call_id, db)` iterates touched topic_updates rows, fires chronology gen via `asyncio.gather` + `Semaphore(8)` bound. Per-topic failures caught + logged. Returns `{topics_touched, wall_clock_ms}`. Never raises.
+- `backend/services/topics_service.py` — `_apply_lifecycle_on_resolve(prev, new, call_id)` pure helper stamps `closed_in_call_id` on open→resolved flips (latest wins per Q1); clears on resolved→open; preserves on resolved→resolved. Integrated into `_persist_topic_update` which now loads the prior call's row before write. `aggregate_topics` + `validate_project_updates` both call the accumulator after `save_topics` succeeds (defensive try/except).
+
+**Tests:** 18 new (`test_chronology_service.py` 4, `test_topic_lifecycle.py` 8, `test_topic_updates_accumulator.py` 4, plus mock updates in `test_topics_service.py` + `test_library.py` + `test_topics.py`); full backend suite 269+ passing, 13 skipped, 0 failures.
+
+**Commits:** 8 `[EPIC-15] story 15.7 ...` commits (T1–T7 + close).
+
+**Schema:** No new migration — Story 15.5's migration 027 already added the columns. No frontend changes.
+
+**Manual smoke pending:** user completes a project_updates commit on Call 2+ → confirms chronology cells appear in topic_updates rows.
+
+---
+
 ### 2026-05-19 — EPIC-15 Phase 2 / Story 15.6: context_scope 4-value enum + context-assembly seam
 
 **Backend:**

@@ -1,7 +1,7 @@
 # Story 15.7 — Per-item Lifecycle + Chronology + RAG Verification + Accumulator
 
 **Epic:** EPIC-15 — Call Topics Rebuild (Phase 2 / P2-C)
-**Status:** [ ] todo
+**Status:** [x] code-complete (2026-05-19) — awaiting user smoke (chronology generation on project_updates commit)
 **Spec:** `docs/project/config/2026-05-18-epic-15-phase-2-architecture.md` §3 (lifecycle), §4.1 (chronology service + accumulator), §6 (commit-time freeze), §7 (LLM seams), §8 (perf)
 **PRD:** `docs/project/config/2026-05-18-epic-15-phase-2-prd.md` G6, G7, G8, US-P2-04, US-P2-05, FR-P2-07/08/09, NFR-P2-02, NFR-P2-03, Q1, Q2
 **Blocks:** 15.8 (xlsx exporter reads chronology + lifecycle metadata)
