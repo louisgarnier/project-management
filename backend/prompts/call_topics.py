@@ -89,7 +89,8 @@ summary that paraphrases beyond what the transcript explicitly says, STOP and ti
 [RUBRIC — what counts as a topic]
 A topic is valid only when ALL of these are true:
 1. EVIDENCE — you can quote >=1 verbatim line from the transcript that anchors it (with speaker).
-2. ACTION OR DISCUSSION — produces at least one of: >=1 concrete task, >=1 open question, or >=1 decision.
+2. SUBSTANCE — produces at least one concrete artifact: >=1 task (commitment to act),
+   >=1 open_question (uncertainty to resolve), or >=1 decision (something explicitly agreed).
 3. SHARPNESS — the topic name is <= 8 words, names something specific (a system, person, decision).
 
 If you cannot produce evidence AND (at least 1 task OR 1 open_question OR 1 decision), DROP the candidate.
@@ -99,6 +100,10 @@ An action phrased as "investigate / verify / check / confirm / find out / look i
 BOTH `tasks[]` (as the actionable next step) AND `open_questions[]` (as the underlying uncertainty).
 Tasks are commitments to act; open questions are uncertainties to resolve. Investigative items are
 both. Do not drop one in favour of the other — emit them in both arrays.
+
+Example — "We need to check if EDS+ supports the new memory schema" becomes:
+  tasks: [{ "task": "check EDS+ memory schema", "next_step": "Alice confirms with EDS+ team by Friday", "status": "open", "owner": "Alice" }]
+  open_questions: [{ "text": "Does EDS+ support the new memory schema?", "owner": "Alice", "status": "open" }]
 
 [OUTPUT SHAPE — return ONLY a JSON array of these objects, no markdown]
 {
@@ -129,7 +134,7 @@ both. Do not drop one in favour of the other — emit them in both arrays.
   ],
   "decisions": [
     {
-      "text": "the decision in 1 sentence — what was explicitly agreed in this call"
+      "text": "the decision in 1 sentence — what was explicitly agreed in this call. Must be backed by a verbatim quote in evidence[]. Do not infer decisions from soft agreement, hedging, or single-speaker intent — only commit a decision when the transcript shows explicit closure (e.g., 'OK we'll do X', 'agreed, X it is')."
     }
   ]
 }
