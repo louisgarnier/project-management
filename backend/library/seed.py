@@ -17,6 +17,10 @@ from backend.prompts.call_topics import (
     CALL_TOPICS_V2_PROMPT_BODY,
     CALL_TOPICS_V3_PROMPT_BODY,
 )
+from backend.prompts.chronology import (
+    CHRONOLOGY_NARRATIVE_PROMPT_BODY,
+    CHRONOLOGY_RAG_VERIFICATION_PROMPT_BODY,
+)
 from backend.prompts.merge_verification import MERGE_VERIFICATION_DEFAULT_PROMPT
 from backend.prompts.not_discussed_check import NOT_DISCUSSED_DEFAULT_PROMPT
 from backend.prompts.project_topics import PROJECT_TOPICS_DEFAULT_PROMPT
@@ -215,6 +219,42 @@ SYSTEM_LIBRARY: list[dict] = [
         "category": "artifacts",
         "is_system": True,
         "seeded_by_default": False,
+    },
+    {
+        "name": "Chronology Narrative",
+        "description": (
+            "Runs at project_updates commit, per (topic, call). Writes a 2-3 sentence "
+            "log entry summarising what happened to the topic in this call. Anchored "
+            "in the transcript evidence; hard-capped at 400 characters. Frozen at "
+            "commit — never regenerated unless manually re-triggered."
+        ),
+        "kind": "llm",
+        "prompt": CHRONOLOGY_NARRATIVE_PROMPT_BODY,
+        "template_id": None,
+        "llm": "openrouter",
+        "model": "deepseek/deepseek-v3.2",
+        "context_scope": "this_call_topics",
+        "category": "chronology",
+        "is_system": True,
+        "seeded_by_default": True,
+    },
+    {
+        "name": "RAG Verification",
+        "description": (
+            "Audits a chronology narrative against the transcript excerpt it summarises. "
+            "Returns 'verified' or a drift note pinpointing unsupported claims. "
+            "Refuses to default to 'verified' on empty/short input — guards against "
+            "hallucinated verifications."
+        ),
+        "kind": "llm",
+        "prompt": CHRONOLOGY_RAG_VERIFICATION_PROMPT_BODY,
+        "template_id": None,
+        "llm": "openrouter",
+        "model": "deepseek/deepseek-v3.2",
+        "context_scope": "this_call_topics",
+        "category": "chronology",
+        "is_system": True,
+        "seeded_by_default": True,
     },
 ]
 
