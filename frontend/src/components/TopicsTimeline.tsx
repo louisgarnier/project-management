@@ -239,11 +239,15 @@ function Cell({ cell, hasSources, sourceNames, isFirstRaisedCell, history, calls
                 <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
                   color: "#97a0af", marginTop: 6, marginBottom: 3 }}>Decisions</div>
                 {(() => {
-                  const items = cell.decisions ?? [];
+                  // Adapter: normalise v3 {id,text,...} objects down to plain strings
+                  // so resolveProvenance (exact-string match) and <span> render correctly.
+                  const decisionTexts = (cell.decisions ?? []).map((d) =>
+                    typeof d === "string" ? d : (d.text ?? "")
+                  );
                   const origins = history && calls
-                    ? resolveProvenance(items, history, "decisions")
-                    : items.map(() => null);
-                  return items.map((d, i) => {
+                    ? resolveProvenance(decisionTexts, history, "decisions")
+                    : decisionTexts.map(() => null);
+                  return decisionTexts.map((d, i) => {
                     const originCallId = origins[i];
                     const idx = originCallId && calls
                       ? calls.findIndex((c) => c.id === originCallId)
@@ -436,10 +440,14 @@ export default function TopicsTimeline({ projectId, refreshKey }: Props) {
             const parentName = isAncestorRow ? topicById[isAncestorOf]?.name ?? "" : "";
             // Build per-cell history for provenance resolution. Order by call
             // chronology (matches data.calls order).
+            // Normalise v3 DecisionData objects to plain strings so resolveProvenance
+            // exact-string match works correctly.
             const topicHistory: CellHistory[] = data.calls.map((c) => ({
               call_id: c.id,
               follow_up_items: topic.call_updates[c.id]?.follow_up_items ?? [],
-              decisions: topic.call_updates[c.id]?.decisions ?? [],
+              decisions: (topic.call_updates[c.id]?.decisions ?? []).map((d) =>
+                typeof d === "string" ? d : (d.text ?? "")
+              ),
             }));
             return (
               <tr key={topic.topic_id} style={{

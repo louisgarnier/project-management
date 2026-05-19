@@ -231,7 +231,8 @@ export interface TimelineCell {
   type: "new" | "followed_up" | "not_discussed" | "pending" | "merged";
   summary?: string;
   follow_up_items?: string[];
-  decisions?: string[];
+  decisions?: (string | DecisionData)[];           // widened for v3 shape from backend
+  open_questions?: (string | OpenQuestionData)[];  // added for v3 shape
   status?: string;
   owner?: string;
   sentiment?: string;
