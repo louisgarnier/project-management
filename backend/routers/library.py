@@ -33,15 +33,13 @@ class LibraryEntryUpdate(BaseModel):
 
 
 @router.get("")
-def list_library():
+def list_library(category: str | None = None):
     client = get_client()
-    db_logger.info("🗄️ [DB] Fetching artifact library")
-    result = (
-        client.table("artifact_library")
-        .select("*")
-        .order("is_system", desc=True)
-        .execute()
-    )
+    db_logger.info(f"🗄️ [DB] Fetching artifact library (category={category!r})")
+    query = client.table("artifact_library").select("*")
+    if category:
+        query = query.eq("category", category)
+    result = query.order("is_system", desc=True).execute()
     return result.data
 
 

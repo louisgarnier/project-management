@@ -319,11 +319,17 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   const callDate = (call.created_at ?? "").slice(0, 10);
 
   // Resolve the effective prompt + model: selected, else seeded-default.
+  // Defensive category filter: libraryPrompts SHOULD be pre-filtered to
+  // call_topics by listByCategory, but the backend list endpoint used to
+  // ignore the query param — keep the guard so this can't drift again.
   const effectivePrompt = useMemo(() => {
+    const callTopicsPrompts = libraryPrompts.filter(
+      (p) => p.category === "call_topics",
+    );
     if (selectedPromptId) {
-      return libraryPrompts.find((p) => p.id === selectedPromptId) ?? null;
+      return callTopicsPrompts.find((p) => p.id === selectedPromptId) ?? null;
     }
-    return libraryPrompts.find((p) => p.seeded_by_default) ?? null;
+    return callTopicsPrompts.find((p) => p.seeded_by_default) ?? null;
   }, [selectedPromptId, libraryPrompts]);
 
   // ── Render ──
