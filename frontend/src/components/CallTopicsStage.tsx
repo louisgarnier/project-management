@@ -7,6 +7,7 @@ import type {
   Call,
   TopicData,
   TaskData,
+  TopicStatus,
   OpenQuestionData,
   DecisionData,
   LibraryEntry,
@@ -480,7 +481,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
           </button>
         </div>
       ) : (
-        /* ── Per-topic blocks (Tasks / Open questions / Decisions) ── */
+        /* ── Flat table: one row per task, topic-level cells on first row ── */
         <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
           {loading ? (
             <div style={{ color: "#5e6c84", fontSize: 13 }}>Loading topics…</div>
@@ -489,30 +490,241 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
               No topics extracted. Click Re-extract to run the prompt.
             </div>
           ) : (
-            <div
+            <table
               style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: 12.5,
+                tableLayout: "fixed",
                 background: "white",
                 border: "1px solid #dfe1e6",
                 borderRadius: 6,
-                overflow: "visible",
               }}
             >
-              {topics.map((topic, ti) => (
-                <TopicBlock
-                  key={topic.id ?? topic.topic_id ?? `topic-${ti}`}
-                  topic={topic}
-                  isLast={ti === topics.length - 1}
-                  onPatchTopic={(partial) => patchTopic(ti, partial)}
-                  onUpdateTasks={(next) => updateTasks(ti, next)}
-                  onUpdateOpenQuestions={(next) => updateOpenQuestions(ti, next)}
-                  onUpdateDecisions={(next) => updateDecisions(ti, next)}
-                  onContextMenuTopic={(e) => {
-                    e.preventDefault();
-                    setMenu({ ti, x: e.clientX, y: e.clientY });
+              <colgroup>
+                <col style={{ width: 200 }} /> {/* Topic */}
+                <col style={{ width: 180 }} /> {/* Key terms */}
+                <col />                        {/* Task — auto */}
+                <col />                        {/* Next step — auto */}
+                <col style={{ width: 90 }} />  {/* Owner */}
+                <col style={{ width: 110 }} /> {/* Status */}
+                <col style={{ width: 240 }} /> {/* Open questions */}
+                <col style={{ width: 220 }} /> {/* Decisions */}
+                <col style={{ width: 44 }} />  {/* Evidence */}
+                <col style={{ width: 36 }} />  {/* Delete */}
+              </colgroup>
+              <thead>
+                <tr
+                  style={{
+                    background: "#fafbfc",
+                    color: "#5e6c84",
+                    fontSize: 10,
+                    textTransform: "uppercase",
+                    letterSpacing: ".05em",
                   }}
-                />
-              ))}
-            </div>
+                >
+                  <th style={TABLE_TH_STYLE}>Topic</th>
+                  <th style={TABLE_TH_STYLE}>Key terms</th>
+                  <th style={TABLE_TH_STYLE}>Task</th>
+                  <th style={TABLE_TH_STYLE}>Next step</th>
+                  <th style={TABLE_TH_STYLE}>Owner</th>
+                  <th style={TABLE_TH_STYLE}>Status</th>
+                  <th style={TABLE_TH_STYLE}>Open questions</th>
+                  <th style={TABLE_TH_STYLE}>Decisions</th>
+                  <th style={{ ...TABLE_TH_STYLE, textAlign: "center" }}>Ev.</th>
+                  <th style={{ ...TABLE_TH_STYLE, textAlign: "center" }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {topics.flatMap((topic, ti) => {
+                  const tasks = topic.tasks ?? [];
+                  const oqs = normalizeOpenQuestions(topic.open_questions);
+                  const decisions = normalizeDecisions(topic.decisions);
+                  const keyTerms = topic.key_terms ?? [];
+                  // Topic must have at least one row even if no tasks — so topic-level cells stay visible.
+                  const rowCount = Math.max(tasks.length, 1);
+                  const isLastTopic = ti === topics.length - 1;
+                  return Array.from({ length: rowCount }, (_, ri) => {
+                    const isFirstRow = ri === 0;
+                    const isLastRowOfTopic = ri === rowCount - 1;
+                    const task = tasks[ri]; // undefined if rowCount > tasks.length (topic with no tasks)
+                    const borderBottom = !isLastRowOfTopic
+                      ? "1px solid #f1f2f4" // inner — between tasks of same topic
+                      : isLastTopic
+                        ? "none"
+                        : "2px solid #dfe1e6"; // topic separator
+                    return (
+                      <tr
+                        key={`${topic.id ?? topic.topic_id ?? ti}-${task?.task_id ?? `empty-${ri}`}`}
+                        style={{ borderBottom }}
+                      >
+                        {/* Topic name + importance — only first row */}
+                        <td style={TABLE_TD_STYLE}>
+                          {isFirstRow && (
+                            <TopicNameCell
+                              topic={topic}
+                              onPatchTopic={(p) => patchTopic(ti, p)}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                setMenu({ ti, x: e.clientX, y: e.clientY });
+                              }}
+                            />
+                          )}
+                        </td>
+                        {/* Key terms — only first row */}
+                        <td style={TABLE_TD_STYLE}>
+                          {isFirstRow && (
+                            <KeyTermChips
+                              terms={keyTerms}
+                              editable
+                              onChange={(next) => patchTopic(ti, { key_terms: next })}
+                            />
+                          )}
+                        </td>
+                        {/* Task / Next step / Owner / Status — per task */}
+                        <td style={TABLE_TD_STYLE}>
+                          {task && (
+                            <input
+                              key={task.task_id}
+                              type="text"
+                              defaultValue={task.task}
+                              placeholder="Describe task…"
+                              onBlur={(e) => {
+                                if (e.target.value !== task.task)
+                                  updateTasks(
+                                    ti,
+                                    tasks.map((t, i) =>
+                                      i === ri ? { ...t, task: e.target.value } : t,
+                                    ),
+                                  );
+                              }}
+                              style={INLINE_INPUT_STYLE}
+                            />
+                          )}
+                        </td>
+                        <td style={TABLE_TD_STYLE}>
+                          {task && (
+                            <input
+                              key={`${task.task_id}-ns`}
+                              type="text"
+                              defaultValue={task.next_step}
+                              placeholder="Next action…"
+                              onBlur={(e) => {
+                                if (e.target.value !== task.next_step)
+                                  updateTasks(
+                                    ti,
+                                    tasks.map((t, i) =>
+                                      i === ri ? { ...t, next_step: e.target.value } : t,
+                                    ),
+                                  );
+                              }}
+                              style={INLINE_INPUT_STYLE}
+                            />
+                          )}
+                        </td>
+                        <td style={TABLE_TD_STYLE}>
+                          {task && (
+                            <input
+                              key={`${task.task_id}-ow`}
+                              type="text"
+                              defaultValue={task.owner}
+                              placeholder="— add"
+                              onBlur={(e) => {
+                                if (e.target.value !== task.owner)
+                                  updateTasks(
+                                    ti,
+                                    tasks.map((t, i) =>
+                                      i === ri ? { ...t, owner: e.target.value } : t,
+                                    ),
+                                  );
+                              }}
+                              style={INLINE_INPUT_STYLE}
+                            />
+                          )}
+                        </td>
+                        <td style={TABLE_TD_STYLE}>
+                          {task && (
+                            <select
+                              value={task.status}
+                              onChange={(e) =>
+                                updateTasks(
+                                  ti,
+                                  tasks.map((t, i) =>
+                                    i === ri
+                                      ? { ...t, status: e.target.value as TopicStatus }
+                                      : t,
+                                  ),
+                                )
+                              }
+                              style={{
+                                ...statusSelect,
+                                background: STATUS_BG[task.status] ?? STATUS_BG.open,
+                                color: STATUS_FG[task.status] ?? STATUS_FG.open,
+                              }}
+                            >
+                              <option value="open">OPEN</option>
+                              <option value="in_progress">IN PROGRESS</option>
+                              <option value="resolved">RESOLVED</option>
+                            </select>
+                          )}
+                        </td>
+                        {/* Open questions — only first row */}
+                        <td style={TABLE_TD_STYLE}>
+                          {isFirstRow && (
+                            <OpenQuestionsCell
+                              oqs={oqs}
+                              onUpdate={(next) => updateOpenQuestions(ti, next)}
+                            />
+                          )}
+                        </td>
+                        {/* Decisions — only first row */}
+                        <td style={TABLE_TD_STYLE}>
+                          {isFirstRow && (
+                            <DecisionsCell
+                              decisions={decisions}
+                              onUpdate={(next) => updateDecisions(ti, next)}
+                            />
+                          )}
+                        </td>
+                        {/* Evidence — first row only (topic-level indicator) */}
+                        <td style={{ ...TABLE_TD_STYLE, textAlign: "center" }}>
+                          {isFirstRow && topic.evidence && topic.evidence.length > 0 && (
+                            <EvidenceRefPopover evidence={topic.evidence} />
+                          )}
+                        </td>
+                        {/* Delete task; falls back to delete topic on first row of empty-tasks topic */}
+                        <td style={{ ...TABLE_TD_STYLE, textAlign: "center" }}>
+                          {task ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateTasks(
+                                  ti,
+                                  tasks.filter((_, i) => i !== ri),
+                                )
+                              }
+                              style={iconBtn}
+                              title="Delete task"
+                            >
+                              ×
+                            </button>
+                          ) : isFirstRow ? (
+                            <button
+                              type="button"
+                              onClick={() => deleteTopic(ti)}
+                              style={iconBtn}
+                              title="Delete topic"
+                            >
+                              ×
+                            </button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  });
+                })}
+              </tbody>
+            </table>
           )}
         </div>
       )}
@@ -573,17 +785,6 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
 
 // ── Style constants ────────────────────────────────────────────────────────────
 
-const topicNameStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  border: "none",
-  background: "transparent",
-  padding: 2,
-  color: "#172b4d",
-  fontFamily: "inherit",
-  flex: 1,
-  minWidth: 0,
-};
 const statusSelect: React.CSSProperties = {
   fontSize: 9,
   fontWeight: 700,
@@ -650,57 +851,57 @@ const primaryBtn: React.CSSProperties = {
   fontWeight: 600,
 };
 
-// ── Per-topic block sub-components ─────────────────────────────────────────────
+// ── Flat-table cell style constants ────────────────────────────────────────────
 
-const OQ_ROW_TINT       = "#fff8e6";
-const DECISION_ROW_TINT = "#f1f8ee";
-
-const SECTION_LABEL_STYLE: React.CSSProperties = {
-  fontSize: 10,
-  fontWeight: 700,
-  textTransform: "uppercase",
-  color: "#5e6c84",
-  letterSpacing: ".05em",
-  marginBottom: 6,
-};
-const EMPTY_SECTION_STYLE: React.CSSProperties = {
-  fontSize: 11,
-  color: "#97a0af",
-  fontStyle: "italic",
-  padding: "4px 8px",
-};
-const ADD_ROW_BUTTON_STYLE: React.CSSProperties = {
-  marginTop: 6,
-  fontSize: 11,
-  color: "#0052cc",
-  background: "none",
-  border: "1px dashed #c1c7d0",
-  padding: "4px 10px",
-  borderRadius: 4,
-  cursor: "pointer",
-};
-const MINI_TABLE_STYLE: React.CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 12.5,
-};
-const MINI_TH: React.CSSProperties = {
+const TABLE_TH_STYLE: React.CSSProperties = {
   padding: "6px 8px",
   textAlign: "left",
   fontWeight: 600,
+  borderBottom: "1px solid #dfe1e6",
 };
-const MINI_TD: React.CSSProperties = {
+const TABLE_TD_STYLE: React.CSSProperties = {
   padding: "8px",
   verticalAlign: "top",
 };
-const MINI_CELL_INPUT: React.CSSProperties = {
-  width: "100%",
-  border: "none",
+const INLINE_INPUT_STYLE: React.CSSProperties = {
+  fontSize: 12,
+  border: "1px solid transparent",
   background: "transparent",
-  fontSize: 12.5,
-  padding: 0,
-  color: "#172b4d",
+  padding: "2px 4px",
+  borderRadius: 3,
+  width: "100%",
   fontFamily: "inherit",
+  color: "#172b4d",
+  outline: "none",
+};
+const EMPTY_CELL_STYLE: React.CSSProperties = {
+  fontSize: 11,
+  color: "#97a0af",
+  fontStyle: "italic",
+  padding: "2px 0",
+};
+const STATUS_MINI_SELECT_STYLE: React.CSSProperties = {
+  fontSize: 9,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: ".04em",
+  padding: "1px 4px",
+  borderRadius: 3,
+  border: "1px solid #dfe1e6",
+  background: "white",
+  color: "#0052cc",
+  cursor: "pointer",
+};
+const ADD_CELL_BUTTON_STYLE: React.CSSProperties = {
+  marginTop: 4,
+  fontSize: 10,
+  color: "#0052cc",
+  background: "none",
+  border: "1px dashed #c1c7d0",
+  padding: "2px 8px",
+  borderRadius: 3,
+  cursor: "pointer",
+  alignSelf: "flex-start",
 };
 
 // Back-compat adapters: legacy DB rows may store decisions/open_questions as
@@ -722,426 +923,200 @@ function normalizeDecisions(
   );
 }
 
-// ── TopicBlock ────────────────────────────────────────────────────────────────
+// ── TopicNameCell ──────────────────────────────────────────────────────────────
 
-function TopicBlock({
+function TopicNameCell({
   topic,
-  isLast,
   onPatchTopic,
-  onUpdateTasks,
-  onUpdateOpenQuestions,
-  onUpdateDecisions,
-  onContextMenuTopic,
+  onContextMenu,
 }: {
   topic: TopicData;
-  isLast: boolean;
   onPatchTopic: (partial: Partial<TopicData>) => void;
-  onUpdateTasks: (next: TaskData[]) => void;
-  onUpdateOpenQuestions: (next: OpenQuestionData[]) => void;
-  onUpdateDecisions: (next: DecisionData[]) => void;
-  onContextMenuTopic: (e: React.MouseEvent) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
 }) {
   const importance = topic.importance ?? "medium";
-  const keyTerms = topic.key_terms ?? [];
-  const evidence = topic.evidence ?? [];
-  const tasks = topic.tasks ?? [];
-  const openQuestions = normalizeOpenQuestions(topic.open_questions);
-  const decisions = normalizeDecisions(topic.decisions);
-
   return (
     <div
-      style={{
-        borderBottom: isLast ? "none" : "2px solid #dfe1e6",
-      }}
+      onContextMenu={onContextMenu}
+      style={{ display: "flex", flexDirection: "column", gap: 4 }}
     >
-      {/* Topic header row */}
-      <div
+      <input
+        defaultValue={topic.name}
+        key={topic.id ?? topic.topic_id ?? "new"}
+        onBlur={(e) => {
+          if (e.target.value !== topic.name) onPatchTopic({ name: e.target.value });
+        }}
         style={{
-          padding: "14px 16px 8px 16px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 12,
+          fontSize: 13,
+          fontWeight: 600,
+          border: "1px solid transparent",
+          background: "transparent",
+          padding: "2px 4px",
+          borderRadius: 3,
+          color: "#172b4d",
+          fontFamily: "inherit",
+          width: "100%",
+          outline: "none",
+        }}
+      />
+      <select
+        value={importance}
+        onChange={(e) =>
+          onPatchTopic({
+            importance: e.target.value as TopicData["importance"],
+          })
+        }
+        style={{
+          ...impSelect,
+          background: IMP_BG[importance],
+          color: IMP_FG[importance],
+          alignSelf: "flex-start",
         }}
       >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            onContextMenu={onContextMenuTopic}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 6,
-            }}
-          >
-            <input
-              value={topic.name}
-              onChange={(e) => onPatchTopic({ name: e.target.value })}
-              style={topicNameStyle}
-            />
-            <select
-              value={importance}
-              onChange={(e) =>
-                onPatchTopic({
-                  importance: e.target.value as TopicData["importance"],
-                })
-              }
-              style={{
-                ...impSelect,
-                background: IMP_BG[importance],
-                color: IMP_FG[importance],
-              }}
-            >
-              <option value="high">HIGH</option>
-              <option value="medium">MED</option>
-              <option value="low">LOW</option>
-            </select>
-            <EvidenceRefPopover evidence={evidence} />
-          </div>
-
-          <KeyTermChips
-            terms={keyTerms}
-            editable
-            onChange={(next) => onPatchTopic({ key_terms: next })}
-          />
-        </div>
-      </div>
-
-      {/* Tasks section */}
-      <TasksSection tasks={tasks} onUpdate={onUpdateTasks} />
-
-      {/* Open questions section */}
-      <OpenQuestionsSection
-        openQuestions={openQuestions}
-        onUpdate={onUpdateOpenQuestions}
-      />
-
-      {/* Decisions section */}
-      <DecisionsSection
-        decisions={decisions}
-        onUpdate={onUpdateDecisions}
-      />
+        <option value="high">HIGH</option>
+        <option value="medium">MED</option>
+        <option value="low">LOW</option>
+      </select>
     </div>
   );
 }
 
-// ── TasksSection ──────────────────────────────────────────────────────────────
+// ── OpenQuestionsCell ──────────────────────────────────────────────────────────
 
-function TasksSection({
-  tasks,
+function OpenQuestionsCell({
+  oqs,
   onUpdate,
 }: {
-  tasks: TaskData[];
-  onUpdate: (next: TaskData[]) => void;
-}) {
-  const updateAt = (i: number, patch: Partial<TaskData>) =>
-    onUpdate(tasks.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
-  const deleteAt = (i: number) =>
-    onUpdate(tasks.filter((_, idx) => idx !== i));
-  const add = () =>
-    onUpdate([
-      ...tasks,
-      {
-        task_id: crypto.randomUUID(),
-        task: "",
-        next_step: "",
-        status: "open",
-        owner: "",
-      },
-    ]);
-
-  return (
-    <div style={{ padding: "6px 16px 8px 16px" }}>
-      <div style={SECTION_LABEL_STYLE}>Tasks ({tasks.length})</div>
-      {tasks.length === 0 ? (
-        <div style={EMPTY_SECTION_STYLE}>— no tasks in this call</div>
-      ) : (
-        <table style={MINI_TABLE_STYLE}>
-          <thead>
-            <tr
-              style={{
-                color: "#5e6c84",
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: ".04em",
-                background: "#fafbfc",
-              }}
-            >
-              <th style={{ ...MINI_TH, width: "32%" }}>Task</th>
-              <th style={MINI_TH}>Next step</th>
-              <th style={{ ...MINI_TH, width: 80 }}>Owner</th>
-              <th style={{ ...MINI_TH, width: 108 }}>Status</th>
-              <th style={{ ...MINI_TH, width: 32 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {tasks.map((task, i) => (
-              <tr
-                key={task.task_id || `new-${i}`}
-                style={{ borderTop: "1px solid #f1f2f4" }}
-              >
-                <td style={MINI_TD}>
-                  <input
-                    key={task.task_id}
-                    type="text"
-                    defaultValue={task.task}
-                    onBlur={(e) => {
-                      if (e.target.value !== task.task)
-                        updateAt(i, { task: e.target.value });
-                    }}
-                    style={MINI_CELL_INPUT}
-                    placeholder="Describe task…"
-                  />
-                </td>
-                <td style={{ ...MINI_TD, color: "#42526e" }}>
-                  <input
-                    key={task.task_id + "-ns"}
-                    type="text"
-                    defaultValue={task.next_step}
-                    onBlur={(e) => {
-                      if (e.target.value !== task.next_step)
-                        updateAt(i, { next_step: e.target.value });
-                    }}
-                    style={MINI_CELL_INPUT}
-                    placeholder="Next action…"
-                  />
-                </td>
-                <td style={MINI_TD}>
-                  <input
-                    key={task.task_id + "-ow"}
-                    type="text"
-                    defaultValue={task.owner}
-                    placeholder="— add"
-                    onBlur={(e) => {
-                      if (e.target.value !== task.owner)
-                        updateAt(i, { owner: e.target.value });
-                    }}
-                    style={MINI_CELL_INPUT}
-                  />
-                </td>
-                <td style={MINI_TD}>
-                  <select
-                    value={task.status}
-                    onChange={(e) =>
-                      updateAt(i, {
-                        status: e.target.value as TaskData["status"],
-                      })
-                    }
-                    style={{
-                      ...statusSelect,
-                      background: STATUS_BG[task.status] ?? STATUS_BG.open,
-                      color: STATUS_FG[task.status] ?? STATUS_FG.open,
-                    }}
-                  >
-                    <option value="open">OPEN</option>
-                    <option value="in_progress">IN PROGRESS</option>
-                    <option value="resolved">RESOLVED</option>
-                  </select>
-                </td>
-                <td style={{ ...MINI_TD, textAlign: "center" }}>
-                  <button
-                    type="button"
-                    onClick={() => deleteAt(i)}
-                    style={iconBtn}
-                    title="Delete task"
-                  >
-                    ×
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <button
-        type="button"
-        onClick={add}
-        style={ADD_ROW_BUTTON_STYLE}
-        title="Add task"
-      >
-        + Add task
-      </button>
-    </div>
-  );
-}
-
-// ── OpenQuestionsSection ──────────────────────────────────────────────────────
-
-function OpenQuestionsSection({
-  openQuestions,
-  onUpdate,
-}: {
-  openQuestions: OpenQuestionData[];
+  oqs: OpenQuestionData[];
   onUpdate: (next: OpenQuestionData[]) => void;
 }) {
-  const updateAt = (i: number, patch: Partial<OpenQuestionData>) =>
-    onUpdate(
-      openQuestions.map((q, idx) => (idx === i ? { ...q, ...patch } : q)),
-    );
-  const deleteAt = (i: number) =>
-    onUpdate(openQuestions.filter((_, idx) => idx !== i));
+  const update = (i: number, patch: Partial<OpenQuestionData>) =>
+    onUpdate(oqs.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
+  const remove = (i: number) => onUpdate(oqs.filter((_, idx) => idx !== i));
   const add = () =>
     onUpdate([
-      ...openQuestions,
+      ...oqs,
       { id: crypto.randomUUID(), text: "", owner: "", status: "open" },
     ]);
 
   return (
-    <div style={{ padding: "6px 16px 8px 16px" }}>
-      <div style={SECTION_LABEL_STYLE}>
-        Open questions ({openQuestions.length})
-      </div>
-      {openQuestions.length === 0 ? (
-        <div style={EMPTY_SECTION_STYLE}>— no open questions in this call</div>
-      ) : (
-        <table style={MINI_TABLE_STYLE}>
-          <tbody>
-            {openQuestions.map((q, i) => (
-              <tr
-                key={q.id || `new-${i}`}
-                style={{
-                  borderTop: "1px solid #f1f2f4",
-                  background: OQ_ROW_TINT,
-                }}
-              >
-                <td style={MINI_TD}>
-                  <input
-                    key={q.id + "-txt"}
-                    type="text"
-                    defaultValue={q.text}
-                    onBlur={(e) => {
-                      if (e.target.value !== q.text)
-                        updateAt(i, { text: e.target.value });
-                    }}
-                    style={MINI_CELL_INPUT}
-                    placeholder="Open question…"
-                  />
-                </td>
-                <td style={{ ...MINI_TD, width: 80 }}>
-                  <input
-                    key={q.id + "-ow"}
-                    type="text"
-                    defaultValue={q.owner}
-                    placeholder="— add owner"
-                    onBlur={(e) => {
-                      if (e.target.value !== q.owner)
-                        updateAt(i, { owner: e.target.value });
-                    }}
-                    style={MINI_CELL_INPUT}
-                  />
-                </td>
-                <td style={{ ...MINI_TD, width: 108 }}>
-                  <select
-                    value={q.status}
-                    onChange={(e) =>
-                      updateAt(i, {
-                        status: e.target.value as OpenQuestionData["status"],
-                      })
-                    }
-                    style={{
-                      ...statusSelect,
-                      background: STATUS_BG[q.status] ?? STATUS_BG.open,
-                      color: STATUS_FG[q.status] ?? STATUS_FG.open,
-                    }}
-                  >
-                    <option value="open">OPEN</option>
-                    <option value="in_progress">IN PROGRESS</option>
-                    <option value="resolved">RESOLVED</option>
-                  </select>
-                </td>
-                <td style={{ ...MINI_TD, width: 32, textAlign: "center" }}>
-                  <button
-                    type="button"
-                    onClick={() => deleteAt(i)}
-                    style={iconBtn}
-                    title="Delete open question"
-                  >
-                    ×
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {oqs.length === 0 && (
+        <div style={EMPTY_CELL_STYLE}>— no open questions in this call</div>
       )}
-      <button
-        type="button"
-        onClick={add}
-        style={ADD_ROW_BUTTON_STYLE}
-        title="Add open question"
-      >
-        + Add open question
+      {oqs.map((q, i) => (
+        <div
+          key={q.id || `new-${i}`}
+          style={{ display: "flex", gap: 4, alignItems: "flex-start" }}
+        >
+          <span style={{ color: "#5e6c84", marginTop: 4, fontSize: 10 }}>•</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <input
+              key={`${q.id || `new-${i}`}-txt`}
+              type="text"
+              defaultValue={q.text}
+              onBlur={(e) => {
+                if (e.target.value !== q.text) update(i, { text: e.target.value });
+              }}
+              placeholder="open question"
+              style={INLINE_INPUT_STYLE}
+            />
+            <div
+              style={{
+                display: "flex",
+                gap: 4,
+                alignItems: "center",
+                marginTop: 2,
+              }}
+            >
+              <input
+                key={`${q.id || `new-${i}`}-ow`}
+                type="text"
+                defaultValue={q.owner}
+                onBlur={(e) => {
+                  if (e.target.value !== q.owner) update(i, { owner: e.target.value });
+                }}
+                placeholder="owner"
+                style={{ ...INLINE_INPUT_STYLE, width: 70, fontSize: 10 }}
+              />
+              <select
+                value={q.status}
+                onChange={(e) =>
+                  update(i, { status: e.target.value as TopicStatus })
+                }
+                style={STATUS_MINI_SELECT_STYLE}
+              >
+                <option value="open">OPEN</option>
+                <option value="in_progress">IN_PROG</option>
+                <option value="resolved">RESOLVED</option>
+              </select>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => remove(i)}
+            style={iconBtn}
+            title="Remove open question"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={add} style={ADD_CELL_BUTTON_STYLE}>
+        + add open question
       </button>
     </div>
   );
 }
 
-// ── DecisionsSection ──────────────────────────────────────────────────────────
+// ── DecisionsCell ──────────────────────────────────────────────────────────────
 
-function DecisionsSection({
+function DecisionsCell({
   decisions,
   onUpdate,
 }: {
   decisions: DecisionData[];
   onUpdate: (next: DecisionData[]) => void;
 }) {
-  const updateAt = (i: number, patch: Partial<DecisionData>) =>
+  const update = (i: number, patch: Partial<DecisionData>) =>
     onUpdate(decisions.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
-  const deleteAt = (i: number) =>
-    onUpdate(decisions.filter((_, idx) => idx !== i));
-  const add = () => onUpdate([...decisions, { id: crypto.randomUUID(), text: "" }]);
+  const remove = (i: number) => onUpdate(decisions.filter((_, idx) => idx !== i));
+  const add = () =>
+    onUpdate([...decisions, { id: crypto.randomUUID(), text: "" }]);
 
   return (
-    <div style={{ padding: "6px 16px 12px 16px" }}>
-      <div style={SECTION_LABEL_STYLE}>Decisions ({decisions.length})</div>
-      {decisions.length === 0 ? (
-        <div style={EMPTY_SECTION_STYLE}>— no decisions in this call</div>
-      ) : (
-        <table style={MINI_TABLE_STYLE}>
-          <tbody>
-            {decisions.map((d, i) => (
-              <tr
-                key={d.id || `new-${i}`}
-                style={{
-                  borderTop: "1px solid #f1f2f4",
-                  background: DECISION_ROW_TINT,
-                }}
-              >
-                <td style={MINI_TD}>
-                  <input
-                    key={d.id + "-txt"}
-                    type="text"
-                    defaultValue={d.text}
-                    onBlur={(e) => {
-                      if (e.target.value !== d.text)
-                        updateAt(i, { text: e.target.value });
-                    }}
-                    style={MINI_CELL_INPUT}
-                    placeholder="Decision…"
-                  />
-                </td>
-                <td style={{ ...MINI_TD, width: 32, textAlign: "center" }}>
-                  <button
-                    type="button"
-                    onClick={() => deleteAt(i)}
-                    style={iconBtn}
-                    title="Delete decision"
-                  >
-                    ×
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {decisions.length === 0 && (
+        <div style={EMPTY_CELL_STYLE}>— no decisions in this call</div>
       )}
-      <button
-        type="button"
-        onClick={add}
-        style={ADD_ROW_BUTTON_STYLE}
-        title="Add decision"
-      >
-        + Add decision
+      {decisions.map((d, i) => (
+        <div
+          key={d.id || `new-${i}`}
+          style={{ display: "flex", gap: 4, alignItems: "flex-start" }}
+        >
+          <span style={{ color: "#5e6c84", marginTop: 4, fontSize: 10 }}>•</span>
+          <input
+            key={`${d.id || `new-${i}`}-txt`}
+            type="text"
+            defaultValue={d.text}
+            onBlur={(e) => {
+              if (e.target.value !== d.text) update(i, { text: e.target.value });
+            }}
+            placeholder="decision"
+            style={{ ...INLINE_INPUT_STYLE, flex: 1 }}
+          />
+          <button
+            type="button"
+            onClick={() => remove(i)}
+            style={iconBtn}
+            title="Remove decision"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={add} style={ADD_CELL_BUTTON_STYLE}>
+        + add decision
       </button>
     </div>
   );
