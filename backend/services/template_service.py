@@ -22,7 +22,7 @@ async def render_template(artifact_type: dict, call_id: str) -> str:
     if not renderer:
         raise ValueError(f"Unknown template_id: {template_id}")
 
-    scope = artifact_type.get("context_scope", "call")
+    scope = artifact_type.get("context_scope", "this_call_topics")
     if scope == "project":
         db = get_client()
         call_row = (

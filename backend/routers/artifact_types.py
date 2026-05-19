@@ -13,6 +13,13 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api", tags=["artifact-types"])
 
+ContextScope = Literal[
+    "this_call_transcript",
+    "all_call_transcripts",
+    "this_call_topics",
+    "all_project_topics",
+]
+
 DEFAULT_ARTIFACT_TYPES: list[dict] = [
     {
         **t,
@@ -101,7 +108,7 @@ def seed_defaults(project_id: str) -> None:
                 "library_ref_id": entry["id"],
                 "llm": entry.get("llm"),
                 "model": entry.get("model"),
-                "context_scope": entry.get("context_scope", "call"),
+                "context_scope": entry.get("context_scope", "this_call_topics"),
             }
         ).execute()
 
@@ -115,7 +122,7 @@ class ArtifactTypeCreate(BaseModel):
     prompt: str | None = Field(default=None)
     llm: Literal["groq", "deepseek", "claude", "openai", "openrouter"] | None = None
     model: str | None = None
-    context_scope: Literal["call", "project"] = "call"
+    context_scope: ContextScope = "this_call_topics"
     kind: Literal["llm", "template", "hybrid"] = "llm"
     template_id: str | None = None
     library_ref_id: str | None = None
@@ -128,7 +135,7 @@ class ArtifactTypeUpdate(BaseModel):
         default=None
     )
     model: str | None = Field(default=None)
-    context_scope: Literal["call", "project"] | None = Field(default=None)
+    context_scope: ContextScope | None = Field(default=None)
     is_default: bool | None = Field(default=None)
     kind: Literal["llm", "template", "hybrid"] | None = Field(default=None)
     template_id: str | None = Field(default=None)
@@ -324,7 +331,7 @@ def get_default_for_category(category: str):
                 "category": category,
                 "llm": lib.get("llm"),
                 "model": lib.get("model"),
-                "context_scope": lib.get("context_scope", "call"),
+                "context_scope": lib.get("context_scope", "this_call_topics"),
                 "kind": lib.get("kind", "llm"),
                 "template_id": lib.get("template_id"),
             }
@@ -366,7 +373,7 @@ def add_from_library(project_id: str, payload: FromLibraryPayload):
         "category": "artifacts",
         "llm": lib.get("llm"),
         "model": lib.get("model"),
-        "context_scope": lib.get("context_scope", "call"),
+        "context_scope": lib.get("context_scope", "this_call_topics"),
         "kind": lib["kind"],
         "template_id": lib.get("template_id"),
         "library_ref_id": lib["id"],
@@ -446,7 +453,7 @@ def publish_to_library(type_id: str, payload: PublishPayload):
         "template_id": None,
         "llm": t.get("llm"),
         "model": t.get("model"),
-        "context_scope": t.get("context_scope", "call"),
+        "context_scope": t.get("context_scope", "this_call_topics"),
         "is_system": False,
         "seeded_by_default": False,
     }

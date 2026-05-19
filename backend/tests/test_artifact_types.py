@@ -369,7 +369,7 @@ def test_seed_defaults_inserts_workflow_and_library_seeded():
                     "template_id": None,
                     "llm": "openrouter",
                     "model": "anthropic/claude-sonnet-4.6",
-                    "context_scope": "call",
+                    "context_scope": "this_call_topics",
                     "description": "",
                 },
                 {
@@ -380,7 +380,7 @@ def test_seed_defaults_inserts_workflow_and_library_seeded():
                     "template_id": "next_steps",
                     "llm": None,
                     "model": None,
-                    "context_scope": "call",
+                    "context_scope": "this_call_topics",
                     "description": "",
                 },
                 {
@@ -391,7 +391,7 @@ def test_seed_defaults_inserts_workflow_and_library_seeded():
                     "template_id": "questions_list",
                     "llm": None,
                     "model": None,
-                    "context_scope": "call",
+                    "context_scope": "this_call_topics",
                     "description": "",
                 },
             ]

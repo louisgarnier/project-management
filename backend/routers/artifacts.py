@@ -287,7 +287,7 @@ async def stream_artifacts(call_id: str):
                 .data
             )
             context_scope_map = {
-                r["id"]: r.get("context_scope", "call") for r in scope_rows
+                r["id"]: r.get("context_scope", "this_call_topics") for r in scope_rows
             }
             type_model_map = {r["id"]: r.get("model") for r in scope_rows}
             type_llm_map = {r["id"]: r.get("llm") for r in scope_rows}
@@ -309,7 +309,7 @@ async def stream_artifacts(call_id: str):
             artifact_id = artifact["id"]
             prompt_used = artifact["prompt_used"]
             type_id = artifact.get("artifact_type_id", "")
-            scope = context_scope_map.get(type_id, "call")
+            scope = context_scope_map.get(type_id, "this_call_topics")
             from backend.services.llm_resolver import resolve_effective_llm_model
 
             type_llm_value = type_llm_map.get(type_id)
