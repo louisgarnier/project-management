@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { Call, TopicData } from "@/types";
+import type {
+  Call,
+  TopicData,
+  OpenQuestionData,
+  DecisionData,
+} from "@/types";
 import KeyTermChips from "./KeyTermChips";
 import EvidenceRefPopover from "./EvidenceRefPopover";
 
@@ -12,234 +17,78 @@ type Props = {
   call?: Call;
 };
 
-const STATUS_BADGE: Record<string, React.CSSProperties> = {
-  open:        { background: "#e9f0ff", color: "#0052cc" },
-  in_progress: { background: "#fff4e6", color: "#974f0c" },
-  resolved:    { background: "#e3fcef", color: "#006644" },
+// ── Style constants (mirrored from CallTopicsStage) ───────────────────────────
+
+const STATUS_BG = { open: "#e9f0ff", in_progress: "#fff4e6", resolved: "#e3fcef" } as const;
+const STATUS_FG = { open: "#0052cc", in_progress: "#974f0c", resolved: "#006644" } as const;
+const IMP_BG    = { high: "#ffebe5", medium: "#fffae6", low: "#f4f5f7" } as const;
+const IMP_FG    = { high: "#bf2600", medium: "#974f0c", low: "#5e6c84" } as const;
+
+const TABLE_TH_STYLE: React.CSSProperties = {
+  padding: "6px 8px",
+  textAlign: "left",
+  fontWeight: 600,
+  borderBottom: "1px solid #dfe1e6",
+};
+const TABLE_TD_STYLE: React.CSSProperties = {
+  padding: "8px",
+  verticalAlign: "top",
+  color: "#172b4d",
+};
+const EMPTY_CELL_STYLE: React.CSSProperties = {
+  fontSize: 11,
+  color: "#97a0af",
+  fontStyle: "italic",
+  padding: "2px 0",
+};
+const READ_ONLY_TEXT_STYLE: React.CSSProperties = {
+  fontSize: 12,
+  color: "#172b4d",
+  padding: "2px 4px",
+  lineHeight: 1.4,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+};
+const STATUS_BADGE_STYLE: React.CSSProperties = {
+  fontSize: 9,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: ".04em",
+  padding: "2px 6px",
+  borderRadius: 3,
+  display: "inline-block",
+};
+const IMP_BADGE_STYLE: React.CSSProperties = {
+  fontSize: 9,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: ".04em",
+  padding: "2px 6px",
+  borderRadius: 3,
+  display: "inline-block",
 };
 
-const IMPORTANCE_COLOR: Record<"high" | "medium" | "low", string> = {
-  high:   "#ae2a19",
-  medium: "#ff991f",
-  low:    "#97a0af",
-};
+// ── Back-compat adapters (mirrored from CallTopicsStage) ──────────────────────
 
-function ReadOnlySectionBlock({
-  label, count, bg, color, items, prefix, renderItem,
-}: {
-  label: string;
-  count: number;
-  bg: string;
-  color: string;
-  items: string[];
-  prefix: string;
-  renderItem?: (item: string) => React.ReactNode;
-}) {
-  return (
-    <div style={{ background: bg, borderRadius: 4, padding: "9px 11px", marginBottom: 6 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color, letterSpacing: ".05em", marginBottom: 5 }}>
-        {label} ({count})
-      </div>
-      <div style={{ fontSize: 11.5, color: "#172b4d", lineHeight: 1.55 }}>
-        {items.map((item, i) => (
-          <div key={i}>
-            {prefix}{renderItem ? renderItem(item) : item}
-          </div>
-        ))}
-      </div>
-    </div>
+function normalizeOpenQuestions(
+  raw: (string | OpenQuestionData)[] | undefined,
+): OpenQuestionData[] {
+  return (raw ?? []).map((q) =>
+    typeof q === "string"
+      ? { id: "", text: q, owner: "", status: "open" as const }
+      : q,
   );
 }
 
-function ReadOnlyTopicRow({ topic }: { topic: TopicData }) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const parked = topic.is_parked;
-  const dotColor = parked ? "#97a0af" : IMPORTANCE_COLOR[topic.importance ?? "medium"] ?? "#ff991f";
-  const borderColor = parked ? "#97a0af" : "#0052cc";
-  const background = parked ? "#fafbfc" : "white";
-  // .text adapter — handles both legacy string[] rows and new DecisionData/OpenQuestionData rows
-  const decisionTexts = (topic.decisions ?? []).map(d =>
-    typeof d === "string" ? d : (d.text ?? "")
-  );
-  const openQuestionTexts = (topic.open_questions ?? []).map(q =>
-    typeof q === "string" ? q : (q.text ?? "")
-  );
-  const decisionsCount = decisionTexts.length;
-  const actionsCount = parked ? 0 : (topic.follow_up_items?.length ?? 0);
-  const questionsCount = openQuestionTexts.length;
-  const legacyCount = decisionsCount + actionsCount + questionsCount;
-  const keyTermsCount = (topic.key_terms ?? []).length;
-  const tasksCount = (topic.tasks ?? []).length;
-  const evidenceCount = (topic.evidence ?? []).length;
-  const totalCount = legacyCount + keyTermsCount + tasksCount + evidenceCount;
-
-  const renderOwnerHighlight = (text: string): React.ReactNode => {
-    const m = text.match(/^([A-Z][a-z]+(?:\s[A-Z][a-z]+)?):\s*(.*)$/);
-    if (!m) return text;
-    return (<><strong>{m[1]}:</strong> {m[2]}</>);
-  };
-
-  return (
-    <div style={{
-      borderBottom: "1px solid #f0f1f3",
-      padding: "14px 18px",
-      borderLeft: `3px solid ${borderColor}`,
-      background,
-      opacity: parked ? 0.92 : 1,
-    }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flex: 1, minWidth: 0 }}>
-          <span
-            title={topic.rationale || "No rationale provided"}
-            style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, display: "inline-block", flexShrink: 0 }}
-          />
-          <strong style={{ fontSize: 13, color: "#172b4d" }}>{topic.name}</strong>
-          {evidenceCount > 0 && <EvidenceRefPopover evidence={topic.evidence ?? []} />}
-          {parked ? (
-            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", background: "#f4f5f7", color: "#5e6c84", borderRadius: 3 }}>
-              ⏸ PARKED
-            </span>
-          ) : (
-            <span style={{
-              fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
-              ...(STATUS_BADGE[topic.status ?? "open"] ?? STATUS_BADGE.open),
-            }}>
-              {(topic.status ?? "open").replace("_", " ")}
-            </span>
-          )}
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-          <span style={{ fontSize: 10, color: "#5e6c84" }}>
-            {topic.sentiment?.toUpperCase()} · {topic.owner?.toUpperCase()}
-          </span>
-          {totalCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setDetailsOpen((v) => !v)}
-              title={detailsOpen ? "Collapse details" : "Expand details"}
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#5e6c84", padding: "0 2px" }}
-            >{detailsOpen ? "▴" : "▾"}</button>
-          )}
-        </div>
-      </div>
-
-      {/* Summary */}
-      {topic.summary && (
-        <p style={{ fontSize: 12, color: "#172b4d", margin: "6px 0 10px", lineHeight: 1.5 }}>
-          {topic.summary}
-        </p>
-      )}
-
-      {/* Key terms chips (always visible) */}
-      {keyTermsCount > 0 && (
-        <div style={{ margin: "6px 0 8px" }}>
-          <KeyTermChips terms={topic.key_terms ?? []} />
-        </div>
-      )}
-
-      {/* Collapsed: compact counts row */}
-      {!detailsOpen && (tasksCount > 0 || legacyCount > 0) && (
-        <button
-          type="button"
-          onClick={() => setDetailsOpen(true)}
-          style={{
-            display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap",
-            width: "100%", background: "none", border: "none", padding: "4px 0",
-            fontSize: 11, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
-          }}
-        >
-          {tasksCount > 0 && (
-            <span style={{ color: "#0052cc" }}>⬡ {tasksCount} task{tasksCount > 1 ? "s" : ""}</span>
-          )}
-          {decisionsCount > 0 && (
-            <span style={{ color: "#5e6c84" }}>✓ {decisionsCount} decision{decisionsCount > 1 ? "s" : ""}</span>
-          )}
-          {actionsCount > 0 && (
-            <span style={{ color: "#974f0c" }}>→ {actionsCount} action{actionsCount > 1 ? "s" : ""}</span>
-          )}
-          {questionsCount > 0 && (
-            <span style={{ color: "#0052cc" }}>? {questionsCount} open question{questionsCount > 1 ? "s" : ""}</span>
-          )}
-          <span style={{ color: "#97a0af", marginLeft: "auto" }}>Show details ▾</span>
-        </button>
-      )}
-
-      {/* Expanded details */}
-      {detailsOpen && (
-        <>
-          {/* Tasks table (EPIC-15) */}
-          {tasksCount > 0 && (
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#5e6c84", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 5 }}>
-                Tasks ({tasksCount})
-              </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                <thead>
-                  <tr style={{ color: "#97a0af", fontWeight: 700, textAlign: "left" }}>
-                    <th style={{ padding: "2px 6px 4px 0", fontSize: 9, textTransform: "uppercase" }}>Task</th>
-                    <th style={{ padding: "2px 6px 4px 0", fontSize: 9, textTransform: "uppercase" }}>Next step</th>
-                    <th style={{ padding: "2px 6px 4px 0", fontSize: 9, textTransform: "uppercase" }}>Owner</th>
-                    <th style={{ padding: "2px 0 4px 0", fontSize: 9, textTransform: "uppercase" }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(topic.tasks ?? []).map((task) => {
-                    const STATUS_BG = { open: "#e9f0ff", in_progress: "#fff4e6", resolved: "#e3fcef" } as const;
-                    const STATUS_FG = { open: "#0052cc", in_progress: "#974f0c", resolved: "#006644" } as const;
-                    const bgKey = task.status as keyof typeof STATUS_BG;
-                    const fgKey = task.status as keyof typeof STATUS_FG;
-                    return (
-                      <tr key={task.task_id} style={{ verticalAlign: "top", borderTop: "1px solid #f0f1f3" }}>
-                        <td style={{ padding: "4px 6px 4px 0", color: "#172b4d", fontWeight: 600, lineHeight: 1.4 }}>{task.task}</td>
-                        <td style={{ padding: "4px 6px 4px 0", color: "#5e6c84", lineHeight: 1.4 }}>{task.next_step}</td>
-                        <td style={{ padding: "4px 6px 4px 0", color: "#5e6c84", lineHeight: 1.4 }}>{task.owner || "—"}</td>
-                        <td style={{ padding: "4px 0", whiteSpace: "nowrap" }}>
-                          <span style={{
-                            fontSize: 9, fontWeight: 700, textTransform: "uppercase",
-                            padding: "2px 6px", borderRadius: 3,
-                            background: STATUS_BG[bgKey] ?? "#e9f0ff",
-                            color: STATUS_FG[fgKey] ?? "#0052cc",
-                          }}>
-                            {task.status.replace("_", " ")}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Legacy fields — shown only when present (old data) */}
-          {decisionsCount > 0 && (
-            <ReadOnlySectionBlock
-              label="Decisions" count={decisionsCount}
-              bg="#f4f5f7" color="#5e6c84"
-              items={decisionTexts} prefix="✓ "
-            />
-          )}
-          {actionsCount > 0 && (
-            <ReadOnlySectionBlock
-              label="Actions" count={actionsCount}
-              bg="#fff8e6" color="#974f0c"
-              items={topic.follow_up_items} prefix="→ "
-              renderItem={renderOwnerHighlight}
-            />
-          )}
-          {questionsCount > 0 && (
-            <ReadOnlySectionBlock
-              label="Open questions" count={questionsCount}
-              bg="#eef5ff" color="#0052cc"
-              items={openQuestionTexts} prefix="? "
-            />
-          )}
-        </>
-      )}
-    </div>
+function normalizeDecisions(
+  raw: (string | DecisionData)[] | undefined,
+): DecisionData[] {
+  return (raw ?? []).map((d) =>
+    typeof d === "string" ? { id: "", text: d } : d,
   );
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function CallTopicsHistoricalView({ callId, call }: Props) {
   const [topics, setTopics] = useState<TopicData[]>([]);
@@ -306,7 +155,6 @@ export default function CallTopicsHistoricalView({ callId, call }: Props) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-
       {/* Header */}
       <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid #dfe1e6", flexShrink: 0 }}>
         <h2 style={{ fontSize: 15, fontWeight: 700, color: "#172b4d", margin: "0 0 4px" }}>
@@ -325,15 +173,192 @@ export default function CallTopicsHistoricalView({ callId, call }: Props) {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
         {topics.length === 0 ? (
-          <div style={{ padding: "32px 20px", textAlign: "center", color: "#97a0af", fontSize: 13 }}>
+          <div style={{ color: "#5e6c84", fontSize: 13, textAlign: "center", padding: "32px 0" }}>
             No topics recorded for this call.
           </div>
         ) : (
-          topics.map((t, i) => (
-            <ReadOnlyTopicRow key={(t as { topic_id?: string }).topic_id ?? i} topic={t} />
-          ))
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: 12.5,
+              tableLayout: "fixed",
+              background: "white",
+              border: "1px solid #dfe1e6",
+              borderRadius: 6,
+            }}
+          >
+            <colgroup>
+              <col style={{ width: 200 }} /> {/* Topic */}
+              <col style={{ width: 180 }} /> {/* Key terms */}
+              <col />                        {/* Task — auto */}
+              <col />                        {/* Next step — auto */}
+              <col style={{ width: 90 }} />  {/* Owner */}
+              <col style={{ width: 110 }} /> {/* Status */}
+              <col style={{ width: 240 }} /> {/* Open questions */}
+              <col style={{ width: 220 }} /> {/* Decisions */}
+              <col style={{ width: 44 }} />  {/* Evidence */}
+              {/* NO delete column (read-only) */}
+            </colgroup>
+            <thead>
+              <tr
+                style={{
+                  background: "#fafbfc",
+                  color: "#5e6c84",
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: ".05em",
+                }}
+              >
+                <th style={TABLE_TH_STYLE}>Topic</th>
+                <th style={TABLE_TH_STYLE}>Key terms</th>
+                <th style={TABLE_TH_STYLE}>Task</th>
+                <th style={TABLE_TH_STYLE}>Next step</th>
+                <th style={TABLE_TH_STYLE}>Owner</th>
+                <th style={TABLE_TH_STYLE}>Status</th>
+                <th style={TABLE_TH_STYLE}>Open questions</th>
+                <th style={TABLE_TH_STYLE}>Decisions</th>
+                <th style={{ ...TABLE_TH_STYLE, textAlign: "center" }}>Ev.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topics.flatMap((topic, ti) => {
+                const tasks = topic.tasks ?? [];
+                const oqs = normalizeOpenQuestions(topic.open_questions);
+                const decisions = normalizeDecisions(topic.decisions);
+                const keyTerms = topic.key_terms ?? [];
+                // Topic must have at least one row even if no tasks — so topic-level cells stay visible.
+                const rowCount = Math.max(tasks.length, 1);
+                const isLastTopic = ti === topics.length - 1;
+                const importance = topic.importance ?? "medium";
+                return Array.from({ length: rowCount }, (_, ri) => {
+                  const isFirstRow = ri === 0;
+                  const isLastRowOfTopic = ri === rowCount - 1;
+                  const task = tasks[ri]; // undefined if rowCount > tasks.length (topic with no tasks)
+                  const borderBottom = !isLastRowOfTopic
+                    ? "1px solid #f1f2f4"  // inner — between tasks of same topic
+                    : isLastTopic
+                      ? "none"
+                      : "2px solid #dfe1e6"; // topic separator
+                  return (
+                    <tr
+                      key={`${topic.id ?? topic.topic_id ?? ti}-${task?.task_id ?? `empty-${ri}`}`}
+                      style={{ borderBottom }}
+                    >
+                      {/* Topic name + importance — only first row */}
+                      <td style={TABLE_TD_STYLE}>
+                        {isFirstRow && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <div style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: "#172b4d",
+                              padding: "2px 4px",
+                              wordBreak: "break-word",
+                            }}>
+                              {topic.name}
+                            </div>
+                            <span style={{
+                              ...IMP_BADGE_STYLE,
+                              background: IMP_BG[importance],
+                              color: IMP_FG[importance],
+                              alignSelf: "flex-start",
+                            }}>
+                              {importance === "medium" ? "MED" : importance.toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      {/* Key terms — only first row */}
+                      <td style={TABLE_TD_STYLE}>
+                        {isFirstRow && keyTerms.length > 0 && (
+                          <KeyTermChips terms={keyTerms} />
+                        )}
+                      </td>
+                      {/* Task / Next step / Owner / Status — per task */}
+                      <td style={TABLE_TD_STYLE}>
+                        {task && <div style={READ_ONLY_TEXT_STYLE}>{task.task}</div>}
+                      </td>
+                      <td style={TABLE_TD_STYLE}>
+                        {task && <div style={READ_ONLY_TEXT_STYLE}>{task.next_step}</div>}
+                      </td>
+                      <td style={TABLE_TD_STYLE}>
+                        {task && (
+                          <div style={READ_ONLY_TEXT_STYLE}>{task.owner || "—"}</div>
+                        )}
+                      </td>
+                      <td style={TABLE_TD_STYLE}>
+                        {task && (
+                          <span style={{
+                            ...STATUS_BADGE_STYLE,
+                            background: STATUS_BG[task.status] ?? STATUS_BG.open,
+                            color: STATUS_FG[task.status] ?? STATUS_FG.open,
+                          }}>
+                            {task.status.replace("_", " ")}
+                          </span>
+                        )}
+                      </td>
+                      {/* Open questions — only first row */}
+                      <td style={TABLE_TD_STYLE}>
+                        {isFirstRow && (
+                          oqs.length === 0 ? (
+                            <div style={EMPTY_CELL_STYLE}>— no open questions in this call</div>
+                          ) : (
+                            <ul style={{ margin: 0, paddingLeft: 16, listStyle: "disc" }}>
+                              {oqs.map((q, qi) => (
+                                <li key={q.id || qi} style={{ marginBottom: 4, fontSize: 12, color: "#172b4d", lineHeight: 1.4 }}>
+                                  <div style={{ wordBreak: "break-word" }}>{q.text}</div>
+                                  {(q.owner || q.status) && (
+                                    <div style={{ fontSize: 10, color: "#7a869a", marginTop: 2, display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                                      {q.owner && <span>{q.owner}</span>}
+                                      {q.owner && q.status && <span>·</span>}
+                                      {q.status && (
+                                        <span style={{
+                                          ...STATUS_BADGE_STYLE,
+                                          background: STATUS_BG[q.status] ?? STATUS_BG.open,
+                                          color: STATUS_FG[q.status] ?? STATUS_FG.open,
+                                        }}>
+                                          {q.status.replace("_", " ")}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )
+                        )}
+                      </td>
+                      {/* Decisions — only first row */}
+                      <td style={TABLE_TD_STYLE}>
+                        {isFirstRow && (
+                          decisions.length === 0 ? (
+                            <div style={EMPTY_CELL_STYLE}>— no decisions in this call</div>
+                          ) : (
+                            <ul style={{ margin: 0, paddingLeft: 16, listStyle: "disc" }}>
+                              {decisions.map((d, di) => (
+                                <li key={d.id || di} style={{ marginBottom: 4, fontSize: 12, color: "#172b4d", lineHeight: 1.4, wordBreak: "break-word" }}>
+                                  {d.text}
+                                </li>
+                              ))}
+                            </ul>
+                          )
+                        )}
+                      </td>
+                      {/* Evidence — first row only (topic-level indicator) */}
+                      <td style={{ ...TABLE_TD_STYLE, textAlign: "center" }}>
+                        {isFirstRow && topic.evidence && topic.evidence.length > 0 && (
+                          <EvidenceRefPopover evidence={topic.evidence} />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                });
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
