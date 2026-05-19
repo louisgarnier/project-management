@@ -45,7 +45,11 @@ export type ArtifactStatus = "pending" | "generating" | "done" | "error" | "stal
 
 export type ArtifactCategory = "artifacts" | "topics" | "call_topics" | "project_topics" | "merge_verification" | "not_discussed_check";
 
-export type ContextScope = "call" | "project";
+export type ContextScope =
+  | "this_call_transcript"
+  | "all_call_transcripts"
+  | "this_call_topics"
+  | "all_project_topics";
 
 export type ArtifactKind = "llm" | "template" | "hybrid";
 

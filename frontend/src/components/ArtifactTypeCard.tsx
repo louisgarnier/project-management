@@ -273,7 +273,7 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefau
             <div style={{ background: "#fafbfc", padding: "8px 10px", borderRadius: 4, border: "1px solid #ebecf0" }}>
               <div style={{ fontSize: 9, color: "#97a0af", fontWeight: 600, letterSpacing: ".05em", marginBottom: 2 }}>SCOPE</div>
               <div style={{ color: "#172b4d", fontSize: 12, fontWeight: 600 }}>
-                {(type.context_scope ?? "call") === "project" ? "Full project" : "Call only"}
+                {(type.context_scope ?? "this_call_topics") === "all_project_topics" || (type.context_scope ?? "this_call_topics") === "all_call_transcripts" ? "Full project" : "Call only"}
               </div>
             </div>
 
