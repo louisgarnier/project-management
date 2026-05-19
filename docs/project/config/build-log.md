@@ -4,6 +4,50 @@
 
 - **2026-05-19 — pre-existing merge-prompt bug** (`backend/services/topics_service.py:1071-1080`, `1133-1142`): `call_excerpts_parts` builder in 1:1 and M:N merge paths still iterates `m.get("follow_up_items")` (always empty under EPIC-15 new shape) and renders `m.get("decisions")` as `f"  - {d}"` where `d` is now a dict — produces literal `{'id': ..., 'text': '...'}` strings in the merge prompt, degrading merge quality silently. Pre-existing — predates Story 15.5. Fix during Story 15.7 alongside the chronology+RAG plumbing rewrite.
 
+### 2026-05-19 — EPIC-15 Phase 2 CODE-COMPLETE
+
+All 4 Phase 2 stories shipped: 15.5 (open_questions+decisions extension), 15.6 (context_scope 4-value enum), 15.7 (lifecycle+chronology+RAG+accumulator), 15.8 (xlsx tracker + ProjectTrackerTab). Branch `epic-15-phase-2-artifacts` ready for user real-fixture smoke before merge.
+
+**Migrations to apply (in order):**
+1. `backend/database/migrations/027_epic15_phase2_topic_updates.sql` (Story 15.5) — already applied per user 2026-05-19.
+2. `backend/database/migrations/028_epic15_phase2_context_scope.sql` (Story 15.6) — manual run required.
+
+**User smoke checklist:**
+- v3 prompt extracts emit `open_questions` + `decisions` per topic.
+- Re-extract spinner appears immediately on click (no refresh).
+- Header shows prompt name + LLM/model.
+- Call Topics tab + historical view use the flat-table layout consistently.
+- Aggregate → project_updates commit triggers chronology generation (check logs for 🧬 [Chronology] lines).
+- Artifacts page → Project tracker sub-tab → all 5 sub-views render.
+- Export to xlsx → file downloads with the expected filename pattern → opens cleanly in Excel + Google Sheets.
+
+**Phase 3 unblocked:** Story 15.4 deferred work (matching UI read-only display + real-fixture test + rollback non-reg) is now eligible to start once Phase 2 smoke passes.
+
+---
+
+### 2026-05-19 — EPIC-15 Phase 2 / Story 15.8: xlsx tracker exporter + ProjectTrackerTab
+
+**Backend:**
+- `backend/requirements.txt` — `openpyxl==3.1.2` added (was not yet a dep despite earlier architecture claim).
+- `backend/services/project_tracker_data.py` (new) — `list_project_topics_with_call_history(project_id)` returns per-(topic, call) data shape: each topic has `calls: list[dict]` with `chronology_narrative`, `rag_verification_note`, `tasks`, `open_questions`, `decisions`. Bridges the gap between the flat `list_project_topics` shape and what the exporter needs.
+- `backend/exporters/xlsx_tracker.py` (new) — `build_tracker_xlsx(project_id) -> bytes` renders 5 sheets via openpyxl (Dashboard / Chronology / Anchors lifecycle / Decisions log / Key terms registry). No disk writes; BytesIO streams. Wrap_text + freeze_panes on every sheet. No charts / no pivots (NG3).
+- `backend/routers/projects.py` — 2 new endpoints: `GET /api/projects/{id}/tracker-data` returns the per-call shape JSON; `GET /api/projects/{id}/export.xlsx` streams the xlsx with `Content-Disposition: attachment; filename="<slug>-tracker-<YYYY-MM-DD>.xlsx"`.
+
+**Frontend:**
+- `frontend/src/types/index.ts` — `TopicCallData` + `TopicWithCallHistory` interfaces.
+- `frontend/src/components/ProjectTrackerTab.tsx` (new) — orchestrator with hash-driven 5-tab nav (#dashboard default; #chronology / #anchors / #decisions / #key-terms), ⓘ popovers per tab, Export-to-xlsx button.
+- `frontend/src/components/tracker/{DashboardView, ChronologyView, AnchorsLifecycleView, DecisionsLogView, KeyTermsRegistryView}.tsx` (5 new) — read-only renderings of the per-(topic, call) data.
+- `frontend/app/projects/[id]/artifacts/page.tsx` — 2-sub-tab nav: "Generate artifacts" (existing flow, default) | "Project tracker" (new).
+- `frontend/src/api/client.ts` — `projectsAPI.getTrackerData` added.
+
+**Tests:** 9 new tests in `test_xlsx_tracker.py` (7 exporter + 2 endpoint). Full backend suite 280 passed, 13 skipped, 0 failures. tsc + lint clean.
+
+**Commits:** 7 `[EPIC-15] story 15.8 ...` commits (T1 deps, T2 exporter, T3 endpoint+adapter, T4 tab skeleton, T5 sub-views, T6 artifacts page nav, T7 close).
+
+**Manual smoke pending:** user clicks "Project tracker" sub-tab on the FactSet project's Artifacts page; verifies all 5 sub-views render; clicks Export-to-xlsx; opens the downloaded file in Excel + Google Sheets.
+
+---
+
 ### 2026-05-19 — EPIC-15 Phase 2 / Story 15.7: per-item lifecycle + chronology + RAG verification + accumulator
 
 **Backend:**

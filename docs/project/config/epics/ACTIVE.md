@@ -3,11 +3,12 @@
 ## Current Story
 - **Active epic:** EPIC-15 — Call Topics Rebuild (Phase 2 — Artifacts Rebuild + xlsx Tracker)
 - **Branch:** `epic-15-phase-2-artifacts` (Phase 1 stories 15.1–15.4 baseline; Phase 2 stories 15.5–15.8 land on this branch)
-- **Status:** Phase 2 stories scoped (4 files written 2026-05-19) — ready to build
+- **Status:** Phase 2 CODE-COMPLETE; awaiting user real-fixture smoke
 - **Phase 1 docs:** brainstorm + PRD + architecture all locked (`docs/project/config/2026-05-18-epic-15-call-topics-rebuild-*.md`)
 - **Phase 2 docs:** brainstorm + PRD + architecture all locked (`docs/project/config/2026-05-18-epic-15-phase-2-*.md`)
 - **Mockups:** `call-topic-tile-v3.html` (Phase 1), `phase2-call-topics-extended.html`, `phase2-project-tracker-tab-v3.html` (Phase 2, both approved 2026-05-18)
-- **Next:** Story 15.8 (P2-D — xlsx tracker exporter + ProjectTrackerTab + smoke acceptance) — depends on 15.7
+- **Next:** PHASE 2 COMPLETE — all stories 15.5/15.6/15.7/15.8 code-complete. Awaiting user real-fixture smoke for Phase 2 close. After smoke: Phase 3 (Story 15.4 deferred work) opens.
+- **Last delivered:** Story 15.8 — xlsx tracker exporter + ProjectTrackerTab + 5 read-only sub-views — code-complete 2026-05-19, awaiting user real-fixture smoke (export xlsx on FactSet project, open in Excel + Google Sheets)
 - **Last delivered:** Story 15.7 — per-item lifecycle + chronology + RAG verification + accumulator — code-complete 2026-05-19, awaiting user smoke
 - **Last delivered:** Story 15.6 — context_scope 4-value enum + context-assembly seam — code-complete 2026-05-19, awaiting user smoke + manual migration 028 run
 - **Last delivered:** Story 15.5 — call_topics extension (open_questions + decisions + migration 027 + 3-section UI) — code-complete 2026-05-19, awaiting user smoke + manual migration 027 run
@@ -27,7 +28,7 @@
 | 15.5 | Call-topics extension: open_questions + decisions | P2-A | [x] code-complete — 2026-05-19 | — |
 | 15.6 | `context_scope` 4-value enum + context-assembly seam | P2-B | [x] code-complete — 2026-05-19 | — (parallel-safe) |
 | 15.7 | Per-item lifecycle + chronology + RAG verification + accumulator | P2-C | [x] code-complete — 2026-05-19 | 15.5, 15.6 |
-| 15.8 | xlsx tracker exporter + ProjectTrackerTab + smoke acceptance | P2-D | [ ] todo | 15.7 |
+| 15.8 | xlsx tracker exporter + ProjectTrackerTab + smoke acceptance | P2-D | [x] code-complete — 2026-05-19 | 15.7 |
 
 **Dependency order:** 15.5 → 15.7 → 15.8 sequential; 15.6 parallel.
 

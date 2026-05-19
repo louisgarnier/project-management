@@ -1,7 +1,7 @@
 # Story 15.8 — xlsx Tracker Exporter + ProjectTrackerTab + Smoke Acceptance
 
 **Epic:** EPIC-15 — Call Topics Rebuild (Phase 2 / P2-D)
-**Status:** [ ] todo
+**Status:** [x] code-complete (2026-05-19) — awaiting user real-fixture smoke (open exported xlsx in Excel + Google Sheets on the 4-call FactSet project)
 **Spec:** `docs/project/config/2026-05-18-epic-15-phase-2-architecture.md` §4.1 (exporter), §4.2 (tab), §5 (endpoint), §8 (perf budget), §10 (openpyxl gotchas)
 **PRD:** `docs/project/config/2026-05-18-epic-15-phase-2-prd.md` G9, G10, G11, US-P2-06, US-P2-07, US-P2-08, US-P2-09, FR-P2-10/11/12, NFR-P2-01, NG2, NG3, Q3, Q5
 **Approved mockups:** `phase2-project-tracker-tab-v3.html` (5 sub-views with ⓘ popovers, default Dashboard)
