@@ -10,12 +10,17 @@ from backend.services import topics_service
 # ── _TOPIC_SCHEMA shape ─────────────────────────────────────────────────────
 
 def test_topic_schema_describes_new_fields():
-    """_TOPIC_SCHEMA must enumerate the v2 fields and OMIT the legacy ones."""
+    """_TOPIC_SCHEMA must enumerate the v2/v3 fields and OMIT the pre-v2 legacy ones.
+
+    NOTE: decisions + open_questions are now first-class v3 fields (Story 15.5),
+    so they must be PRESENT — only the pre-v2 legacy keys remain excluded.
+    """
     schema = topics_service._TOPIC_SCHEMA
-    for required in ("name", "importance", "key_terms", "evidence", "tasks"):
-        assert required in schema, f"new field missing from schema string: {required}"
-    for legacy in ("decisions", "follow_up_items", "open_questions", "rationale", "is_parked"):
-        assert legacy not in schema, f"legacy field still in schema string: {legacy}"
+    for required in ("name", "importance", "key_terms", "evidence", "tasks",
+                     "open_questions", "decisions"):
+        assert required in schema, f"v3 field missing from schema string: {required}"
+    for legacy in ("follow_up_items", "rationale", "is_parked"):
+        assert legacy not in schema, f"pre-v2 legacy field still in schema string: {legacy}"
 
 
 # ── _validate_topic accepts a valid topic ──────────────────────────────────
@@ -59,11 +64,15 @@ def test_validate_topic_rejects_missing_evidence():
 
 
 def test_validate_topic_rejects_missing_tasks():
+    """v3: tasks=[] only rejects if open_questions and decisions are ALSO empty.
+    With open_questions or decisions present, tasks=[] is fine."""
     t = _valid_topic()
     t["tasks"] = []
+    t["open_questions"] = []
+    t["decisions"] = []
     ok, reason = topics_service._validate_topic(t)
     assert not ok
-    assert "tasks" in reason
+    assert any(k in reason for k in ("tasks", "open_questions", "decisions"))
 
 
 def test_validate_topic_rejects_missing_key_terms():
@@ -127,6 +136,83 @@ def test_status_rollup_any_in_progress_no_open():
 
 def test_status_rollup_empty():
     assert topics_service._status_rollup([]) == "open"  # safety default
+
+
+# ── EPIC-15 Phase 2 (Story 15.5) — _TOPIC_SCHEMA + validator with new arrays ──
+
+def test_topic_schema_describes_v3_fields():
+    """_TOPIC_SCHEMA must enumerate open_questions + decisions alongside v2 fields."""
+    schema = topics_service._TOPIC_SCHEMA
+    for required in ("name", "importance", "key_terms", "evidence", "tasks",
+                     "open_questions", "decisions"):
+        assert required in schema, f"v3 field missing from schema string: {required}"
+
+
+def _valid_v3_topic() -> dict:
+    base = _valid_topic()
+    base["open_questions"] = [
+        {"text": "Does the boost flag fix the ceiling?", "owner": "Nick", "status": "open"}
+    ]
+    base["decisions"] = [{"text": "Defer Mac retirement decision to Q3 review."}]
+    return base
+
+
+def test_validate_topic_accepts_empty_open_questions_and_decisions():
+    """Both new arrays accept []; topic still valid if it has tasks."""
+    t = _valid_topic()
+    t["open_questions"] = []
+    t["decisions"] = []
+    ok, reason = topics_service._validate_topic(t)
+    assert ok, reason
+
+
+def test_validate_topic_accepts_populated_open_questions_and_decisions():
+    ok, reason = topics_service._validate_topic(_valid_v3_topic())
+    assert ok, reason
+
+
+def test_validate_topic_accepts_empty_tasks_when_decisions_present():
+    """Decision-only topic is valid — no actionable task needed when something was decided."""
+    t = _valid_v3_topic()
+    t["tasks"] = []
+    ok, reason = topics_service._validate_topic(t)
+    assert ok, reason
+
+
+def test_validate_topic_rejects_all_three_arrays_empty():
+    """A topic with evidence but NO task, NO open question, NO decision is dropped."""
+    t = _valid_topic()
+    t["tasks"] = []
+    t["open_questions"] = []
+    t["decisions"] = []
+    ok, reason = topics_service._validate_topic(t)
+    assert not ok
+    assert any(k in reason for k in ("tasks", "open_questions", "decisions"))
+
+
+def test_validate_topic_rejects_open_question_missing_text():
+    t = _valid_v3_topic()
+    t["open_questions"][0]["text"] = ""
+    ok, reason = topics_service._validate_topic(t)
+    assert not ok
+    assert "text" in reason or "open_question" in reason
+
+
+def test_validate_topic_rejects_decision_missing_text():
+    t = _valid_v3_topic()
+    t["decisions"][0]["text"] = ""
+    ok, reason = topics_service._validate_topic(t)
+    assert not ok
+    assert "text" in reason or "decision" in reason
+
+
+def test_validate_topic_accepts_missing_open_questions_key_as_empty():
+    """Backwards-compat: a topic dict without the open_questions key validates as []
+    (still requires non-empty tasks since the other arrays default to [])."""
+    t = _valid_topic()
+    # No open_questions / decisions keys at all — tasks must carry the load
+    ok, reason = topics_service._validate_topic(t)
+    assert ok, reason
 
 
 # ── Prompt resolution — library only, no Python fallback ──────────────────

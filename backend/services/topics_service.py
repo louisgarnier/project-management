@@ -189,7 +189,9 @@ _TOPIC_SCHEMA = (
     '"importance":"high|medium|low",'
     '"key_terms":["string"],'
     '"evidence":[{"speaker":"string","quote":"verbatim string","citation":"transcript {call_date} · lines {N}-{M}"}],'
-    '"tasks":[{"task":"string","next_step":"string","status":"open|in_progress|resolved","owner":"string (may be empty)"}]'
+    '"tasks":[{"task":"string","next_step":"string","status":"open|in_progress|resolved","owner":"string (may be empty)"}],'
+    '"open_questions":[{"text":"string","owner":"string (may be empty)","status":"open|in_progress|resolved"}],'
+    '"decisions":[{"text":"string"}]'
     '}'
 )
 
@@ -199,7 +201,12 @@ _STATUS_VALUES = {"open", "in_progress", "resolved"}
 
 
 def _validate_topic(t: dict) -> tuple[bool, str]:
-    """Return (True, '') if t matches the v2 schema, else (False, reason)."""
+    """Return (True, '') if t matches the v3 schema, else (False, reason).
+
+    v3 (Story 15.5) accepts 3 anchor arrays — tasks / open_questions / decisions.
+    All 3 may be empty individually, but at least ONE must be non-empty.
+    Missing open_questions/decisions keys are treated as empty (back-compat).
+    """
     if not isinstance(t, dict):
         return False, "topic is not a dict"
     name = (t.get("name") or "").strip()
@@ -220,9 +227,10 @@ def _validate_topic(t: dict) -> tuple[bool, str]:
         for k in ("speaker", "quote", "citation"):
             if not (e.get(k) or "").strip():
                 return False, f"evidence[{i}].{k} is empty"
+
     tasks = t.get("tasks") or []
-    if not isinstance(tasks, list) or not tasks:
-        return False, "tasks must be a non-empty list"
+    if not isinstance(tasks, list):
+        return False, "tasks must be a list"
     for i, task in enumerate(tasks):
         if not isinstance(task, dict):
             return False, f"tasks[{i}] is not a dict"
@@ -234,6 +242,32 @@ def _validate_topic(t: dict) -> tuple[bool, str]:
             return False, f"tasks[{i}].status must be in {sorted(_STATUS_VALUES)}, got {task.get('status')!r}"
         if "owner" in task and not isinstance(task.get("owner"), str):
             return False, f"tasks[{i}].owner must be a string"
+
+    open_questions = t.get("open_questions") or []
+    if not isinstance(open_questions, list):
+        return False, "open_questions must be a list"
+    for i, oq in enumerate(open_questions):
+        if not isinstance(oq, dict):
+            return False, f"open_questions[{i}] is not a dict"
+        if not (oq.get("text") or "").strip():
+            return False, f"open_questions[{i}].text is empty"
+        if "status" in oq and oq["status"] not in _STATUS_VALUES:
+            return False, f"open_questions[{i}].status must be in {sorted(_STATUS_VALUES)}, got {oq.get('status')!r}"
+        if "owner" in oq and not isinstance(oq.get("owner"), str):
+            return False, f"open_questions[{i}].owner must be a string"
+
+    decisions = t.get("decisions") or []
+    if not isinstance(decisions, list):
+        return False, "decisions must be a list"
+    for i, d in enumerate(decisions):
+        if not isinstance(d, dict):
+            return False, f"decisions[{i}] is not a dict"
+        if not (d.get("text") or "").strip():
+            return False, f"decisions[{i}].text is empty"
+
+    if not (tasks or open_questions or decisions):
+        return False, "topic must have at least one of tasks / open_questions / decisions"
+
     return True, ""
 
 
