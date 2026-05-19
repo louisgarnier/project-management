@@ -4,6 +4,28 @@
 
 - **2026-05-19 — pre-existing merge-prompt bug** (`backend/services/topics_service.py:1071-1080`, `1133-1142`): `call_excerpts_parts` builder in 1:1 and M:N merge paths still iterates `m.get("follow_up_items")` (always empty under EPIC-15 new shape) and renders `m.get("decisions")` as `f"  - {d}"` where `d` is now a dict — produces literal `{'id': ..., 'text': '...'}` strings in the merge prompt, degrading merge quality silently. Pre-existing — predates Story 15.5. Fix during Story 15.7 alongside the chronology+RAG plumbing rewrite.
 
+### 2026-05-19 — EPIC-15 Phase 2 / Story 15.6: context_scope 4-value enum + context-assembly seam
+
+**Backend:**
+- Migration 028: drops + re-adds `artifact_library_context_scope_check` + `artifact_types_context_scope_check` with 4 values (`this_call_transcript`, `all_call_transcripts`, `this_call_topics`, `all_project_topics`). Bulk migrates `'call'` → `'this_call_topics'`, `'project'` → `'all_project_topics'`. Per-name overrides for Risk Register + Next Call Agenda → `all_project_topics`.
+- `backend/routers/artifact_types.py` — Pydantic models accept the 4-value enum; default `this_call_topics`; legacy `'call'`/`'project'` rejected with 422.
+- `backend/services/artifact_generation.py` (new) — `_assemble_context(scope, call_id, project_id, db) -> str` with 4 branches: `this_call_transcript` reads `calls.transcript`; `all_call_transcripts` concatenates all calls' transcripts chronologically (incl. current); `this_call_topics` renders `list_call_topics` as structured text (name + tasks + open_questions + decisions); `all_project_topics` renders `list_project_topics` with per-call chronology cells.
+- `backend/routers/artifacts.py::gen_one` — replaced inline scope branches with single `_assemble_context(...)` call. Default in `context_scope_map` updated from `"call"` → `"this_call_topics"`.
+- `backend/library/seed.py` — every SYSTEM_LIBRARY entry's `context_scope` updated to the 4-value enum.
+
+**Frontend:**
+- `frontend/src/types/index.ts` — `ContextScope` widened to 4-value union.
+- `frontend/src/components/ArtifactTypeCard.tsx` — 4-option `<select>` (was 2-option toggle); read-only display uses friendly labels from shared `CONTEXT_SCOPE_OPTIONS` constant.
+- `frontend/src/components/AddArtifactTypeModal.tsx` — context_scope `<select>` added to "Create new" form, default `this_call_topics`; POST payload includes the field.
+- `frontend/src/api/client.ts` — `artifactTypesAPI.create` signature widened.
+
+**Commits:** 8 `[EPIC-15] story 15.6 …` commits (T1–T7 + close).
+**Tests:** 5 new `_assemble_context` unit tests; full backend suite green (test_library tests T8-updated to reflect post-EPIC-15 reality); tsc + lint clean.
+**Migration:** 028 (manual, Supabase Dashboard) — required before backend restart.
+**Manual smoke pending:** user creates a custom artifact type with each of the 4 scopes; runs gen → confirms LLM context matches.
+
+---
+
 ### 2026-05-19 — EPIC-15 Phase 2 / Story 15.5: Call-topics extension (open_questions + decisions)
 
 **Backend:**

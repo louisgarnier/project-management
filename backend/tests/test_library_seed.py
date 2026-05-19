@@ -31,8 +31,8 @@ def test_template_entries_have_no_llm():
 # ── v2 call_topics entry ──────────────────────────────────────────────────
 
 
-def test_v2_call_topics_entry_exists_and_is_default():
-    """FR-14 — v2 entry exists and is seeded_by_default=true."""
+def test_v3_call_topics_entry_exists_and_is_default():
+    """FR-14 (updated EPIC-15 Phase 2) — v3 entry is now the default call_topics entry (v2 demoted)."""
     matches = [
         e for e in SYSTEM_LIBRARY
         if e["category"] == "call_topics" and e["seeded_by_default"]
@@ -42,13 +42,13 @@ def test_v2_call_topics_entry_exists_and_is_default():
         f"{[m['name'] for m in matches]}"
     )
     entry = matches[0]
-    assert "v2" in entry["name"].lower() or "evidence-anchored" in entry["name"].lower()
+    assert "v3" in entry["name"].lower(), f"expected v3 to be the default, got: {entry['name']}"
     assert entry["kind"] == "llm"
     assert entry["llm"] == "openrouter"
     assert entry["model"] == "deepseek/deepseek-v3.2"
     assert entry["prompt"] and len(entry["prompt"]) > 200  # non-trivial body
-    # Anti-pattern marker from the v2 rubric
-    assert "ANTI-PATTERN" in entry["prompt"], "v2 entry should carry the EPIC-15 anti-pattern marker"
+    # Anti-pattern marker from the v3 rubric (carried over from v2)
+    assert "ANTI-PATTERN" in entry["prompt"], "v3 entry should carry the EPIC-15 anti-pattern marker"
 
 
 def test_only_one_call_topics_default():

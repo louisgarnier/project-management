@@ -115,13 +115,13 @@ def test_delete_user_entry_returns_204():
 def test_reset_system_restores_originals():
     """POST /api/library/reset-system re-applies SYSTEM_LIBRARY values, overwriting edits."""
     m = MagicMock()
-    # Simulate 12 existing rows (4 workflow + 8 artifact system entries)
+    # Simulate 13 existing rows (4 workflow + 9 artifact system entries; EPIC-15 added Chronology Narrative + RAG Verification)
     m.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
         {"id": "x"}
     ]
     with patch("backend.routers.library.get_client", return_value=m):
         resp = client.post("/api/library/reset-system")
     assert resp.status_code == 200
-    # 12 update calls expected (one per SYSTEM_LIBRARY entry)
+    # 13 update calls expected (one per SYSTEM_LIBRARY entry)
     update_count = m.table.return_value.update.call_count
-    assert update_count == 12
+    assert update_count == 13

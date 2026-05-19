@@ -1,7 +1,7 @@
 # Story 15.6 — `context_scope` 4-value Enum + Context-Assembly Seam
 
 **Epic:** EPIC-15 — Call Topics Rebuild (Phase 2 / P2-B)
-**Status:** [ ] todo
+**Status:** [x] code-complete (2026-05-19) — awaiting user smoke + manual migration 028 run in Supabase Dashboard
 **Spec:** `docs/project/config/2026-05-18-epic-15-phase-2-architecture.md` §3, §4.1 (context-assembly seam), §4.2 (modal + types), §5
 **PRD:** `docs/project/config/2026-05-18-epic-15-phase-2-prd.md` G4, G5, US-P2-03, FR-P2-05/06, Q4, Q6
 **Approved mockup:** AddArtifactTypeModal dropdown — covered by existing modal layout; 4-option `<select>` only.
