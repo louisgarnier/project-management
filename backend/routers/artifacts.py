@@ -211,7 +211,7 @@ async def stream_artifacts(call_id: str):
         topics_result = (
             supabase.table("topic_updates")
             .select(
-                "summary, status, topic_id, evidence, key_terms, tasks, "
+                "summary, status, sentiment, topic_id, evidence, key_terms, tasks, "
                 "open_questions, decisions, chronology_narrative, rag_verification_note"
             )
             .eq("call_id", call_id)
@@ -232,6 +232,7 @@ async def stream_artifacts(call_id: str):
             {
                 "name": topic_names.get(r["topic_id"], "Unknown"),
                 "status": r.get("status", "open"),
+                "sentiment": r.get("sentiment", "neutral"),
                 "summary": r.get("summary", ""),
                 "evidence": r.get("evidence") or [],
                 "key_terms": r.get("key_terms") or [],

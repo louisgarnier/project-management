@@ -1,5 +1,9 @@
 # Build Log — Call Tracker
 
+## Open follow-ups (Phase 3 candidates)
+
+- **2026-05-19 — pre-existing merge-prompt bug** (`backend/services/topics_service.py:1071-1080`, `1133-1142`): `call_excerpts_parts` builder in 1:1 and M:N merge paths still iterates `m.get("follow_up_items")` (always empty under EPIC-15 new shape) and renders `m.get("decisions")` as `f"  - {d}"` where `d` is now a dict — produces literal `{'id': ..., 'text': '...'}` strings in the merge prompt, degrading merge quality silently. Pre-existing — predates Story 15.5. Fix during Story 15.7 alongside the chronology+RAG plumbing rewrite.
+
 ## Current Stage
 **EPIC-12 — Artifacts Overhaul (delivered 2026-04-23).** Last delivered epic. No active epic.
 
