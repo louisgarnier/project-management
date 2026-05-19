@@ -92,8 +92,11 @@ class TopicIn(BaseModel):
     name: str
     summary: str = ""
     follow_up_items: list[str] = []
-    decisions: list[str] = []
-    open_questions: list[str] = []
+    # decisions/open_questions widened to bare `list` so EPIC-15 v3 sends them as
+    # list[dict] (id/text/owner/status/added_in_call_id) while legacy callers
+    # can still pass list[str]. Item-shape validation lives in `_validate_topic`.
+    decisions: list = []
+    open_questions: list = []
     status: Literal["open", "in_progress", "resolved"] = "open"
     owner: Literal["Us", "Client", "Both"] = "Us"
     sentiment: Literal["positive", "neutral", "concern"] = "neutral"
