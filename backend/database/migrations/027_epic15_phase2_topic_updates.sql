@@ -18,10 +18,12 @@ ALTER TABLE public.topic_updates
   ADD COLUMN IF NOT EXISTS rag_verification_note TEXT;
 
 -- ── 2. Demote v2 library entry so the new v3 entry becomes the default ──
--- Existing user-edited copies (if any) are preserved by name match.
+-- Targets the system row only; per-project user copies (stored elsewhere) are unaffected.
+-- is_system guard prevents demoting a user row that happens to share the same name.
 UPDATE public.artifact_library
    SET seeded_by_default = false
- WHERE name = 'Call Topics — v2 (synthetic, evidence-anchored)';
+ WHERE name = 'Call Topics — v2 (synthetic, evidence-anchored)'
+   AND is_system = true;
 
 -- Reload PostgREST schema cache so the new columns are queryable immediately.
 NOTIFY pgrst, 'reload schema';
