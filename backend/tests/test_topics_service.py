@@ -99,24 +99,6 @@ def test_validate_topic_rejects_task_missing_next_step():
     assert "next_step" in reason or "task" in reason
 
 
-# ── _stamp_task_ids assigns a UUID to each task ───────────────────────────
-
-def test_stamp_task_ids_adds_uuid():
-    t = _valid_topic()
-    stamped = topics_service._stamp_task_ids(t)
-    for task in stamped["tasks"]:
-        assert "task_id" in task
-        uuid.UUID(task["task_id"])  # raises ValueError if not a UUID
-
-
-def test_stamp_task_ids_preserves_existing_ids():
-    t = _valid_topic()
-    existing = str(uuid.uuid4())
-    t["tasks"][0]["task_id"] = existing
-    stamped = topics_service._stamp_task_ids(t)
-    assert stamped["tasks"][0]["task_id"] == existing
-
-
 # ── _status_rollup derives topic-level status from tasks ──────────────────
 
 def test_status_rollup_all_resolved():
@@ -354,9 +336,9 @@ def test_persistence_payload_only_has_new_columns(monkeypatch):
 
     monkeypatch.setattr(topics_service, "get_client", lambda: _DB())
 
-    # Build a valid extracted topic and stamp task_ids (mirrors extract_call_topics)
+    # Build a valid extracted topic and stamp item ids (mirrors extract_call_topics)
     topic = _valid_topic()
-    topic = topics_service._stamp_task_ids(topic)
+    topic = topics_service._stamp_item_ids(topic, "c1")
 
     topics_service._persist_topic_update(
         topic=topic,
@@ -790,3 +772,72 @@ def test_round_trip_patch_persists_new_shape(monkeypatch):
     # Verify no legacy fields leaked into the persisted row from somewhere
     for legacy in ("decisions", "follow_up_items", "open_questions", "rationale", "is_parked", "sentiment"):
         assert legacy not in row, f"legacy field appeared in persisted row: {legacy}"
+
+
+# ── Story 15.5 — item-stamping (rename _stamp_task_ids → _stamp_item_ids) ──
+
+CALL_ID_SAMPLE = "00000000-1111-2222-3333-444444444444"
+
+
+def test_stamp_item_ids_adds_uuid_to_tasks_back_compat():
+    """Old test renamed: tasks get a task_id (legacy key kept for frontend compat)."""
+    t = _valid_topic()
+    stamped = topics_service._stamp_item_ids(t, CALL_ID_SAMPLE)
+    for task in stamped["tasks"]:
+        assert "task_id" in task
+        uuid.UUID(task["task_id"])
+
+
+def test_stamp_item_ids_preserves_existing_task_ids():
+    t = _valid_topic()
+    existing = str(uuid.uuid4())
+    t["tasks"][0]["task_id"] = existing
+    stamped = topics_service._stamp_item_ids(t, CALL_ID_SAMPLE)
+    assert stamped["tasks"][0]["task_id"] == existing
+
+
+def test_stamp_item_ids_stamps_tasks_open_questions_and_decisions():
+    """Every item across 3 arrays gets a stable id; tasks use 'task_id', others use 'id'."""
+    t = _valid_v3_topic()
+    stamped = topics_service._stamp_item_ids(t, CALL_ID_SAMPLE)
+    for task in stamped["tasks"]:
+        assert "task_id" in task
+        uuid.UUID(task["task_id"])
+    for oq in stamped["open_questions"]:
+        assert "id" in oq
+        uuid.UUID(oq["id"])
+    for d in stamped["decisions"]:
+        assert "id" in d
+        uuid.UUID(d["id"])
+
+
+def test_stamp_item_ids_stamps_added_in_call_id_on_every_item():
+    t = _valid_v3_topic()
+    stamped = topics_service._stamp_item_ids(t, CALL_ID_SAMPLE)
+    for task in stamped["tasks"]:
+        assert task["added_in_call_id"] == CALL_ID_SAMPLE
+    for oq in stamped["open_questions"]:
+        assert oq["added_in_call_id"] == CALL_ID_SAMPLE
+    for d in stamped["decisions"]:
+        assert d["added_in_call_id"] == CALL_ID_SAMPLE
+
+
+def test_stamp_item_ids_preserves_existing_added_in_call_id():
+    """Re-save round-trip: items keep their original first-call provenance."""
+    t = _valid_v3_topic()
+    original_call = "ffffffff-1111-2222-3333-444444444444"
+    t["tasks"][0]["added_in_call_id"] = original_call
+    t["open_questions"][0]["added_in_call_id"] = original_call
+    t["decisions"][0]["added_in_call_id"] = original_call
+    stamped = topics_service._stamp_item_ids(t, CALL_ID_SAMPLE)
+    assert stamped["tasks"][0]["added_in_call_id"] == original_call
+    assert stamped["open_questions"][0]["added_in_call_id"] == original_call
+    assert stamped["decisions"][0]["added_in_call_id"] == original_call
+
+
+def test_stamp_item_ids_handles_missing_arrays():
+    """Topic dict without open_questions / decisions keys returns those keys as []."""
+    t = _valid_topic()
+    stamped = topics_service._stamp_item_ids(t, CALL_ID_SAMPLE)
+    assert stamped["open_questions"] == []
+    assert stamped["decisions"] == []

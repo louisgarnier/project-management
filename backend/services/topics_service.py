@@ -271,17 +271,34 @@ def _validate_topic(t: dict) -> tuple[bool, str]:
     return True, ""
 
 
-def _stamp_task_ids(t: dict) -> dict:
-    """Return a copy of t with a task_id UUID on every task that lacks one.
+def _stamp_item_ids(t: dict, call_id: str) -> dict:
+    """Return a copy of t with stable ids + added_in_call_id stamped on every item.
 
-    Existing task_ids are preserved.
+    - tasks[].task_id (legacy key kept for frontend back-compat) → UUID if missing.
+    - open_questions[].id → UUID if missing.
+    - decisions[].id → UUID if missing.
+    - added_in_call_id on EVERY item across all 3 arrays. Existing values preserved
+      (re-save round-trips keep the original first-call provenance).
+    - Missing open_questions / decisions keys are returned as [] so downstream
+      persistence doesn't crash.
+
+    Note: closed_in_call_id is NOT stamped here. Lifecycle-on-resolve is a
+    separate concern handled by Story 15.7.
     """
     import uuid as _uuid
+
+    def _ensure(item: dict, id_key: str) -> dict:
+        out = dict(item)
+        if not out.get(id_key):
+            out[id_key] = str(_uuid.uuid4())
+        if not out.get("added_in_call_id"):
+            out["added_in_call_id"] = call_id
+        return out
+
     out = dict(t)
-    out["tasks"] = [
-        {**task, "task_id": task.get("task_id") or str(_uuid.uuid4())}
-        for task in (t.get("tasks") or [])
-    ]
+    out["tasks"] = [_ensure(task, "task_id") for task in (t.get("tasks") or [])]
+    out["open_questions"] = [_ensure(oq, "id") for oq in (t.get("open_questions") or [])]
+    out["decisions"] = [_ensure(d, "id") for d in (t.get("decisions") or [])]
     return out
 
 
@@ -678,7 +695,7 @@ async def extract_call_topics(call_id: str) -> list[dict]:
             name = (t.get("name") if isinstance(t, dict) else "?") or "?"
             rejected.append((name, reason))
             continue
-        kept.append(_stamp_task_ids(t))
+        kept.append(_stamp_item_ids(t, call_id))
 
     logger.info(
         f"📥 [CallTopics] extract call={call_id} prompt={lib_name} "

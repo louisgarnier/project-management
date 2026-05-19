@@ -13,7 +13,7 @@ from backend.services.topics_service import (
     list_topics_timeline,
     list_topics_prior_to_call, rollback_to_stage,
     TopicUpdate,
-    _stamp_task_ids, _status_rollup,
+    _stamp_item_ids, _status_rollup,
 )
 from backend.utils.logger import get_logger
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -642,7 +642,12 @@ async def patch_topic(topic_id: str, body: TopicPatch):
     if body.evidence is not None:
         payload["evidence"] = body.evidence
     if body.tasks is not None:
-        stamped = _stamp_task_ids({"tasks": body.tasks})["tasks"]
+        # Stamp ids + added_in_call_id (resolve call_id from the row)
+        row = db.table("topic_updates").select("call_id").eq("id", topic_id).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail="topic not found")
+        call_id_for_stamp = row[0]["call_id"]
+        stamped = _stamp_item_ids({"tasks": body.tasks}, call_id_for_stamp)["tasks"]
         payload["tasks"] = stamped
         payload["status"] = _status_rollup(stamped)
 
