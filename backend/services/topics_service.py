@@ -251,7 +251,7 @@ def _validate_topic(t: dict) -> tuple[bool, str]:
             return False, f"open_questions[{i}] is not a dict"
         if not (oq.get("text") or "").strip():
             return False, f"open_questions[{i}].text is empty"
-        if "status" in oq and oq["status"] not in _STATUS_VALUES:
+        if oq.get("status") not in _STATUS_VALUES:
             return False, f"open_questions[{i}].status must be in {sorted(_STATUS_VALUES)}, got {oq.get('status')!r}"
         if "owner" in oq and not isinstance(oq.get("owner"), str):
             return False, f"open_questions[{i}].owner must be a string"

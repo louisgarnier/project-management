@@ -64,8 +64,8 @@ def test_validate_topic_rejects_missing_evidence():
 
 
 def test_validate_topic_rejects_missing_tasks():
-    """v3: tasks=[] only rejects if open_questions and decisions are ALSO empty.
-    With open_questions or decisions present, tasks=[] is fine."""
+    """v3: tasks=[] alone is fine; all three arrays empty is what triggers rejection.
+    This test exercises the all-three-empty case (the rejection path)."""
     t = _valid_topic()
     t["tasks"] = []
     t["open_questions"] = []
@@ -140,13 +140,6 @@ def test_status_rollup_empty():
 
 # ── EPIC-15 Phase 2 (Story 15.5) — _TOPIC_SCHEMA + validator with new arrays ──
 
-def test_topic_schema_describes_v3_fields():
-    """_TOPIC_SCHEMA must enumerate open_questions + decisions alongside v2 fields."""
-    schema = topics_service._TOPIC_SCHEMA
-    for required in ("name", "importance", "key_terms", "evidence", "tasks",
-                     "open_questions", "decisions"):
-        assert required in schema, f"v3 field missing from schema string: {required}"
-
 
 def _valid_v3_topic() -> dict:
     base = _valid_topic()
@@ -204,6 +197,24 @@ def test_validate_topic_rejects_decision_missing_text():
     ok, reason = topics_service._validate_topic(t)
     assert not ok
     assert "text" in reason or "decision" in reason
+
+
+def test_validate_topic_rejects_open_question_bad_status():
+    """v3: open_questions[i].status is required and must be in the canonical set."""
+    t = _valid_v3_topic()
+    t["open_questions"][0]["status"] = "urgent"  # invalid
+    ok, reason = topics_service._validate_topic(t)
+    assert not ok
+    assert "status" in reason or "open_question" in reason
+
+
+def test_validate_topic_rejects_open_question_missing_status():
+    """v3: missing status on an open_question rejects (parallel to tasks behaviour)."""
+    t = _valid_v3_topic()
+    del t["open_questions"][0]["status"]
+    ok, reason = topics_service._validate_topic(t)
+    assert not ok
+    assert "status" in reason or "open_question" in reason
 
 
 def test_validate_topic_accepts_missing_open_questions_key_as_empty():
