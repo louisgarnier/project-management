@@ -7,7 +7,8 @@
 - **Phase 1 docs:** brainstorm + PRD + architecture all locked (`docs/project/config/2026-05-18-epic-15-call-topics-rebuild-*.md`)
 - **Phase 2 docs:** brainstorm + PRD + architecture all locked (`docs/project/config/2026-05-18-epic-15-phase-2-*.md`)
 - **Mockups:** `call-topic-tile-v3.html` (Phase 1), `phase2-call-topics-extended.html`, `phase2-project-tracker-tab-v3.html` (Phase 2, both approved 2026-05-18)
-- **Next:** Story 15.5 (P2-A — call_topics extension: open_questions + decisions + migration 027 + 3-section UI)
+- **Next:** Story 15.6 (P2-B — context_scope 4-value enum + AddArtifactTypeModal dropdown + backend context-assembly seam) — parallel-safe with 15.5
+- **Last delivered:** Story 15.5 — call_topics extension (open_questions + decisions + migration 027 + 3-section UI) — code-complete 2026-05-19, awaiting user smoke + manual migration 027 run
 - **Last delivered:** Story 15.3 — Call Topics stage UI rewrite (v3 flat-table, repeated topic+chips, inline edits, evidence popover, prompt selector); legacy TopicEditor + EvidenceDrawer deleted (2026-05-18)
 
 ### EPIC-15 Phase 1 (baseline)
@@ -21,7 +22,7 @@
 ### EPIC-15 Phase 2 (active)
 | # | Story | Workstream | Status | Depends on |
 |---|---|---|---|---|
-| 15.5 | Call-topics extension: open_questions + decisions | P2-A | [ ] todo | — |
+| 15.5 | Call-topics extension: open_questions + decisions | P2-A | [x] code-complete — 2026-05-19 | — |
 | 15.6 | `context_scope` 4-value enum + context-assembly seam | P2-B | [ ] todo | — (parallel-safe) |
 | 15.7 | Per-item lifecycle + chronology + RAG verification + accumulator | P2-C | [ ] todo | 15.5, 15.6 |
 | 15.8 | xlsx tracker exporter + ProjectTrackerTab + smoke acceptance | P2-D | [ ] todo | 15.7 |

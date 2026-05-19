@@ -4,6 +4,34 @@
 
 - **2026-05-19 — pre-existing merge-prompt bug** (`backend/services/topics_service.py:1071-1080`, `1133-1142`): `call_excerpts_parts` builder in 1:1 and M:N merge paths still iterates `m.get("follow_up_items")` (always empty under EPIC-15 new shape) and renders `m.get("decisions")` as `f"  - {d}"` where `d` is now a dict — produces literal `{'id': ..., 'text': '...'}` strings in the merge prompt, degrading merge quality silently. Pre-existing — predates Story 15.5. Fix during Story 15.7 alongside the chronology+RAG plumbing rewrite.
 
+### 2026-05-19 — EPIC-15 Phase 2 / Story 15.5: Call-topics extension (open_questions + decisions)
+
+**Backend:**
+- Migration 027: 4 new cols on topic_updates (open_questions+decisions JSONB, chronology_narrative+rag_verification_note TEXT) + demoted v2 library entry's seeded_by_default flag (with is_system=true guard).
+- `backend/prompts/call_topics.py` — added `CALL_TOPICS_V3_PROMPT_BODY` with 3-array output + DUAL-CLASSIFY rule + decisions[] anti-hallucination guard + worked example.
+- `backend/services/topics_service.py` — `_TOPIC_SCHEMA` + `_validate_topic` extended (at-least-one-of-three rule replaces tasks>=1); `_stamp_task_ids` → `_stamp_item_ids` (signature now takes call_id, stamps id + added_in_call_id across all 3 arrays, deepcopy + `is None` guards); `_persist_topic_update` writes new columns; structured log line includes open_questions+decisions counts.
+- `backend/routers/topics.py` — `TopicPatch` + `patch_topic` accept open_questions + decisions partial fields (single SELECT call_id shared across all 3 stamping paths).
+- `backend/routers/artifacts.py` — legacy SELECT fixed (was referencing dropped follow_up_items/owner under migration 026); sentiment restored after T7 polish.
+- `backend/services/topic_lineage.py` — `get_lineage_topic_updates` SELECT updated; `build_lineage_evidence_block` rendering adapts decisions to .text + tasks to .task with defensive isinstance guard.
+- Read-path sweep across 6+ topic_updates SELECTs in topics_service.py + topic_lineage.py + artifacts.py.
+
+**Frontend:**
+- `frontend/src/types/index.ts` — `OpenQuestionData` + `DecisionData` interfaces; `TaskData` lifecycle fields; `TopicData.decisions` + `open_questions` widened to `(string | …)[]` unions for back-compat; `TimelineCell.decisions` + `open_questions` widened too.
+- `frontend/src/components/CallTopicsStage.tsx` — restructured from flat task table → per-topic block layout with 3 stacked sub-sections (Tasks / Open questions amber #fff8e6 / Decisions pale-green #f1f8ee). Inline edit on blur (text) + onChange (selects). + Add buttons stamp UUIDs client-side. Counter shows N topics · M tasks · X open questions · Y decisions.
+- `frontend/src/components/CallTopicsHistoricalView.tsx` + `frontend/src/components/TopicsPanel.tsx` + `frontend/src/components/TopicsTimeline.tsx` — `.text` adapters added for legacy `string[]` back-compat.
+- `frontend/src/api/client.ts` — `topicsAPI.patch` TS body type extended.
+
+**Commits:** ~15 `[EPIC-15] story 15.5 …` commits (initial implementation + polish per code-review feedback per task).
+**Tests:** 13+ new backend tests in test_topics_service.py (validator + stamping + persistence + PATCH); full suite green (247 passed, 13 skipped); tsc + lint clean.
+**Migration:** 027 (manual, Supabase Dashboard) — required before backend restart.
+**Manual smoke pending:** User browser test of the new 3-section UI on Call Topics stage.
+
+**Known follow-ups (deferred to Story 15.7 / Phase 3):**
+- Pre-existing merge-prompt builder bug in topics_service.py:1071-1080 + 1133-1142 (renders decisions dicts as literals under new shape) — logged in "Open follow-ups" section.
+- Story 15.4 (matching UI read-only + real-fixture + rollback non-reg) — deferred to Phase 3, opens after Phase 2 closes.
+
+---
+
 ## Current Stage
 **EPIC-12 — Artifacts Overhaul (delivered 2026-04-23).** Last delivered epic. No active epic.
 

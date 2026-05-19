@@ -1,7 +1,7 @@
 # Story 15.5 — Call-Topics Extension: `open_questions[]` + `decisions[]`
 
 **Epic:** EPIC-15 — Call Topics Rebuild (Phase 2 / P2-A)
-**Status:** [ ] todo
+**Status:** [x] code-complete (2026-05-19) — awaiting user smoke + migration 027 manual run in Supabase Dashboard
 **Spec:** `docs/project/config/2026-05-18-epic-15-phase-2-architecture.md` §3, §4.1, §4.2
 **PRD:** `docs/project/config/2026-05-18-epic-15-phase-2-prd.md` G1, G2, G3, US-P2-01, US-P2-02
 **Approved mockup:** `phase2-call-topics-extended.html` (Call Topics stage with 3 sections per topic)
