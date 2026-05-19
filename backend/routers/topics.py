@@ -619,18 +619,34 @@ class TopicPatch(PydanticBaseModel):
     key_terms: Optional[list[str]] = None
     evidence: Optional[list[dict]] = None
     tasks: Optional[list[dict]] = None
+    open_questions: Optional[list[dict]] = None
+    decisions: Optional[list[dict]] = None
 
 
 @router.patch("/topics/{topic_id}")
 async def patch_topic(topic_id: str, body: TopicPatch):
     """Partially update a topic_updates row by its row id.
 
-    Accepts any subset of: name, importance, key_terms, evidence, tasks.
-    When tasks are supplied, task_ids are stamped on any new tasks and
-    status is auto-rolled-up from task statuses.
+    Accepts any subset of: name, importance, key_terms, evidence, tasks,
+    open_questions, decisions. When tasks/open_questions/decisions are supplied,
+    items get stable ids + added_in_call_id stamped (resolved from the row's
+    call_id via a single SELECT shared across all 3 stamping paths). When tasks
+    are supplied, topic-level status is rolled up from task statuses.
     """
     logger.info(f"📥 [Topics] PATCH requested: topic_updates.id={topic_id}")
     db = get_client()
+
+    needs_stamping = (
+        body.tasks is not None
+        or body.open_questions is not None
+        or body.decisions is not None
+    )
+    call_id_for_stamp = None
+    if needs_stamping:
+        row = db.table("topic_updates").select("call_id").eq("id", topic_id).execute().data
+        if not row:
+            raise HTTPException(status_code=404, detail="topic not found")
+        call_id_for_stamp = row[0]["call_id"]
 
     payload: dict = {}
     if body.name is not None:
@@ -642,14 +658,19 @@ async def patch_topic(topic_id: str, body: TopicPatch):
     if body.evidence is not None:
         payload["evidence"] = body.evidence
     if body.tasks is not None:
-        # Stamp ids + added_in_call_id (resolve call_id from the row)
-        row = db.table("topic_updates").select("call_id").eq("id", topic_id).execute().data
-        if not row:
-            raise HTTPException(status_code=404, detail="topic not found")
-        call_id_for_stamp = row[0]["call_id"]
         stamped = _stamp_item_ids({"tasks": body.tasks}, call_id_for_stamp)["tasks"]
         payload["tasks"] = stamped
         payload["status"] = _status_rollup(stamped)
+    if body.open_questions is not None:
+        stamped_oq = _stamp_item_ids(
+            {"open_questions": body.open_questions}, call_id_for_stamp
+        )["open_questions"]
+        payload["open_questions"] = stamped_oq
+    if body.decisions is not None:
+        stamped_d = _stamp_item_ids(
+            {"decisions": body.decisions}, call_id_for_stamp
+        )["decisions"]
+        payload["decisions"] = stamped_d
 
     if not payload:
         raise HTTPException(status_code=400, detail="no fields to update")

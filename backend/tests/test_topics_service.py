@@ -946,3 +946,137 @@ def test_persist_payload_does_not_write_chronology_fields(monkeypatch):
 
     assert "chronology_narrative" not in captured["payload"]
     assert "rag_verification_note" not in captured["payload"]
+
+
+# ── Story 15.5 — PATCH /api/topics accepts open_questions + decisions partial fields ──
+
+
+def test_patch_topic_accepts_open_questions_partial(monkeypatch):
+    """PATCH /topics/{id} accepts open_questions; stamps id + added_in_call_id."""
+    from backend.routers import topics as topics_router
+
+    captured = {}
+
+    class _Tbl:
+        def __init__(self, name):
+            self.name = name
+            self._sel = None
+        def select(self, cols):
+            self._sel = cols
+            return self
+        def eq(self, k, v):
+            self._eq = (k, v)
+            return self
+        def update(self, payload):
+            captured["payload"] = payload
+            return self
+        def execute(self):
+            if self.name == "topic_updates" and self._sel == "call_id":
+                class R: data = [{"call_id": "call-99"}]
+                return R()
+            class R: data = [{"id": "topic-row-1", **captured.get("payload", {})}]
+            return R()
+
+    class _DB:
+        def table(self, name): return _Tbl(name)
+
+    monkeypatch.setattr(topics_router, "get_client", lambda: _DB())
+
+    import asyncio
+    body = topics_router.TopicPatch(
+        open_questions=[{"text": "Does the boost flag fix it?", "status": "open", "owner": ""}]
+    )
+    asyncio.run(topics_router.patch_topic("topic-row-1", body))
+
+    assert "open_questions" in captured["payload"]
+    oq = captured["payload"]["open_questions"][0]
+    assert "id" in oq
+    uuid.UUID(oq["id"])
+    assert oq["added_in_call_id"] == "call-99"
+
+
+def test_patch_topic_accepts_decisions_partial(monkeypatch):
+    """PATCH accepts decisions; stamps id + added_in_call_id."""
+    from backend.routers import topics as topics_router
+
+    captured = {}
+
+    class _Tbl:
+        def __init__(self, name):
+            self.name = name
+            self._sel = None
+        def select(self, cols):
+            self._sel = cols
+            return self
+        def eq(self, k, v):
+            self._eq = (k, v)
+            return self
+        def update(self, payload):
+            captured["payload"] = payload
+            return self
+        def execute(self):
+            if self.name == "topic_updates" and self._sel == "call_id":
+                class R: data = [{"call_id": "call-99"}]
+                return R()
+            class R: data = [{"id": "topic-row-1", **captured.get("payload", {})}]
+            return R()
+
+    class _DB:
+        def table(self, name): return _Tbl(name)
+
+    monkeypatch.setattr(topics_router, "get_client", lambda: _DB())
+
+    import asyncio
+    body = topics_router.TopicPatch(
+        decisions=[{"text": "Defer Mac retirement decision to Q3 review."}]
+    )
+    asyncio.run(topics_router.patch_topic("topic-row-1", body))
+
+    assert "decisions" in captured["payload"]
+    d = captured["payload"]["decisions"][0]
+    uuid.UUID(d["id"])
+    assert d["added_in_call_id"] == "call-99"
+
+
+def test_patch_topic_accepts_open_questions_and_decisions_together(monkeypatch):
+    """Single PATCH call can update both new arrays in one round-trip."""
+    from backend.routers import topics as topics_router
+
+    captured = {}
+
+    class _Tbl:
+        def __init__(self, name):
+            self.name = name
+            self._sel = None
+        def select(self, cols):
+            self._sel = cols
+            return self
+        def eq(self, k, v):
+            self._eq = (k, v)
+            return self
+        def update(self, payload):
+            captured["payload"] = payload
+            return self
+        def execute(self):
+            if self.name == "topic_updates" and self._sel == "call_id":
+                class R: data = [{"call_id": "call-99"}]
+                return R()
+            class R: data = [{"id": "topic-row-1", **captured.get("payload", {})}]
+            return R()
+
+    class _DB:
+        def table(self, name): return _Tbl(name)
+
+    monkeypatch.setattr(topics_router, "get_client", lambda: _DB())
+
+    import asyncio
+    body = topics_router.TopicPatch(
+        open_questions=[{"text": "Q?", "status": "open", "owner": ""}],
+        decisions=[{"text": "D"}],
+    )
+    asyncio.run(topics_router.patch_topic("topic-row-1", body))
+
+    assert "open_questions" in captured["payload"]
+    assert "decisions" in captured["payload"]
+    assert captured["payload"]["open_questions"][0]["added_in_call_id"] == "call-99"
+    assert captured["payload"]["decisions"][0]["added_in_call_id"] == "call-99"
