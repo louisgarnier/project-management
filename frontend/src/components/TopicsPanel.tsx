@@ -339,7 +339,10 @@ function TopicRow({ topic, callId, onSaved, callIsLocked, hideCallsOpen, callSco
           <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#0052cc", marginBottom: 4 }}>
             Open questions
           </div>
-          {(draft.open_questions ?? []).map((item, i) => (
+          {(draft.open_questions ?? []).map((rawItem, i) => {
+            // .text adapter — handles legacy string rows and new OpenQuestionData rows
+            const item = typeof rawItem === "string" ? rawItem : (rawItem.text ?? "");
+            return (
             <div key={i} style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 2 }}>
               <input value={item}
                 onChange={(e) => {
@@ -352,7 +355,7 @@ function TopicRow({ topic, callId, onSaved, callIsLocked, hideCallsOpen, callSco
               <button onClick={() => set("open_questions", (draft.open_questions ?? []).filter((_, idx) => idx !== i))}
                 style={{ fontSize: 10, color: "#0052cc", background: "none", border: "none", cursor: "pointer" }}>✕</button>
             </div>
-          ))}
+          ); })}
           <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
             <input value={newOpenQuestion} onChange={(e) => setNewOpenQuestion(e.target.value)}
               onKeyDown={(e) => {

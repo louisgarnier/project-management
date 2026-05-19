@@ -57,9 +57,16 @@ function ReadOnlyTopicRow({ topic }: { topic: TopicData }) {
   const dotColor = parked ? "#97a0af" : IMPORTANCE_COLOR[topic.importance ?? "medium"] ?? "#ff991f";
   const borderColor = parked ? "#97a0af" : "#0052cc";
   const background = parked ? "#fafbfc" : "white";
-  const decisionsCount = topic.decisions?.length ?? 0;
+  // .text adapter — handles both legacy string[] rows and new DecisionData/OpenQuestionData rows
+  const decisionTexts = (topic.decisions ?? []).map(d =>
+    typeof d === "string" ? d : (d.text ?? "")
+  );
+  const openQuestionTexts = (topic.open_questions ?? []).map(q =>
+    typeof q === "string" ? q : (q.text ?? "")
+  );
+  const decisionsCount = decisionTexts.length;
   const actionsCount = parked ? 0 : (topic.follow_up_items?.length ?? 0);
-  const questionsCount = topic.open_questions?.length ?? 0;
+  const questionsCount = openQuestionTexts.length;
   const legacyCount = decisionsCount + actionsCount + questionsCount;
   const keyTermsCount = (topic.key_terms ?? []).length;
   const tasksCount = (topic.tasks ?? []).length;
@@ -210,7 +217,7 @@ function ReadOnlyTopicRow({ topic }: { topic: TopicData }) {
             <ReadOnlySectionBlock
               label="Decisions" count={decisionsCount}
               bg="#f4f5f7" color="#5e6c84"
-              items={topic.decisions} prefix="✓ "
+              items={decisionTexts} prefix="✓ "
             />
           )}
           {actionsCount > 0 && (
@@ -225,7 +232,7 @@ function ReadOnlyTopicRow({ topic }: { topic: TopicData }) {
             <ReadOnlySectionBlock
               label="Open questions" count={questionsCount}
               bg="#eef5ff" color="#0052cc"
-              items={topic.open_questions} prefix="? "
+              items={openQuestionTexts} prefix="? "
             />
           )}
         </>

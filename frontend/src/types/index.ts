@@ -108,12 +108,29 @@ export interface EvidenceRef {
   citation: string;
 }
 
+export interface OpenQuestionData {
+  id: string;
+  text: string;
+  owner: string;                      // empty string allowed
+  status: TopicStatus;
+  added_in_call_id?: string | null;
+  closed_in_call_id?: string | null;  // Story 15.7 — pre-installed, nullable until then
+}
+
+export interface DecisionData {
+  id: string;
+  text: string;
+  added_in_call_id?: string | null;
+}
+
 export interface TaskData {
   task_id: string;
   task: string;
   next_step: string;
-  status: TopicStatus;  // "open" | "in_progress" | "resolved"
-  owner: string;        // empty string allowed
+  status: TopicStatus;                // "open" | "in_progress" | "resolved"
+  owner: string;                      // empty string allowed
+  added_in_call_id?: string | null;   // Story 15.5
+  closed_in_call_id?: string | null;  // Story 15.7 (pre-installed; nullable until then)
 }
 
 /** One topic as returned by extract or dashboard endpoints */
@@ -142,13 +159,18 @@ export interface TopicData {
   _source_topic_ids?: string[];
   archived_later?: boolean;
   merged_into_name?: string | null;
-  // Legacy fields from pre-15.3 schema — kept for compile compatibility with
-  // ProjectUpdatesStage, CallTopicsHistoricalView, etc. until those are rewritten.
-  // follow_up_items / decisions / open_questions are required (non-optional string[]) so
-  // CallTopicsHistoricalView.tsx's ReadOnlySectionBlock (items: string[]) compiles.
+  // Story 15.5: open_questions and decisions are now structured arrays.
+  // The legacy fields keep their name but the value type widens — readers that
+  // still expect string[] must extract `.text` (typeof d === "string" ? d : d.text).
+  // follow_up_items stays string[] (pre-15.3 legacy, never populated by v3 extraction).
   follow_up_items: string[];
-  decisions: string[];
-  open_questions: string[];
+  decisions: (string | DecisionData)[];           // union for back-compat with old DB rows
+  open_questions: (string | OpenQuestionData)[];  // union for back-compat with old DB rows
+
+  // Story 15.7 chronology + RAG verification (frozen at project_updates commit)
+  chronology_narrative?: string | null;
+  rag_verification_note?: string | null;
+
   owner?: TopicOwner | string;
   is_parked?: boolean;
   rationale?: string;
