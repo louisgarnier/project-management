@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 import unittest
 import asyncio
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from backend.services.topics_service import (
     TopicIn,
     TopicUpdate,
@@ -509,7 +509,12 @@ class TestAggregateTopics(unittest.TestCase):
 
     @patch("backend.services.topics_service.get_client")
     @patch("backend.services.topics_service.save_topics")
-    def test_aggregate_call1_auto_advances(self, mock_save, mock_gc):
+    @patch(
+        "backend.services.topics_service.accumulate_into_project_state",
+        new_callable=AsyncMock,
+        return_value={"topics_touched": 0, "wall_clock_ms": 0},
+    )
+    def test_aggregate_call1_auto_advances(self, mock_accumulate, mock_save, mock_gc):
         """Call 1: no previous topics → saves all as new, returns auto_advanced=True."""
         db = MagicMock()
         mock_gc.return_value = db

@@ -177,6 +177,7 @@ import os
 from backend.database.supabase_client import get_client
 from backend.services.llm_service import call_llm_raw
 from backend.services.topic_lineage import build_lineage_evidence_block
+from backend.services.topic_updates_accumulator import accumulate_into_project_state
 from backend.utils.logger import get_logger
 
 logger = get_logger("topics_service")
@@ -885,6 +886,18 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
             for t in call_topics
         ]
         await save_topics(call_id, new_topics_to_save)
+
+        # Story 15.7: trigger chronology + lifecycle accumulator
+        try:
+            acc_result = await accumulate_into_project_state(call_id, db)
+            logger.info(
+                f"✅ [Aggregate] accumulator complete: call={call_id} "
+                f"topics_touched={acc_result['topics_touched']} "
+                f"wall_clock_ms={acc_result['wall_clock_ms']}"
+            )
+        except Exception as e:  # defensive — accumulator promises not to raise, but guard
+            logger.exception(f"❌ [Aggregate] accumulator unexpectedly raised: {e}")
+
         db.table("calls").update({"kanban_stage": "artifacts"}).eq(
             "id", call_id
         ).execute()
@@ -1696,6 +1709,17 @@ async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
         topic_updates.append(TopicUpdate(**model_data))
 
     await save_topics(call_id, topic_updates)
+
+    # Story 15.7: trigger chronology + lifecycle accumulator
+    try:
+        acc_result = await accumulate_into_project_state(call_id, db)
+        logger.info(
+            f"✅ [Aggregate] accumulator complete: call={call_id} "
+            f"topics_touched={acc_result['topics_touched']} "
+            f"wall_clock_ms={acc_result['wall_clock_ms']}"
+        )
+    except Exception as e:  # defensive — accumulator promises not to raise, but guard
+        logger.exception(f"❌ [Aggregate] accumulator unexpectedly raised: {e}")
 
     # Handle M:N merge archival: archive source topics and set merged_into_topic_id
     call_row = db.table("calls").select("project_id").eq("id", call_id).execute().data
