@@ -704,9 +704,13 @@ async def extract_call_topics(call_id: str) -> list[dict]:
             continue
         kept.append(_stamp_item_ids(t, call_id))
 
+    total_tasks = sum(len(t.get("tasks") or []) for t in kept)
+    total_oqs   = sum(len(t.get("open_questions") or []) for t in kept)
+    total_decs  = sum(len(t.get("decisions") or []) for t in kept)
     logger.info(
         f"📥 [CallTopics] extract call={call_id} prompt={lib_name} "
         f"model={llm}/{model or 'default'} topics_produced={len(kept)} "
+        f"tasks={total_tasks} open_questions={total_oqs} decisions={total_decs} "
         f"topics_rejected={len(rejected)} latency_ms={latency_ms}"
     )
     for n, r in rejected:
