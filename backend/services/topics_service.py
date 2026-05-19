@@ -384,6 +384,27 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
     Returns the new row id.
     """
     db = get_client()
+    # Load the most recent prior topic_updates row for lifecycle stamping.
+    # We need it so _apply_lifecycle_on_resolve can detect status transitions.
+    prev_rows = (
+        db.table("topic_updates")
+        .select("tasks, open_questions, call_id, created_at")
+        .eq("topic_id", topic_id)
+        .neq("call_id", call_id)  # exclude any in-progress row for this same call
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    prev_tasks = (prev_rows[0].get("tasks") if prev_rows else []) or []
+    prev_oqs = (prev_rows[0].get("open_questions") if prev_rows else []) or []
+    tasks_with_lifecycle = _apply_lifecycle_on_resolve(
+        prev_tasks, topic.get("tasks", []), call_id
+    )
+    oqs_with_lifecycle = _apply_lifecycle_on_resolve(
+        prev_oqs, topic.get("open_questions", []), call_id
+    )
+
     payload: dict = {
         "topic_id": topic_id,
         "call_id": call_id,
@@ -391,10 +412,10 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
         "importance": topic.get("importance", "medium"),
         "evidence": topic.get("evidence", []),
         "key_terms": topic.get("key_terms", []),
-        "tasks": topic.get("tasks", []),
-        "open_questions": topic.get("open_questions", []),
-        "decisions": topic.get("decisions", []),
-        "status": _status_rollup(topic.get("tasks", [])),
+        "tasks": tasks_with_lifecycle,
+        "open_questions": oqs_with_lifecycle,
+        "decisions": topic.get("decisions", []),  # immutable — no lifecycle
+        "status": _status_rollup(tasks_with_lifecycle),
     }
     if topic.get("transcript_excerpt"):
         payload["transcript_excerpt"] = topic["transcript_excerpt"]

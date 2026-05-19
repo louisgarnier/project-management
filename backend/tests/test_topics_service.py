@@ -339,7 +339,13 @@ def test_persistence_payload_only_has_new_columns(monkeypatch):
         def eq(self, *_a, **_kw):
             return self
 
+        def neq(self, *_a, **_kw):
+            return self
+
         def order(self, *_a, **_kw):
+            return self
+
+        def limit(self, *_a, **_kw):
             return self
 
         def execute(self):
@@ -881,18 +887,24 @@ def test_persist_payload_includes_open_questions_and_decisions(monkeypatch):
     """_persist_topic_update writes open_questions + decisions to the topic_updates payload."""
     captured = {}
 
-    class _FakeExec:
-        def __init__(self, payload):
-            self._payload = payload
-        def execute(self):
-            class _R:
-                data = [{"id": "row-1"}]
-            return _R()
-
     class _FakeTable:
+        """Handles both the prior-row SELECT (returns empty) and the INSERT."""
+        def __init__(self): self._is_select = False
+        def select(self, *_a, **_kw): self._is_select = True; return self
+        def eq(self, *_a, **_kw): return self
+        def neq(self, *_a, **_kw): return self
+        def order(self, *_a, **_kw): return self
+        def limit(self, *_a, **_kw): return self
         def insert(self, payload):
             captured["payload"] = payload
-            return _FakeExec(payload)
+            self._is_select = False
+            return self
+        def execute(self):
+            if self._is_select:
+                class _R: data = []
+            else:
+                class _R: data = [{"id": "row-1"}]
+            return _R()
 
     class _FakeClient:
         def table(self, name):
@@ -906,7 +918,12 @@ def test_persist_payload_includes_open_questions_and_decisions(monkeypatch):
 
     assert "open_questions" in captured["payload"]
     assert "decisions" in captured["payload"]
-    assert captured["payload"]["open_questions"] == topic["open_questions"]
+    # Lifecycle helper adds closed_in_call_id=None to open items, so we check
+    # that the original fields are a subset rather than exact equality.
+    assert len(captured["payload"]["open_questions"]) == len(topic["open_questions"])
+    for oq_out, oq_in in zip(captured["payload"]["open_questions"], topic["open_questions"]):
+        for k, v in oq_in.items():
+            assert oq_out[k] == v, f"open_question field {k!r} mismatch"
     assert captured["payload"]["decisions"] == topic["decisions"]
 
 
@@ -914,16 +931,24 @@ def test_persist_payload_handles_missing_arrays_as_empty(monkeypatch):
     """When extraction returns a topic without the new keys, persist []."""
     captured = {}
 
-    class _FakeExec:
-        def execute(self):
-            class _R:
-                data = [{"id": "row-1"}]
-            return _R()
-
     class _FakeTable:
+        """Handles both the prior-row SELECT (returns empty) and the INSERT."""
+        def __init__(self): self._is_select = False
+        def select(self, *_a, **_kw): self._is_select = True; return self
+        def eq(self, *_a, **_kw): return self
+        def neq(self, *_a, **_kw): return self
+        def order(self, *_a, **_kw): return self
+        def limit(self, *_a, **_kw): return self
         def insert(self, payload):
             captured["payload"] = payload
-            return _FakeExec()
+            self._is_select = False
+            return self
+        def execute(self):
+            if self._is_select:
+                class _R: data = []
+            else:
+                class _R: data = [{"id": "row-1"}]
+            return _R()
 
     class _FakeClient:
         def table(self, name):
@@ -943,16 +968,24 @@ def test_persist_payload_does_not_write_chronology_fields(monkeypatch):
     """Story 15.7 owns chronology_narrative + rag_verification_note. Story 15.5 must not write them."""
     captured = {}
 
-    class _FakeExec:
-        def execute(self):
-            class _R:
-                data = [{"id": "row-1"}]
-            return _R()
-
     class _FakeTable:
+        """Handles both the prior-row SELECT (returns empty) and the INSERT."""
+        def __init__(self): self._is_select = False
+        def select(self, *_a, **_kw): self._is_select = True; return self
+        def eq(self, *_a, **_kw): return self
+        def neq(self, *_a, **_kw): return self
+        def order(self, *_a, **_kw): return self
+        def limit(self, *_a, **_kw): return self
         def insert(self, payload):
             captured["payload"] = payload
-            return _FakeExec()
+            self._is_select = False
+            return self
+        def execute(self):
+            if self._is_select:
+                class _R: data = []
+            else:
+                class _R: data = [{"id": "row-1"}]
+            return _R()
 
     class _FakeClient:
         def table(self, name):

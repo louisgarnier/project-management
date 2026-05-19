@@ -75,3 +75,51 @@ def test_does_not_mutate_input():
     _apply_lifecycle_on_resolve(prev, new, current_call_id=CALL_B)
     assert prev == prev_snapshot
     assert new == new_snapshot
+
+
+def test_persist_topic_update_stamps_closed_in_call_id(monkeypatch):
+    """Integration: _persist_topic_update applies lifecycle helper before insert."""
+    from backend.services import topics_service
+
+    captured = {}
+    call_b = "bbbbbbbb-0000-0000-0000-000000000002"
+
+    class _FakeTbl:
+        def __init__(self, name): self.name = name; self._sel = None; self._eq = {}; self._neq = None
+        def select(self, cols): self._sel = cols; return self
+        def eq(self, k, v): self._eq[k] = v; return self
+        def neq(self, _k, _v): self._neq = (_k, _v); return self
+        def order(self, *a, **kw): return self
+        def limit(self, _n): return self
+        def insert(self, payload):
+            captured["payload"] = payload
+            return self
+        def execute(self):
+            if self.name == "topic_updates" and self._sel and "tasks" in self._sel:
+                # Return prior row with task t1 still open
+                return type("R", (), {"data": [{"tasks": [{"task_id": "t1", "status": "open"}], "open_questions": [], "call_id": "call-A", "created_at": "2026-05-01"}]})()
+            # insert path
+            return type("R", (), {"data": [{"id": "row-new"}]})()
+
+    class _FakeDB:
+        def table(self, n):
+            return _FakeTbl(n)
+
+    monkeypatch.setattr(
+        topics_service, "get_client",
+        lambda: _FakeDB(),
+    )
+
+    topic = {
+        "name": "T",
+        "importance": "high",
+        "key_terms": ["k1"],
+        "evidence": [{"speaker": "s", "quote": "q", "citation": "c"}],
+        "tasks": [{"task_id": "t1", "task": "X", "next_step": "Y", "status": "resolved", "owner": "O"}],
+        "open_questions": [],
+        "decisions": [],
+    }
+    topics_service._persist_topic_update(topic, "topic-1", call_b)
+
+    # Task t1 went open→resolved this call → closed_in_call_id should be call_b
+    assert captured["payload"]["tasks"][0]["closed_in_call_id"] == call_b
