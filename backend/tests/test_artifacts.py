@@ -366,10 +366,10 @@ async def test_generate_artifact_without_topics_has_no_topics_block():
 
 @patch("backend.routers.artifacts.get_client")
 @patch("backend.routers.artifacts.generate_artifact")
-@patch("backend.routers.artifacts.get_project_topics_lineage_context")
-def test_artifact_stream_injects_project_context(mock_ctx, mock_gen, mock_gc):
-    """SSE stream calls the lineage-aware project topics context during generation
-    (Story 10.6 / Fix 6.5: switched from get_project_topics_context).
+@patch("backend.routers.artifacts._assemble_context")
+def test_artifact_stream_injects_project_context(mock_assemble, mock_gen, mock_gc):
+    """SSE stream delegates context assembly to _assemble_context during generation
+    (Story 15.6: inline scope-branches replaced with single _assemble_context call).
     """
     db = MagicMock()
     mock_gc.return_value = db
@@ -388,13 +388,23 @@ def test_artifact_stream_injects_project_context(mock_ctx, mock_gen, mock_gc):
     updates_chain.eq.return_value = updates_chain
     updates_chain.select.return_value = updates_chain
 
-    # pending artifacts
+    # pending artifacts — include artifact_type_id so scope lookup fires
     pending_chain = MagicMock()
     pending_chain.execute.return_value = MagicMock(data=[
-        {"id": "art-1", "prompt_used": "Summarise", "mode": "claude"}
+        {"id": "art-1", "prompt_used": "Summarise", "mode": "claude",
+         "artifact_type_id": TYPE_ID_1}
     ])
     pending_chain.eq.return_value = pending_chain
     pending_chain.select.return_value = pending_chain
+
+    # artifact_types row for scope lookup
+    types_chain = MagicMock()
+    types_chain.execute.return_value = MagicMock(data=[
+        {"id": TYPE_ID_1, "context_scope": "all_project_topics",
+         "model": None, "kind": "llm", "template_id": None, "llm": None}
+    ])
+    types_chain.in_.return_value = types_chain
+    types_chain.select.return_value = types_chain
 
     def table_side(name):
         if name == "calls":
@@ -403,13 +413,19 @@ def test_artifact_stream_injects_project_context(mock_ctx, mock_gen, mock_gc):
             return updates_chain
         if name == "artifacts":
             return pending_chain
+        if name == "artifact_types":
+            return types_chain
         return MagicMock()
 
     db.table.side_effect = table_side
 
-    mock_ctx.return_value = "=== Current Project Topics ===\n• Budget [open / Us / neutral]"
+    assembled_ctx = "=== Project-level context assembled by _assemble_context ==="
+    mock_assemble.return_value = assembled_ctx
 
-    async def fake_gen(prompt, transcript, mode, topics=None):
+    captured = {}
+
+    async def fake_gen(prompt, context, mode, topics=None, model=None):
+        captured["context"] = context
         return "generated content"
     mock_gen.side_effect = fake_gen
 
@@ -418,5 +434,7 @@ def test_artifact_stream_injects_project_context(mock_ctx, mock_gen, mock_gc):
         # Consume all events
         list(response.iter_lines())
 
-    # Verify get_project_topics_context was called with the project_id
-    mock_ctx.assert_called_once_with("proj-1", db)
+    # Verify _assemble_context was called with the right scope, call_id and project_id
+    mock_assemble.assert_called_once_with("all_project_topics", "call-1", "proj-1", db)
+    # Verify generate_artifact received the assembled context string
+    assert captured.get("context") == assembled_ctx

@@ -3,6 +3,7 @@ import json
 from typing import Literal
 
 from backend.database.supabase_client import get_client
+from backend.services.artifact_generation import _assemble_context
 from backend.services.llm_service import generate_artifact
 from backend.services.topics_service import (
     get_project_topics_lineage_context,
@@ -377,10 +378,10 @@ async def stream_artifacts(call_id: str):
                         f"{intro.strip()}\n\n{body.rstrip()}\n\n{closing.strip()}\n"
                     )
                 else:
-                    # kind == 'llm' — existing path unchanged
-                    full_context = transcript
-                    if scope == "project" and project_topics_context:
-                        full_context = f"{transcript}\n\n{project_topics_context}"
+                    # kind == 'llm' — use _assemble_context to build context string
+                    full_context = _assemble_context(
+                        scope, call_id, project_id, supabase
+                    )
                     effective_prompt = (
                         f"Project context:\n{project_context}\n\n{prompt_used}"
                         if project_context

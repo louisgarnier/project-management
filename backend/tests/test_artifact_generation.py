@@ -70,7 +70,7 @@ def test_assemble_context_this_call_topics(monkeypatch):
     ]
     monkeypatch.setattr(
         artifact_generation, "list_call_topics",
-        lambda _call_id: fake_topics
+        lambda _call_id, _db=None: fake_topics
     )
     result = artifact_generation._assemble_context("this_call_topics", "c1", "p1", db=None)
     assert "Topic A" in result
@@ -90,7 +90,7 @@ def test_assemble_context_all_project_topics(monkeypatch):
     ]
     monkeypatch.setattr(
         artifact_generation, "list_project_topics",
-        lambda _project_id: fake_project_topics
+        lambda _project_id, _db=None: fake_project_topics
     )
     result = artifact_generation._assemble_context("all_project_topics", "c1", "p1", db=None)
     assert "Topic B" in result

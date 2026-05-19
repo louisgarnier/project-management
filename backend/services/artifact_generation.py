@@ -6,11 +6,10 @@ in one place; gen_one and any future caller just supplies (scope, call_id,
 project_id) and gets back a ready-to-paste string.
 
 The module-level names `list_call_topics` and `list_project_topics` are sync
-wrappers around the async service functions (via asyncio.run). They are exposed
-as module attributes so tests can monkeypatch them directly.
+DB query helpers that accept the db client. They are exposed as module attributes
+so tests can monkeypatch them directly.
 """
 
-import asyncio
 from typing import Literal
 
 import backend.services.topics_service as _topics_svc
@@ -23,14 +22,82 @@ ContextScope = Literal[
 ]
 
 
-def list_call_topics(call_id: str) -> list[dict]:
-    """Sync wrapper around the async topics_service function."""
-    return asyncio.run(_topics_svc.list_call_topics(call_id))
+def list_call_topics(call_id: str, db=None) -> list[dict]:
+    """Sync DB query for topics belonging to a single call.
+
+    Mirrors the logic of topics_service.list_call_topics without requiring an
+    event loop, so it can be called from inside an async context without
+    asyncio.run() conflicts.
+    """
+    if db is None:
+        from backend.database.supabase_client import get_client
+        db = get_client()
+
+    updates = (
+        db.table("topic_updates")
+        .select(
+            "id, topic_id, summary, status, sentiment, importance, "
+            "evidence, key_terms, tasks, created_at, "
+            "open_questions, decisions, chronology_narrative, rag_verification_note"
+        )
+        .eq("call_id", call_id)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    # Deduplicate: keep only the latest update per topic_id
+    seen: set[str] = set()
+    deduped = []
+    for u in updates:
+        tid = u["topic_id"]
+        if tid not in seen:
+            seen.add(tid)
+            deduped.append(u)
+
+    result = []
+    for u in deduped:
+        topic_rows = (
+            db.table("topics")
+            .select("id, name, calls_open")
+            .eq("id", u["topic_id"])
+            .execute()
+            .data
+        )
+        if topic_rows:
+            t = topic_rows[0]
+            result.append(
+                {
+                    "id": u["id"],
+                    "topic_id": t["id"],
+                    "name": t["name"],
+                    "calls_open": t.get("calls_open"),
+                    "summary": u.get("summary") or "",
+                    "status": u.get("status") or "open",
+                    "sentiment": u.get("sentiment") or "neutral",
+                    "importance": u.get("importance") or "medium",
+                    "evidence": u.get("evidence") or [],
+                    "key_terms": u.get("key_terms") or [],
+                    "tasks": u.get("tasks") or [],
+                    "open_questions": u.get("open_questions") or [],
+                    "decisions": u.get("decisions") or [],
+                    "chronology_narrative": u.get("chronology_narrative"),
+                    "rag_verification_note": u.get("rag_verification_note"),
+                }
+            )
+
+    return result
 
 
-def list_project_topics(project_id: str) -> list[dict]:
-    """Sync wrapper around the async topics_service function."""
-    return asyncio.run(_topics_svc.list_project_topics(project_id))
+def list_project_topics(project_id: str, db=None) -> list[dict]:
+    """Sync DB query for all non-archived project topics with per-call history.
+
+    Delegates to topics_service._get_previous_topics which is already sync.
+    """
+    if db is None:
+        from backend.database.supabase_client import get_client
+        db = get_client()
+    return _topics_svc._get_previous_topics(project_id, db)
 
 
 def _assemble_context(scope: str, call_id: str, project_id: str, db) -> str:
@@ -52,10 +119,10 @@ def _assemble_context(scope: str, call_id: str, project_id: str, db) -> str:
     if scope == "all_call_transcripts":
         return _render_all_call_transcripts(project_id, db)
     if scope == "this_call_topics":
-        topics = list_call_topics(call_id)
+        topics = list_call_topics(call_id, db)
         return _render_call_topics_text(topics)
     if scope == "all_project_topics":
-        topics = list_project_topics(project_id)
+        topics = list_project_topics(project_id, db)
         return _render_project_topics_text(topics)
     raise ValueError(f"unknown context_scope: {scope!r}")
 
