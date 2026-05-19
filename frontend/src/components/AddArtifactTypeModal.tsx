@@ -3,7 +3,14 @@
 import { useState, useEffect } from "react";
 import { projectsAPI, artifactTypesAPI, libraryAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { Project, ArtifactType, LibraryEntry } from "@/types";
+import type { Project, ArtifactType, LibraryEntry, ContextScope } from "@/types";
+
+const CONTEXT_SCOPE_OPTIONS: { value: ContextScope; label: string }[] = [
+  { value: "this_call_transcript",  label: "This call's transcript" },
+  { value: "all_call_transcripts",  label: "All call transcripts (chronological)" },
+  { value: "this_call_topics",      label: "This call's topics" },
+  { value: "all_project_topics",    label: "All project topics (incl. previous calls)" },
+];
 
 type Tab = "library" | "create" | "import";
 
@@ -34,6 +41,7 @@ export default function AddArtifactTypeModal({
   // Create state
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [contextScope, setContextScope] = useState<ContextScope>("this_call_topics");
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -109,7 +117,7 @@ export default function AddArtifactTypeModal({
     setSaving(true);
     setCreateError(null);
     try {
-      const created = await artifactTypesAPI.create(projectId, { name: name.trim(), prompt: prompt.trim() });
+      const created = await artifactTypesAPI.create(projectId, { name: name.trim(), prompt: prompt.trim(), context_scope: contextScope });
       logger.info("Created artifact type", { component: "AddArtifactTypeModal", data: { id: created.id } });
       onCreated(created);
       onAdded?.();
@@ -303,6 +311,22 @@ export default function AddArtifactTypeModal({
                   placeholder="Instructions for Claude when generating this artifact…"
                   required
                 />
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#172b4d", display: "block", marginBottom: 4 }}>
+                    Context scope
+                  </span>
+                  <select
+                    value={contextScope}
+                    onChange={(e) => setContextScope(e.target.value as ContextScope)}
+                    style={{ width: "100%", fontSize: 13, border: "1px solid #dfe1e6", borderRadius: 4, padding: "8px 10px", background: "white", color: "#172b4d" }}
+                  >
+                    {CONTEXT_SCOPE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
               {createError && <p className="text-[12px] text-red-600">{createError}</p>}
               <div className="flex justify-end gap-3 pt-1">

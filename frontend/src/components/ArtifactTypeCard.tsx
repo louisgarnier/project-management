@@ -17,6 +17,13 @@ type Props = {
   hideDefaultToggle?: boolean;
 };
 
+const CONTEXT_SCOPE_OPTIONS: { value: ContextScope; label: string }[] = [
+  { value: "this_call_transcript",  label: "This call's transcript" },
+  { value: "all_call_transcripts",  label: "All call transcripts (chronological)" },
+  { value: "this_call_topics",      label: "This call's topics" },
+  { value: "all_project_topics",    label: "All project topics (incl. previous calls)" },
+];
+
 const KIND_THEME = {
   llm:      { bg: "linear-gradient(90deg, #e9f0ff 0%, #f4f8ff 100%)", accent: "#0052cc", label: "LLM",      icon: "🤖" },
   template: { bg: "linear-gradient(90deg, #e3fcef 0%, #f1fdf8 100%)", accent: "#006644", label: "TEMPLATE", icon: "🔧" },
@@ -30,7 +37,7 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefau
   const [prompt, setPrompt] = useState(type.prompt);
   const [llm, setLlm] = useState<LLMProvider | null>(type.llm);
   const [model, setModel] = useState<string | null>(type.model ?? null);
-  const [contextScope, setContextScope] = useState<ContextScope>(type.context_scope ?? "call");
+  const [contextScope, setContextScope] = useState<ContextScope>(type.context_scope ?? "this_call_topics");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [promptExpanded, setPromptExpanded] = useState(false);
@@ -59,7 +66,7 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefau
     setPrompt(type.prompt);
     setLlm(type.llm);
     setModel(type.model ?? null);
-    setContextScope(type.context_scope ?? "call");
+    setContextScope(type.context_scope ?? "this_call_topics");
     setSaveError(null);
   }
 
@@ -273,7 +280,7 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefau
             <div style={{ background: "#fafbfc", padding: "8px 10px", borderRadius: 4, border: "1px solid #ebecf0" }}>
               <div style={{ fontSize: 9, color: "#97a0af", fontWeight: 600, letterSpacing: ".05em", marginBottom: 2 }}>SCOPE</div>
               <div style={{ color: "#172b4d", fontSize: 12, fontWeight: 600 }}>
-                {(type.context_scope ?? "this_call_topics") === "all_project_topics" || (type.context_scope ?? "this_call_topics") === "all_call_transcripts" ? "Full project" : "Call only"}
+                {CONTEXT_SCOPE_OPTIONS.find((o) => o.value === (type.context_scope ?? "this_call_topics"))?.label ?? "(unknown scope)"}
               </div>
             </div>
 
@@ -317,8 +324,9 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefau
               onChange={(e) => setContextScope(e.target.value as ContextScope)}
               style={{ fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", background: "white", color: "#172b4d" }}
             >
-              <option value="call">Call only</option>
-              <option value="project">Full project</option>
+              {CONTEXT_SCOPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </div>
         )}

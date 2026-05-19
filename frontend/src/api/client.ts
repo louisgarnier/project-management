@@ -198,7 +198,7 @@ export const filesAPI = {
 export const artifactTypesAPI = {
   list: (projectId: string) =>
     proxyFetch<ArtifactType[]>(`/api/projects/${projectId}/artifact-types`),
-  create: (projectId: string, data: { name: string; prompt: string; model?: string | null }) =>
+  create: (projectId: string, data: { name: string; prompt: string; model?: string | null; context_scope?: ContextScope }) =>
     proxyFetch<ArtifactType>(`/api/projects/${projectId}/artifact-types`, {
       method: "POST",
       body: JSON.stringify(data),
