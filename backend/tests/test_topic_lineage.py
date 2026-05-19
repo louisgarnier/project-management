@@ -256,11 +256,18 @@ def test_evidence_block_includes_ancestor_provenance_line():
         },
         updates_by_topic_id={
             "a": [{"topic_id": "a", "call_id": "call-1", "summary": "REST raised",
-                   "transcript_excerpt": "we picked REST", "follow_up_items": ["spike"],
-                   "decisions": [], "created_at": "2026-04-01T10:00:00Z"}],
+                   "transcript_excerpt": "we picked REST",
+                   "tasks": [{"task": "spike", "next_step": "", "status": "open", "owner": ""}],
+                   "decisions": [], "open_questions": [],
+                   "chronology_narrative": None, "rag_verification_note": None,
+                   "created_at": "2026-04-01T10:00:00Z"}],
             "c": [{"topic_id": "c", "call_id": "call-2", "summary": "Merged API",
-                   "transcript_excerpt": "consolidating endpoints", "follow_up_items": [],
-                   "decisions": ["go REST"], "created_at": "2026-04-08T10:00:00Z"}],
+                   "transcript_excerpt": "consolidating endpoints",
+                   "tasks": [],
+                   "decisions": [{"id": "d-1", "text": "go REST", "added_in_call_id": "call-2"}],
+                   "open_questions": [],
+                   "chronology_narrative": None, "rag_verification_note": None,
+                   "created_at": "2026-04-08T10:00:00Z"}],
         },
         calls_by_id={
             "call-1": {"id": "call-1", "title": "Kickoff"},
@@ -276,7 +283,7 @@ def test_evidence_block_includes_ancestor_provenance_line():
     assert 'Kickoff' in block
     assert 'from archived topic: REST API' in block
     assert 'we picked REST' in block
-    assert 'spike' in block  # follow-up preserved
+    assert 'spike' in block  # action item preserved (from tasks[].task)
     # Call 2 section — from current topic → NO provenance line
     assert 'Review' in block
     assert 'consolidating endpoints' in block
@@ -404,17 +411,23 @@ def test_build_block_for_merged_topic_includes_call1_excerpt_from_archived_sourc
             "a": [{"topic_id": "a", "call_id": "call-1",
                    "summary": "REST raised",
                    "transcript_excerpt": "TEAM PICKED REST IN CALL ONE",
-                   "follow_up_items": ["spike"], "decisions": [],
+                   "tasks": [{"task": "spike", "next_step": "", "status": "open", "owner": ""}],
+                   "decisions": [], "open_questions": [],
+                   "chronology_narrative": None, "rag_verification_note": None,
                    "created_at": "2026-04-01T10:00:00Z"}],
             "b": [{"topic_id": "b", "call_id": "call-1",
                    "summary": "GraphQL considered",
                    "transcript_excerpt": "GRAPHQL MENTIONED IN CALL ONE",
-                   "follow_up_items": [], "decisions": [],
+                   "tasks": [], "decisions": [], "open_questions": [],
+                   "chronology_narrative": None, "rag_verification_note": None,
                    "created_at": "2026-04-01T10:30:00Z"}],
             "c": [{"topic_id": "c", "call_id": "call-2",
                    "summary": "Merged API",
                    "transcript_excerpt": "CALL TWO CONSOLIDATION",
-                   "follow_up_items": [], "decisions": ["go REST"],
+                   "tasks": [],
+                   "decisions": [{"id": "d-1", "text": "go REST", "added_in_call_id": "call-2"}],
+                   "open_questions": [],
+                   "chronology_narrative": None, "rag_verification_note": None,
                    "created_at": "2026-04-08T10:00:00Z"}],
         },
         calls_by_id={

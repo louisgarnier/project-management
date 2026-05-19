@@ -580,7 +580,8 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
             db.table("topic_updates")
             .select(
                 "summary, status, sentiment, importance, "
-                "evidence, key_terms, tasks"
+                "evidence, key_terms, tasks, "
+                "open_questions, decisions, chronology_narrative, rag_verification_note"
             )
             .eq("topic_id", t["id"])
             .order("created_at", desc=True)
@@ -601,10 +602,12 @@ def _get_previous_topics(project_id: str, db) -> list[dict]:
                 "evidence": latest.get("evidence", []),
                 "key_terms": latest.get("key_terms", []),
                 "tasks": latest.get("tasks", []),
+                "open_questions": latest.get("open_questions") or [],
+                "decisions": latest.get("decisions") or [],
+                "chronology_narrative": latest.get("chronology_narrative"),
+                "rag_verification_note": latest.get("rag_verification_note"),
                 # Legacy keys kept as empty defaults for frontend compat
                 "follow_up_items": [],
-                "decisions": [],
-                "open_questions": [],
                 "is_parked": False,
                 "rationale": "",
                 "owner": "Us",
@@ -2140,7 +2143,8 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
             updates = (
                 db.table("topic_updates")
                 .select(
-                    "topic_id, summary, status, sentiment, importance, evidence, key_terms, tasks"
+                    "topic_id, summary, status, sentiment, importance, evidence, key_terms, tasks, "
+                    "open_questions, decisions, chronology_narrative, rag_verification_note"
                 )
                 .eq("call_id", call_id)
                 .execute()
@@ -2217,7 +2221,8 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
                     updates = (
                         db.table("topic_updates")
                         .select(
-                            "topic_id, summary, status, sentiment, importance, evidence, key_terms, tasks"
+                            "topic_id, summary, status, sentiment, importance, evidence, key_terms, tasks, "
+                            "open_questions, decisions, chronology_narrative, rag_verification_note"
                         )
                         .eq("call_id", call_id)
                         .execute()
@@ -2303,7 +2308,8 @@ async def list_call_topics(call_id: str) -> list[dict]:
         db.table("topic_updates")
         .select(
             "id, topic_id, summary, status, sentiment, importance, "
-            "evidence, key_terms, tasks, created_at"
+            "evidence, key_terms, tasks, created_at, "
+            "open_questions, decisions, chronology_narrative, rag_verification_note"
         )
         .eq("call_id", call_id)
         .order("created_at", desc=True)
@@ -2344,10 +2350,12 @@ async def list_call_topics(call_id: str) -> list[dict]:
                     "evidence": u.get("evidence") or [],
                     "key_terms": u.get("key_terms") or [],
                     "tasks": u.get("tasks") or [],
+                    "open_questions": u.get("open_questions") or [],
+                    "decisions": u.get("decisions") or [],
+                    "chronology_narrative": u.get("chronology_narrative"),
+                    "rag_verification_note": u.get("rag_verification_note"),
                     # Legacy keys kept as empty defaults for frontend compat
                     "follow_up_items": [],
-                    "decisions": [],
-                    "open_questions": [],
                     "is_parked": False,
                     "rationale": "",
                     "owner": "Us",
@@ -2476,7 +2484,8 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
             db.table("topic_updates")
             .select(
                 "summary, status, sentiment, "
-                "evidence, key_terms, tasks"
+                "evidence, key_terms, tasks, "
+                "open_questions, decisions, chronology_narrative, rag_verification_note"
             )
             .eq("topic_id", t["id"])
             .order("created_at", desc=True)
@@ -2496,9 +2505,12 @@ def list_topics_prior_to_call(call_id: str, project_id: str, db=None) -> list[di
                 "evidence": latest.get("evidence", []),
                 "key_terms": latest.get("key_terms", []),
                 "tasks": latest.get("tasks", []),
+                "open_questions": latest.get("open_questions") or [],
+                "decisions": latest.get("decisions") or [],
+                "chronology_narrative": latest.get("chronology_narrative"),
+                "rag_verification_note": latest.get("rag_verification_note"),
                 # Legacy keys kept as empty defaults for frontend compat
                 "follow_up_items": [],
-                "decisions": [],
                 "owner": "Us",
                 "archived_later": archived_later,
                 "merged_into_name": merged_into_name,
@@ -2630,7 +2642,8 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
             db.table("topic_updates")
             .select(
                 "topic_id, call_id, summary, status, sentiment, importance, "
-                "transcript_excerpt, evidence, key_terms, tasks"
+                "transcript_excerpt, evidence, key_terms, tasks, "
+                "open_questions, decisions, chronology_narrative, rag_verification_note"
             )
             .in_("topic_id", topic_ids)
             .in_("call_id", call_ids)
@@ -2698,9 +2711,12 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
                     "evidence": u.get("evidence") or [],
                     "key_terms": u.get("key_terms") or [],
                     "tasks": u.get("tasks") or [],
+                    "open_questions": u.get("open_questions") or [],
+                    "decisions": u.get("decisions") or [],
+                    "chronology_narrative": u.get("chronology_narrative"),
+                    "rag_verification_note": u.get("rag_verification_note"),
                     # Legacy keys kept as empty defaults for frontend compat
                     "follow_up_items": [],
-                    "decisions": [],
                     "owner": "Us",
                 }
             else:

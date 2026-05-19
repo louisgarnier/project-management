@@ -70,7 +70,8 @@ def get_lineage_topic_updates(topic_id: str, db) -> list[dict]:
     rows = (
         db.table("topic_updates")
         .select("topic_id, call_id, summary, transcript_excerpt, "
-                "follow_up_items, decisions, status, owner, sentiment, created_at")
+                "tasks, decisions, open_questions, status, created_at, "
+                "chronology_narrative, rag_verification_note")
         .in_("topic_id", lineage_ids)
         .order("created_at")
         .execute()
@@ -111,10 +112,10 @@ def build_lineage_evidence_block(topic_name: str, topic_id: str, db) -> str:
         (from archived topic: {source_topic_name})    # only when row came from ancestor
         Transcript: {transcript_excerpt}
         Summary: {summary}
-        Follow-ups from this call:
-          - {item}
+        Action items from this call:
+          - {task.task}
         Decisions from this call:
-          - {decision}
+          - {decision.text}
 
     When there are no lineage rows, returns a single "(No historical excerpts
     available)" line so prompts don't break.
@@ -141,16 +142,18 @@ def build_lineage_evidence_block(topic_name: str, topic_id: str, db) -> str:
             lines.append(f'Transcript: {r["transcript_excerpt"]}')
         if r.get("summary"):
             lines.append(f'Summary: {r["summary"]}')
-        follow_ups = r.get("follow_up_items") or []
-        if follow_ups:
-            lines.append("Follow-ups from this call:")
-            for item in follow_ups:
-                lines.append(f"  - {item}")
+        tasks = r.get("tasks") or []
+        if tasks:
+            lines.append("Action items from this call:")
+            for task in tasks:
+                task_text = task.get("task", "") if isinstance(task, dict) else str(task)
+                lines.append(f"  - {task_text}")
         decisions = r.get("decisions") or []
         if decisions:
             lines.append("Decisions from this call:")
             for d in decisions:
-                lines.append(f"  - {d}")
+                d_text = d.get("text", "") if isinstance(d, dict) else str(d)
+                lines.append(f"  - {d_text}")
     return "\n".join(lines)
 
 
