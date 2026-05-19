@@ -229,15 +229,16 @@ def _validate_topic(t: dict) -> tuple[bool, str]:
                 return False, f"evidence[{i}].{k} is empty"
 
     tasks = t.get("tasks") or []
-    if not isinstance(tasks, list):
-        return False, "tasks must be a list"
+    if not isinstance(tasks, list) or not tasks:
+        return False, "tasks must be a non-empty list (manufacture a tracking task if no obvious action)"
     for i, task in enumerate(tasks):
         if not isinstance(task, dict):
             return False, f"tasks[{i}] is not a dict"
         if not (task.get("task") or "").strip():
             return False, f"tasks[{i}].task is empty"
-        if not (task.get("next_step") or "").strip():
-            return False, f"tasks[{i}].next_step is empty"
+        # next_step is OPTIONAL — empty allowed (e.g. tracking tasks).
+        if "next_step" in task and not isinstance(task.get("next_step"), str):
+            return False, f"tasks[{i}].next_step must be a string"
         if task.get("status") not in _STATUS_VALUES:
             return False, f"tasks[{i}].status must be in {sorted(_STATUS_VALUES)}, got {task.get('status')!r}"
         if "owner" in task and not isinstance(task.get("owner"), str):
@@ -265,9 +266,7 @@ def _validate_topic(t: dict) -> tuple[bool, str]:
         if not (d.get("text") or "").strip():
             return False, f"decisions[{i}].text is empty"
 
-    if not (tasks or open_questions or decisions):
-        return False, "topic must have at least one of tasks / open_questions / decisions"
-
+    # tasks >=1 is already enforced above; OQ + decisions are optional bonuses.
     return True, ""
 
 

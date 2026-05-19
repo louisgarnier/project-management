@@ -89,11 +89,22 @@ summary that paraphrases beyond what the transcript explicitly says, STOP and ti
 [RUBRIC — what counts as a topic]
 A topic is valid only when ALL of these are true:
 1. EVIDENCE — you can quote >=1 verbatim line from the transcript that anchors it (with speaker).
-2. SUBSTANCE — produces at least one concrete artifact: >=1 task (commitment to act),
-   >=1 open_question (uncertainty to resolve), or >=1 decision (something explicitly agreed).
+2. ACTION — produces >=1 task. Every topic must have at least one task. If the transcript shows
+   no obvious action for an otherwise-real topic, MANUFACTURE a tracking task so the topic is
+   visible for next call (see [TRACKING TASK] section below). Open questions and decisions are
+   OPTIONAL bonuses on top of the mandatory task(s).
 3. SHARPNESS — the topic name is <= 8 words, names something specific (a system, person, decision).
 
-If you cannot produce evidence AND (at least 1 task OR 1 open_question OR 1 decision), DROP the candidate.
+If you cannot produce evidence AND >=1 task (real or manufactured tracking task), DROP the candidate.
+
+[TRACKING TASK — when no clear action exists in the transcript]
+For topics that were genuinely discussed but produced no obvious commitment-to-act (e.g. "the team
+parked X until Y", "we talked about Z but didn't decide anything", "background context on W"),
+emit one tracking task instead of dropping the topic. Format:
+  { "task": "Track [short topic phrase]", "next_step": "", "owner": "", "status": "open" }
+The task name is "Track" followed by a 2-4 word topic reference. Empty next_step and owner are
+fine — they signal "no specific action yet; review in next call". This keeps the topic visible
+for the PMO without forcing the model to invent a fake commitment.
 
 [DUAL-CLASSIFY RULE — critical]
 An action phrased as "investigate / verify / check / confirm / find out / look into" goes into
@@ -119,8 +130,8 @@ Example — "We need to check if EDS+ supports the new memory schema" becomes:
   ],
   "tasks": [
     {
-      "task": "short — 2-6 words",
-      "next_step": "one sentence — what specifically happens next",
+      "task": "short — 2-6 words (use 'Track [topic]' for tracking tasks)",
+      "next_step": "one sentence — what specifically happens next. OPTIONAL — empty string allowed when no specific next step is known yet (e.g. tracking tasks).",
       "status": "open" | "in_progress" | "resolved",
       "owner": "Name from the transcript, or empty string if unsure"
     }
@@ -144,17 +155,18 @@ Example — "We need to check if EDS+ supports the new memory schema" becomes:
 - importance (required, one of high/medium/low)
 - key_terms (required, >=1 entries)
 - evidence (required, >=1 entries)
-- tasks (required — array, may be empty)
+- tasks (required — >=1 entries; if no obvious action exists, manufacture a "Track [topic]" task per [TRACKING TASK] above)
 - open_questions (required — array, may be empty)
 - decisions (required — array, may be empty)
-- At least one of tasks/open_questions/decisions must be non-empty.
-- task.task / task.next_step / task.status (required per task)
+- task.task (required, non-empty)
+- task.status (required, one of open/in_progress/resolved)
+- task.next_step (OPTIONAL — empty string allowed)
 - task.owner (OPTIONAL — empty string allowed)
-- open_question.text (required) / .status (required, defaults to "open")
+- open_question.text (required) / .status (required)
 - open_question.owner (OPTIONAL — empty string allowed)
 - decision.text (required, non-empty)
 
-A topic missing evidence, OR with all three of tasks/open_questions/decisions empty, will be REJECTED.
+A topic missing evidence OR with zero tasks will be REJECTED.
 
 [KEY TERMS — what to extract]
 Produce as many anchoring terms as the topic supports — acronyms, proper nouns, distinctive

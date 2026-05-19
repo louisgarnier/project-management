@@ -64,15 +64,13 @@ def test_validate_topic_rejects_missing_evidence():
 
 
 def test_validate_topic_rejects_missing_tasks():
-    """v3: tasks=[] alone is fine; all three arrays empty is what triggers rejection.
-    This test exercises the all-three-empty case (the rejection path)."""
+    """v3 (tightened): tasks=[] alone is enough to reject, regardless of OQ/decisions.
+    Every topic must have >=1 task (manufacture a tracking task if no obvious action)."""
     t = _valid_topic()
     t["tasks"] = []
-    t["open_questions"] = []
-    t["decisions"] = []
     ok, reason = topics_service._validate_topic(t)
     assert not ok
-    assert any(k in reason for k in ("tasks", "open_questions", "decisions"))
+    assert "tasks" in reason
 
 
 def test_validate_topic_rejects_missing_key_terms():
@@ -91,12 +89,28 @@ def test_validate_topic_rejects_bad_importance():
     assert "importance" in reason
 
 
-def test_validate_topic_rejects_task_missing_next_step():
+def test_validate_topic_accepts_task_with_empty_next_step():
+    """v3 (tightened): next_step is OPTIONAL — empty allowed (e.g. tracking tasks).
+    Replaces the older test_validate_topic_rejects_task_missing_next_step."""
     t = _valid_topic()
     t["tasks"][0]["next_step"] = ""
     ok, reason = topics_service._validate_topic(t)
-    assert not ok
-    assert "next_step" in reason or "task" in reason
+    assert ok, reason
+
+
+def test_validate_topic_accepts_tracking_task_with_blank_owner_and_next_step():
+    """Tracking task pattern: 'Track [topic]' with empty next_step + empty owner is fully valid."""
+    t = _valid_topic()
+    t["tasks"] = [
+        {
+            "task": "Track Mac retirement decision",
+            "next_step": "",
+            "owner": "",
+            "status": "open",
+        }
+    ]
+    ok, reason = topics_service._validate_topic(t)
+    assert ok, reason
 
 
 # ── _status_rollup derives topic-level status from tasks ──────────────────
@@ -146,23 +160,27 @@ def test_validate_topic_accepts_populated_open_questions_and_decisions():
     assert ok, reason
 
 
-def test_validate_topic_accepts_empty_tasks_when_decisions_present():
-    """Decision-only topic is valid — no actionable task needed when something was decided."""
+def test_validate_topic_rejects_empty_tasks_even_when_decisions_present():
+    """v3 (tightened): tasks are mandatory — a decision-only topic is REJECTED.
+    Inverted from the earlier test_validate_topic_accepts_empty_tasks_when_decisions_present.
+    Reason: PMO needs a task per topic; force-fit a tracking task if no obvious action."""
     t = _valid_v3_topic()
     t["tasks"] = []
     ok, reason = topics_service._validate_topic(t)
-    assert ok, reason
+    assert not ok
+    assert "tasks" in reason
 
 
 def test_validate_topic_rejects_all_three_arrays_empty():
-    """A topic with evidence but NO task, NO open question, NO decision is dropped."""
+    """A topic with evidence but NO task is dropped. (OQ + decisions are optional bonuses
+    but cannot substitute for tasks under the tightened v3 rules.)"""
     t = _valid_topic()
     t["tasks"] = []
     t["open_questions"] = []
     t["decisions"] = []
     ok, reason = topics_service._validate_topic(t)
     assert not ok
-    assert any(k in reason for k in ("tasks", "open_questions", "decisions"))
+    assert "tasks" in reason
 
 
 def test_validate_topic_rejects_open_question_missing_text():
