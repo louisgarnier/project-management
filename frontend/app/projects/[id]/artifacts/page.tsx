@@ -7,11 +7,14 @@ import { logger } from "@/utils/logger";
 import type { ArtifactType, LLMProvider, Project, SystemSettings } from "@/types";
 import ArtifactTypeCard from "@/components/ArtifactTypeCard";
 import AddArtifactTypeModal from "@/components/AddArtifactTypeModal";
+import ProjectTrackerTab from "@/components/ProjectTrackerTab";
 
 
 export default function ArtifactsPage() {
   const params = useParams<{ id: string }>();
   const projectId = params.id;
+
+  const [activeTab, setActiveTab] = useState<"generate" | "tracker">("generate");
 
   const [types, setTypes] = useState<ArtifactType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,164 +111,202 @@ export default function ArtifactsPage() {
         <h1 className="text-[18px] font-bold text-[#172b4d]">Artifact Types</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5">
-        {loading ? (
-          <p className="text-[13px] text-[#5e6c84]">Loading…</p>
-        ) : error ? (
-          <div className="flex flex-col items-center gap-3 py-12">
-            <p className="text-[13px] text-red-600">{error}</p>
-            <button onClick={load} className="text-[13px] text-[#0052cc] underline">Retry</button>
-          </div>
-        ) : (
-          <>
-            {/* ── Project Defaults ── */}
-            {project && (
-              <div style={{ background: "white", padding: "14px 18px", border: "1px solid #dfe1e6", borderRadius: 6, marginBottom: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <h3 style={{ fontSize: 13, fontWeight: 700, color: "#172b4d", margin: 0 }}>🎯 Project Defaults</h3>
-                  <span style={{ fontSize: 10, color: "#97a0af" }}>
-                    Cascade: card&apos;s own → this project default → system default
-                  </span>
-                </div>
-                <div style={{ display: "flex", gap: 12, alignItems: "end" }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: 10, color: "#5e6c84", display: "block", marginBottom: 3 }}>PROVIDER</label>
-                    <select
-                      value={project.default_llm ?? "inherit"}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === "inherit") {
-                          handleUpdateDefaultLlm(null, null);
-                        } else {
-                          handleUpdateDefaultLlm(v as LLMProvider, v === "openrouter" ? (project.default_model ?? defaultModel) : null);
-                        }
-                      }}
-                      disabled={savingLlm}
-                      style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", fontFamily: "inherit", width: "100%" }}
-                    >
-                      <option value="inherit">Inherit system</option>
-                      <option value="openrouter">OpenRouter ⭐</option>
-                      <option value="groq">Groq (direct)</option>
-                      <option value="deepseek">DeepSeek (direct)</option>
-                      <option value="claude">Claude (direct)</option>
-                      <option value="openai">OpenAI (direct)</option>
-                    </select>
+      {/* ── 2-sub-tab nav ── */}
+      <div style={{ display: "flex", gap: 16, borderBottom: "1px solid #dfe1e6", paddingLeft: 20, paddingRight: 20, background: "white", flexShrink: 0 }}>
+        <button
+          onClick={() => setActiveTab("generate")}
+          style={{
+            padding: "8px 0",
+            background: "transparent",
+            border: "none",
+            borderBottom: activeTab === "generate" ? "2px solid #0052cc" : "2px solid transparent",
+            color: activeTab === "generate" ? "#0052cc" : "#42526e",
+            fontWeight: activeTab === "generate" ? 600 : 500,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          Generate artifacts
+        </button>
+        <button
+          onClick={() => setActiveTab("tracker")}
+          style={{
+            padding: "8px 0",
+            background: "transparent",
+            border: "none",
+            borderBottom: activeTab === "tracker" ? "2px solid #0052cc" : "2px solid transparent",
+            color: activeTab === "tracker" ? "#0052cc" : "#42526e",
+            fontWeight: activeTab === "tracker" ? 600 : 500,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          Project tracker
+        </button>
+      </div>
+
+      {activeTab === "tracker" ? (
+        <ProjectTrackerTab projectId={projectId} />
+      ) : (
+        <div className="flex-1 overflow-y-auto p-5">
+          {loading ? (
+            <p className="text-[13px] text-[#5e6c84]">Loading…</p>
+          ) : error ? (
+            <div className="flex flex-col items-center gap-3 py-12">
+              <p className="text-[13px] text-red-600">{error}</p>
+              <button onClick={load} className="text-[13px] text-[#0052cc] underline">Retry</button>
+            </div>
+          ) : (
+            <>
+              {/* ── Project Defaults ── */}
+              {project && (
+                <div style={{ background: "white", padding: "14px 18px", border: "1px solid #dfe1e6", borderRadius: 6, marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "#172b4d", margin: 0 }}>🎯 Project Defaults</h3>
+                    <span style={{ fontSize: 10, color: "#97a0af" }}>
+                      Cascade: card&apos;s own → this project default → system default
+                    </span>
                   </div>
-                  {project.default_llm === "openrouter" && (
-                    <div style={{ flex: 2 }}>
-                      <label style={{ fontSize: 10, color: "#5e6c84", display: "block", marginBottom: 3 }}>MODEL</label>
-                      <input
-                        type="text"
-                        value={defaultModel ?? ""}
-                        onChange={(e) => setDefaultModel(e.target.value)}
-                        onBlur={() => handleUpdateDefaultLlm("openrouter", defaultModel)}
-                        placeholder="e.g. deepseek/deepseek-v3.2"
-                        style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", fontFamily: "ui-monospace, Menlo, monospace", width: "100%", boxSizing: "border-box" }}
-                      />
+                  <div style={{ display: "flex", gap: 12, alignItems: "end" }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 10, color: "#5e6c84", display: "block", marginBottom: 3 }}>PROVIDER</label>
+                      <select
+                        value={project.default_llm ?? "inherit"}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "inherit") {
+                            handleUpdateDefaultLlm(null, null);
+                          } else {
+                            handleUpdateDefaultLlm(v as LLMProvider, v === "openrouter" ? (project.default_model ?? defaultModel) : null);
+                          }
+                        }}
+                        disabled={savingLlm}
+                        style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", fontFamily: "inherit", width: "100%" }}
+                      >
+                        <option value="inherit">Inherit system</option>
+                        <option value="openrouter">OpenRouter ⭐</option>
+                        <option value="groq">Groq (direct)</option>
+                        <option value="deepseek">DeepSeek (direct)</option>
+                        <option value="claude">Claude (direct)</option>
+                        <option value="openai">OpenAI (direct)</option>
+                      </select>
+                    </div>
+                    {project.default_llm === "openrouter" && (
+                      <div style={{ flex: 2 }}>
+                        <label style={{ fontSize: 10, color: "#5e6c84", display: "block", marginBottom: 3 }}>MODEL</label>
+                        <input
+                          type="text"
+                          value={defaultModel ?? ""}
+                          onChange={(e) => setDefaultModel(e.target.value)}
+                          onBlur={() => handleUpdateDefaultLlm("openrouter", defaultModel)}
+                          placeholder="e.g. deepseek/deepseek-v3.2"
+                          style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", fontFamily: "ui-monospace, Menlo, monospace", width: "100%", boxSizing: "border-box" }}
+                        />
+                      </div>
+                    )}
+                    {savingLlm && <span style={{ fontSize: 11, color: "#5e6c84" }}>Saving…</span>}
+                  </div>
+                  {llmSaveError && (
+                    <p style={{ fontSize: 11, color: "#ae2a19", marginTop: 6 }}>{llmSaveError}</p>
+                  )}
+                  {systemSettings && (
+                    <div style={{ marginTop: 10, padding: "6px 10px", background: "#eef5ff", borderLeft: "3px solid #0052cc", borderRadius: 4, fontSize: 10, color: "#0052cc" }}>
+                      <strong>System default:</strong> {systemSettings.default_llm}{systemSettings.default_model ? ` · ${systemSettings.default_model}` : ""}
+                      {!project.default_llm && " — this project inherits it"}
                     </div>
                   )}
-                  {savingLlm && <span style={{ fontSize: 11, color: "#5e6c84" }}>Saving…</span>}
                 </div>
-                {llmSaveError && (
-                  <p style={{ fontSize: 11, color: "#ae2a19", marginTop: 6 }}>{llmSaveError}</p>
-                )}
-                {systemSettings && (
-                  <div style={{ marginTop: 10, padding: "6px 10px", background: "#eef5ff", borderLeft: "3px solid #0052cc", borderRadius: 4, fontSize: 10, color: "#0052cc" }}>
-                    <strong>System default:</strong> {systemSettings.default_llm}{systemSettings.default_model ? ` · ${systemSettings.default_model}` : ""}
-                    {!project.default_llm && " — this project inherits it"}
+              )}
+
+              {/* ── Project context ── */}
+              <div className="border border-[#dfe1e6] rounded-lg p-4 bg-white mb-6">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-[13px] font-bold text-[#172b4d]">Project context</h2>
+                  {contextSaving && <span className="text-[10px] text-[#5e6c84]">Saving…</span>}
+                </div>
+                <p className="text-[11px] text-[#5e6c84] mb-2">
+                  Prepended to every prompt for this project — artifact generation, topic extraction, and topic merge.
+                </p>
+                <textarea
+                  value={projectContext}
+                  onChange={(e) => setProjectContext(e.target.value)}
+                  onBlur={handleContextBlur}
+                  rows={4}
+                  placeholder="e.g. This is a software project with ACME Corp. The client is a mid-size e-commerce company focused on improving their checkout flow. Always use formal language."
+                  className="w-full text-[12px] text-[#172b4d] border border-[#dfe1e6] rounded px-3 py-2 resize-y focus:outline-none focus:border-[#0052cc] placeholder-[#97a0af]"
+                />
+              </div>
+
+              {/* ── Tier 1 — Workflow Prompts ── */}
+              <div style={{ margin: "24px 0 8px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#5e6c84", letterSpacing: ".05em", marginBottom: 4 }}>
+                  ⚙️ Tier 1 — Workflow Prompts
+                </div>
+                <div style={{ fontSize: 11, color: "#97a0af", marginBottom: 10 }}>
+                  System-essential prompts the extraction / merge / verification pipeline uses. 4 per project. Edit to customize, Reset to restore canonical.
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                {workflowPrompts.map((t) => (
+                  <ArtifactTypeCard
+                    key={t.id}
+                    type={t}
+                    projectDefaultLlm={project?.default_llm ?? null}
+                    projectDefaultModel={defaultModel || null}
+                    systemSettings={systemSettings}
+                    onDelete={() => {}}
+                    onUpdate={handleUpdate}
+                    hideDelete
+                    hideDefaultToggle
+                  />
+                ))}
+                {workflowPrompts.length === 0 && (
+                  <div style={{ padding: "16px 0", fontSize: 12, color: "#97a0af", textAlign: "center" }}>
+                    No workflow prompts found for this project. Run migration 021 + backend startup to seed them.
                   </div>
                 )}
               </div>
-            )}
 
-            {/* ── Project context ── */}
-            <div className="border border-[#dfe1e6] rounded-lg p-4 bg-white mb-6">
-              <div className="flex items-center justify-between mb-1">
-                <h2 className="text-[13px] font-bold text-[#172b4d]">Project context</h2>
-                {contextSaving && <span className="text-[10px] text-[#5e6c84]">Saving…</span>}
-              </div>
-              <p className="text-[11px] text-[#5e6c84] mb-2">
-                Prepended to every prompt for this project — artifact generation, topic extraction, and topic merge.
-              </p>
-              <textarea
-                value={projectContext}
-                onChange={(e) => setProjectContext(e.target.value)}
-                onBlur={handleContextBlur}
-                rows={4}
-                placeholder="e.g. This is a software project with ACME Corp. The client is a mid-size e-commerce company focused on improving their checkout flow. Always use formal language."
-                className="w-full text-[12px] text-[#172b4d] border border-[#dfe1e6] rounded px-3 py-2 resize-y focus:outline-none focus:border-[#0052cc] placeholder-[#97a0af]"
-              />
-            </div>
-
-            {/* ── Tier 1 — Workflow Prompts ── */}
-            <div style={{ margin: "24px 0 8px" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#5e6c84", letterSpacing: ".05em", marginBottom: 4 }}>
-                ⚙️ Tier 1 — Workflow Prompts
-              </div>
-              <div style={{ fontSize: 11, color: "#97a0af", marginBottom: 10 }}>
-                System-essential prompts the extraction / merge / verification pipeline uses. 4 per project. Edit to customize, Reset to restore canonical.
-              </div>
-            </div>
-            <div className="flex flex-col gap-3">
-              {workflowPrompts.map((t) => (
-                <ArtifactTypeCard
-                  key={t.id}
-                  type={t}
-                  projectDefaultLlm={project?.default_llm ?? null}
-                  projectDefaultModel={defaultModel || null}
-                  systemSettings={systemSettings}
-                  onDelete={() => {}}
-                  onUpdate={handleUpdate}
-                  hideDelete
-                  hideDefaultToggle
-                />
-              ))}
-              {workflowPrompts.length === 0 && (
-                <div style={{ padding: "16px 0", fontSize: 12, color: "#97a0af", textAlign: "center" }}>
-                  No workflow prompts found for this project. Run migration 021 + backend startup to seed them.
+              {/* ── Tier 2 — Artifact Prompts ── */}
+              <div style={{ margin: "24px 0 8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#5e6c84", letterSpacing: ".05em", marginBottom: 4 }}>
+                    📝 Tier 2 — Artifact Prompts
+                  </div>
+                  <div style={{ fontSize: 11, color: "#97a0af" }}>
+                    Library-backed or custom artifacts this project generates. Add from library, publish yours to the library, or create custom.
+                  </div>
                 </div>
-              )}
-            </div>
-
-            {/* ── Tier 2 — Artifact Prompts ── */}
-            <div style={{ margin: "24px 0 8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#5e6c84", letterSpacing: ".05em", marginBottom: 4 }}>
-                  📝 Tier 2 — Artifact Prompts
-                </div>
-                <div style={{ fontSize: 11, color: "#97a0af" }}>
-                  Library-backed or custom artifacts this project generates. Add from library, publish yours to the library, or create custom.
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(true)}
+                  style={{ fontSize: 13, fontWeight: 600, color: "white", background: "#0052cc", border: "none", borderRadius: 6, padding: "8px 14px", cursor: "pointer" }}
+                >
+                  + Add artifact type
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowModal(true)}
-                style={{ fontSize: 13, fontWeight: 600, color: "white", background: "#0052cc", border: "none", borderRadius: 6, padding: "8px 14px", cursor: "pointer" }}
-              >
-                + Add artifact type
-              </button>
-            </div>
-            <div className="flex flex-col gap-3 pb-6">
-              {artifactTypes.map((t) => (
-                <ArtifactTypeCard
-                  key={t.id}
-                  type={t}
-                  projectDefaultLlm={project?.default_llm ?? null}
-                  projectDefaultModel={defaultModel || null}
-                  systemSettings={systemSettings}
-                  onDelete={handleDelete}
-                  onUpdate={handleUpdate}
-                />
-              ))}
-              {artifactTypes.length === 0 && (
-                <div style={{ padding: "16px 0", fontSize: 12, color: "#97a0af", textAlign: "center" }}>
-                  No artifact types. Click &quot;+ Add artifact type&quot; to browse the library.
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
+              <div className="flex flex-col gap-3 pb-6">
+                {artifactTypes.map((t) => (
+                  <ArtifactTypeCard
+                    key={t.id}
+                    type={t}
+                    projectDefaultLlm={project?.default_llm ?? null}
+                    projectDefaultModel={defaultModel || null}
+                    systemSettings={systemSettings}
+                    onDelete={handleDelete}
+                    onUpdate={handleUpdate}
+                  />
+                ))}
+                {artifactTypes.length === 0 && (
+                  <div style={{ padding: "16px 0", fontSize: 12, color: "#97a0af", textAlign: "center" }}>
+                    No artifact types. Click &quot;+ Add artifact type&quot; to browse the library.
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {showModal && (
         <AddArtifactTypeModal
