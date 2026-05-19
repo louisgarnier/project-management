@@ -796,6 +796,18 @@ def test_stamp_item_ids_preserves_existing_task_ids():
     assert stamped["tasks"][0]["task_id"] == existing
 
 
+def test_stamp_item_ids_preserves_existing_oq_and_decision_ids():
+    """Symmetry — open_questions and decisions also preserve their existing id on re-save."""
+    t = _valid_v3_topic()
+    existing_oq_id = str(uuid.uuid4())
+    existing_d_id = str(uuid.uuid4())
+    t["open_questions"][0]["id"] = existing_oq_id
+    t["decisions"][0]["id"] = existing_d_id
+    stamped = topics_service._stamp_item_ids(t, CALL_ID_SAMPLE)
+    assert stamped["open_questions"][0]["id"] == existing_oq_id
+    assert stamped["decisions"][0]["id"] == existing_d_id
+
+
 def test_stamp_item_ids_stamps_tasks_open_questions_and_decisions():
     """Every item across 3 arrays gets a stable id; tasks use 'task_id', others use 'id'."""
     t = _valid_v3_topic()

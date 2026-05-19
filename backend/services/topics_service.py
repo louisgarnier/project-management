@@ -286,12 +286,14 @@ def _stamp_item_ids(t: dict, call_id: str) -> dict:
     separate concern handled by Story 15.7.
     """
     import uuid as _uuid
+    from copy import deepcopy
 
     def _ensure(item: dict, id_key: str) -> dict:
-        out = dict(item)
-        if not out.get(id_key):
+        # deepcopy so callers' nested values (if added in future schema) aren't shared
+        out = deepcopy(item)
+        if out.get(id_key) is None:
             out[id_key] = str(_uuid.uuid4())
-        if not out.get("added_in_call_id"):
+        if out.get("added_in_call_id") is None:
             out["added_in_call_id"] = call_id
         return out
 
