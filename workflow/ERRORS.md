@@ -163,6 +163,24 @@ Updated `run_transcription.sh` to auto-create the venv and install deps on first
 
 ---
 
+### ERR-005: Re-extract click doesn't switch UI to "Generating…" — spinner gated behind `!extracted` ternary
+
+**Symptom:** On `CallTopicsStage`, user clicks Re-extract. The button label flips to "Re-extracting…" (so state IS changing), but the body keeps showing the old topic table. User has to refresh the page to see the "Generating…" spinner. First seen + patched in commit `9e4b886` (set polling=true before await + guard the cache-sync useEffect). The fix did NOT survive cleanly into Story 15.5's 3-section restructure — the body branching remained `{!extracted ? (...spinner...) : (...topics...)}`, which meant any race that left `extracted=true` for even one render would mask the spinner.
+
+**Root Cause:** Two compounding factors:
+1. The spinner was nested inside the `!extracted` branch (`{!extracted ? (polling ? spinner : button) : topics}`). So the spinner could only render if `extracted` was already false at render time.
+2. Even with `setExtracted(false)` + `setPolling(true)` fired synchronously in `handleReExtract`, the parent `call` prop still carried the stale `extraction_status="done"` + `extraction_cache=[...]`. If anything caused a re-render before the cache-sync useEffect's bail-gate (`if (extracting || polling) return`) caught up, extracted could flip back to true and the spinner branch would never render.
+
+**Fix Applied**
+- **Date fixed:** 2026-05-19
+- **Frontend:** restructured the body branching in `frontend/src/components/CallTopicsStage.tsx` so the spinner branch takes priority over `extracted`. New order: `{polling || extracting ? <spinner> : !extracted ? <button> : <topics>}`. Now the spinner CANNOT be hidden by any race that leaves `extracted=true` momentarily — as long as `polling` or `extracting` is true, the spinner wins.
+- The previous `setPolling(true)` BEFORE await + `if (extracting || polling) return` cache-sync gate from `9e4b886` are still in place — they prevent stale topics from being restored. The new branching is defense-in-depth on the visible side.
+
+**Prevention Rule**
+> 🔒 **RULE ERR-005:** When a UI element represents "work in progress" (spinner, loading skeleton, etc.), its render condition must be the FIRST branch in the body ternary — independent of (and taking priority over) any state derived from a prop. Never nest a spinner inside a branch that depends on a prop-derived boolean (like `extracted` here), because any race that flips that boolean back will silently hide the spinner. Pattern: `{busyFlag ? <spinner/> : <normal-content/>}` — not `{!ready ? (busyFlag ? <spinner/> : <call-to-action/>) : <content/>}`.
+
+---
+
 ## 🔒 Prevention Rules Summary
 | Rule ID | Applies To | Rule |
 |---|---|---|
@@ -170,6 +188,7 @@ Updated `run_transcription.sh` to auto-create the venv and install deps on first
 | ERR-002 | `frontend/` CSS + PostCSS | Tailwind v4: use `@import "tailwindcss"` + `@tailwindcss/postcss` |
 | ERR-003 | `run_transcription.sh` / any server script | Auto-create venv in launch script; verify server starts on clean checkout before closing story |
 | ERR-004 | Any frontend bucket-move action (promote/demote/reclassify) | Must persist to backend — never rely on React local state alone |
+| ERR-005 | Any "work-in-progress" UI element (spinner, skeleton) | Spinner branch must be the FIRST ternary, taking priority over prop-derived booleans — never nest behind `!extracted` / `!ready` / etc. |
 
 ---
 

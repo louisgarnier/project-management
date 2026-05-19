@@ -13,7 +13,10 @@ explicitly re-apply the seed values (routers/library.py::reset_system_library).
 """
 
 from backend.prompts.artifacts import DEFAULT_ARTIFACTS  # existing EPIC-11 constant
-from backend.prompts.call_topics import CALL_TOPICS_V2_PROMPT_BODY
+from backend.prompts.call_topics import (
+    CALL_TOPICS_V2_PROMPT_BODY,
+    CALL_TOPICS_V3_PROMPT_BODY,
+)
 from backend.prompts.merge_verification import MERGE_VERIFICATION_DEFAULT_PROMPT
 from backend.prompts.not_discussed_check import NOT_DISCUSSED_DEFAULT_PROMPT
 from backend.prompts.project_topics import PROJECT_TOPICS_DEFAULT_PROMPT
@@ -29,13 +32,34 @@ def _prompt_for(name: str) -> str | None:
 SYSTEM_LIBRARY: list[dict] = [
     # ── Tier 1: Workflow prompts (always present, editable via /library) ──
     {
+        "name": "Call Topics — v3 (open questions + decisions)",
+        "description": (
+            "Runs at the Call Topics stage. Extends v2 with two new arrays per topic: "
+            "open_questions[] (uncertainties to resolve) and decisions[] (explicit agreements). "
+            "DUAL-CLASSIFY rule: investigative tasks (investigate/verify/check/confirm) go into "
+            "BOTH tasks[] and open_questions[]. Decisions[] requires verbatim evidence + explicit "
+            "closure phrasing — guards against hallucinated soft-agreement decisions. "
+            "Rejects topics with all three arrays empty (tasks + open_questions + decisions)."
+        ),
+        "kind": "llm",
+        "prompt": CALL_TOPICS_V3_PROMPT_BODY,
+        "template_id": None,
+        "llm": "openrouter",
+        "model": "deepseek/deepseek-v3.2",
+        "context_scope": "call",
+        "category": "call_topics",
+        "is_system": True,
+        "seeded_by_default": True,
+    },
+    {
         "name": "Call Topics — v2 (synthetic, evidence-anchored)",
         "description": (
             "Runs at the Call Topics stage. Extracts SHORT, evidence-anchored topics — "
             "every topic carries verbatim transcript quotes, key terms for matching, and a "
             "list of tasks (each with next-step, status, owner). Replaces EPIC-11's "
             "3-section anchor structure (decisions/follow-ups/open-questions). "
-            "Rejects topics without evidence or tasks."
+            "Rejects topics without evidence or tasks. "
+            "Superseded by v3 — kept available as a fallback."
         ),
         "kind": "llm",
         "prompt": CALL_TOPICS_V2_PROMPT_BODY,
@@ -45,7 +69,7 @@ SYSTEM_LIBRARY: list[dict] = [
         "context_scope": "call",
         "category": "call_topics",
         "is_system": True,
-        "seeded_by_default": True,
+        "seeded_by_default": False,
     },
     {
         "name": "Project Topics Merge (base instructions)",

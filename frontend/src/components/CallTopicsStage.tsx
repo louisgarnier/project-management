@@ -430,50 +430,54 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
       )}
 
       {/* ── Pre-extraction state ── */}
-      {!extracted ? (
+      {/* Spinner takes priority over `extracted` so a click on Re-extract
+          flips the UI to Generating… immediately, no matter what the parent
+          `call` prop still claims. Otherwise the old topic table can linger
+          until the parent re-fetches (3s polling tick), masking the click. */}
+      {polling || extracting ? (
         <div style={{ padding: 20 }}>
-          {polling ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <svg
-                className="animate-spin"
-                style={{ width: 16, height: 16, color: "#ff8b00" }}
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8v8H4z"
-                />
-              </svg>
-              <span style={{ fontSize: 13, color: "#5e6c84" }}>Generating…</span>
-            </div>
-          ) : (
-            <button
-              onClick={handleExtract}
-              disabled={extracting}
-              style={{
-                padding: "10px 22px",
-                borderRadius: 6,
-                border: "none",
-                background: extracting ? "#f4f5f7" : "#0052cc",
-                color: extracting ? "#97a0af" : "white",
-                cursor: extracting ? "default" : "pointer",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <svg
+              className="animate-spin"
+              style={{ width: 16, height: 16, color: "#ff8b00" }}
+              viewBox="0 0 24 24"
+              fill="none"
             >
-              {extracting ? "Starting extraction…" : "Extract this call's topics"}
-            </button>
-          )}
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8v8H4z"
+              />
+            </svg>
+            <span style={{ fontSize: 13, color: "#5e6c84" }}>Generating…</span>
+          </div>
+        </div>
+      ) : !extracted ? (
+        <div style={{ padding: 20 }}>
+          <button
+            onClick={handleExtract}
+            disabled={extracting}
+            style={{
+              padding: "10px 22px",
+              borderRadius: 6,
+              border: "none",
+              background: extracting ? "#f4f5f7" : "#0052cc",
+              color: extracting ? "#97a0af" : "white",
+              cursor: extracting ? "default" : "pointer",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {extracting ? "Starting extraction…" : "Extract this call's topics"}
+          </button>
         </div>
       ) : (
         /* ── Per-topic blocks (Tasks / Open questions / Decisions) ── */
