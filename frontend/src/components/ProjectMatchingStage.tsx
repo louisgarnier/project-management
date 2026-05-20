@@ -3,7 +3,32 @@
 import { useEffect, useState } from "react";
 import { topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { TopicData, MatchGroup } from "@/types";
+import type { TopicData, MatchGroup, TaskData } from "@/types";
+
+function TasksList({ tasks }: { tasks: TaskData[] | undefined }) {
+  if (!tasks || tasks.length === 0) return null;
+  return (
+    <div style={{ fontSize: 11, color: "#5e6c84", marginTop: 6, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em", color: "#97a0af", marginBottom: 2 }}>
+        Tasks
+      </div>
+      {tasks.map((task, i) => (
+        <div key={task.task_id ?? i} style={{ display: "flex", gap: 4 }}>
+          <span style={{ color: "#97a0af", flexShrink: 0 }}>•</span>
+          <span style={{ minWidth: 0, wordBreak: "break-word" }}>
+            {task.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+            {task.next_step && (
+              <>
+                <span style={{ color: "#97a0af", margin: "0 4px" }}>→</span>
+                {task.next_step}
+              </>
+            )}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 type Props = {
   callId: string;
@@ -249,6 +274,7 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                   {t.summary && (
                     <div style={{ fontSize: 11, color: "#5e6c84", lineHeight: 1.4 }}>{t.summary}</div>
                   )}
+                  <TasksList tasks={t.tasks} />
                   {isMatched && (
                     <div style={{ fontSize: 10, color: groupColor(groupIndex(group!)).text, fontWeight: 600, marginTop: 4 }}>
                       {group!.project_topic_ids.length > 1 && (
@@ -358,6 +384,7 @@ export default function ProjectMatchingStage({ callId, projectId, onMatchingComp
                   {t.summary && (
                     <div style={{ fontSize: 11, color: "#5e6c84", lineHeight: 1.4 }}>{t.summary}</div>
                   )}
+                  <TasksList tasks={t.tasks} />
                   {isAccounted && group && group.project_topic_ids.length > 0 && (
                     <div style={{ fontSize: 10, color: groupColor(groupIndex(group!)).text, fontWeight: 600, marginTop: 4 }}>
                       ↔ {group!.project_topic_ids.map((pid) => projectTopics.find((p) => p.topic_id === pid)?.name).filter(Boolean).join(", ")}

@@ -1756,6 +1756,8 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
             "evidence": t.evidence,
             "key_terms": t.key_terms,
             "tasks": t.tasks,
+            "open_questions": t.open_questions,
+            "decisions": t.decisions,
             "summary": t.summary,
             "transcript_excerpt": t.transcript_excerpt,
         }

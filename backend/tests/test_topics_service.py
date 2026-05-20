@@ -939,6 +939,78 @@ def test_persist_payload_handles_missing_arrays_as_empty(monkeypatch):
     assert captured["payload"]["decisions"] == []
 
 
+def test_save_topics_passes_open_questions_and_decisions_to_persist(monkeypatch):
+    """save_topics must forward open_questions + decisions to _persist_topic_update.
+
+    Regression for the Story 15.5 bug where save_topics built topic_dict but dropped
+    these two arrays — _persist_topic_update then defaulted them to [] and the DB
+    rows had empty arrays. Symptom: user adds OQ/decisions in CallTopicsStage, clicks
+    Save & Continue, leaves the call, returns — all OQ/decisions are gone.
+    """
+    import asyncio
+
+    captured: dict = {}
+
+    def _fake_persist(topic, topic_id, call_id):
+        captured["topic"] = topic
+        return "row-1"
+
+    class _Result:
+        def __init__(self, data):
+            self.data = data
+
+    class _Query:
+        def __init__(self, name, op="select", payload=None):
+            self._name = name
+            self._op = op
+            self._payload = payload
+        def select(self, *_a, **_kw):
+            return self
+        def eq(self, *_a, **_kw):
+            return self
+        def insert(self, payload):
+            return _Query(self._name, op="insert", payload=payload)
+        def update(self, *_a, **_kw):
+            return _Query(self._name, op="update")
+        def execute(self):
+            # Return shape matching what save_topics expects per code path.
+            if self._name == "calls" and self._op == "select":
+                return _Result([{"project_id": "proj-1"}])
+            if self._name == "topics" and self._op == "insert":
+                return _Result([{"id": "topic-1"}])
+            if self._name == "topics" and self._op == "select":
+                return _Result([{"calls_open": 0}])
+            return _Result([])
+
+    class _FakeClient:
+        def table(self, name):
+            return _Query(name)
+
+    monkeypatch.setattr(topics_service, "get_client", lambda: _FakeClient())
+    monkeypatch.setattr(topics_service, "_persist_topic_update", _fake_persist)
+
+    topic_update = topics_service.TopicUpdate(
+        name="MC Mac memory issue",
+        importance="high",
+        key_terms=["MC Mac"],
+        evidence=[{"speaker": "Hassan", "quote": "the MC Mac is still failing", "citation": "lines 145-148"}],
+        tasks=[{"task": "investigate", "next_step": "test boost flag", "status": "open", "owner": "Nick"}],
+        open_questions=[{"text": "Does the boost flag fix it?", "owner": "Nick", "status": "open"}],
+        decisions=[{"text": "Defer Mac retirement to Q3."}],
+        topic_id=None,
+        disposition=None,
+    )
+
+    asyncio.run(topics_service.save_topics("call-1", [topic_update]))
+
+    assert "open_questions" in captured["topic"], "save_topics dropped open_questions before _persist_topic_update"
+    assert "decisions" in captured["topic"], "save_topics dropped decisions before _persist_topic_update"
+    assert captured["topic"]["open_questions"] == [
+        {"text": "Does the boost flag fix it?", "owner": "Nick", "status": "open"}
+    ]
+    assert captured["topic"]["decisions"] == [{"text": "Defer Mac retirement to Q3."}]
+
+
 def test_persist_payload_does_not_write_chronology_fields(monkeypatch):
     """Story 15.7 owns chronology_narrative + rag_verification_note. Story 15.5 must not write them."""
     captured = {}
