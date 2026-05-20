@@ -579,6 +579,21 @@ function NewTopicCard({
 }) {
   const isNewSelected = decision.action === "new";
   const isMergeSelected = decision.action === "merge";
+
+  // Look up the merge target topic so we can show its data for comparison.
+  const mergeTargetId = decision.merge_to_id ?? result?.matched_topic_id ?? null;
+  const mergeTarget = mergeTargetId
+    ? projectTopics.find((t) => t.topic_id === mergeTargetId)
+    : null;
+
+  // Helpers for rendering
+  const verdictCitations = (result?.citations ?? []).filter(
+    (c) => !c.for || c.for === "verdict"
+  );
+  const extractionCitations = (result?.citations ?? []).filter(
+    (c) => c.for === "extraction"
+  );
+
   return (
     <div style={cardStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -593,27 +608,108 @@ function NewTopicCard({
           <span style={badgeRed}>⚠ LLM uncertain — manual decision needed</span>
         )}
       </div>
+
+      {/* Candidate tasks */}
       {topic.tasks && topic.tasks.length > 0 && (
-        <ul style={{ fontSize: 12, color: "#5e6c84", marginTop: 6, paddingLeft: 20 }}>
-          {topic.tasks.map((t, i) => (
-            <li key={i}>
-              {t.task}
-              {t.next_step && <> → {t.next_step}</>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {result?.extraction_grounded === false && result.ungrounded_items.length > 0 && (
-        <div style={{ fontSize: 11, color: "#ae2a19", marginTop: 6 }}>
-          ⚠ Ungrounded items: {result.ungrounded_items.map((u) => u.text).join(", ")}
+        <div style={{ marginTop: 6 }}>
+          <div style={{ fontSize: 10, color: "#5e6c84", fontWeight: 600, textTransform: "uppercase" }}>
+            Candidate tasks:
+          </div>
+          <ul style={{ fontSize: 12, color: "#42526e", paddingLeft: 20, marginTop: 2 }}>
+            {topic.tasks.map((t, i) => (
+              <li key={i}>
+                {t.task}
+                {t.next_step && <> → {t.next_step}</>}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
+
+      {/* LLM reasoning — citations that support the verdict */}
+      {result && verdictCitations.length > 0 && (
+        <details open style={{ marginTop: 8, fontSize: 11 }}>
+          <summary style={{ cursor: "pointer", color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", fontSize: 10 }}>
+            Why LLM thinks this {result.verdict === "should_be_merged_with" ? `should merge with "${result.matched_topic_name}"` : "is new"} ({verdictCitations.length} quote{verdictCitations.length === 1 ? "" : "s"})
+          </summary>
+          <ul style={{ marginTop: 4, paddingLeft: 20, color: "#42526e" }}>
+            {verdictCitations.map((c, i) => (
+              <li key={i} style={{ marginBottom: 4 }}>
+                <span style={{ fontStyle: "italic" }}>&quot;{c.quote}&quot;</span>
+                <span style={{ color: "#97a0af", marginLeft: 4 }}>
+                  ({c.call_id?.slice(0, 8) ?? "?"}…, lines {c.lines || "?"})
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {/* Side-by-side comparison when LLM suggests merge */}
+      {result?.verdict === "should_be_merged_with" && mergeTarget && (
+        <div style={{ marginTop: 8, padding: 8, background: "#fafbfc", border: "1px solid #ebecf0", borderRadius: 4 }}>
+          <div style={{ fontSize: 10, color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>
+            Comparison
+          </div>
+          <div style={{ display: "flex", gap: 12, fontSize: 11 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, color: "#172b4d" }}>Candidate: {topic.name}</div>
+              {topic.key_terms && topic.key_terms.length > 0 && (
+                <div style={{ color: "#5e6c84" }}>key_terms: {topic.key_terms.join(", ")}</div>
+              )}
+              {topic.summary && <div style={{ color: "#5e6c84" }}>{topic.summary}</div>}
+            </div>
+            <div style={{ flex: 1, borderLeft: "1px solid #dfe1e6", paddingLeft: 12 }}>
+              <div style={{ fontWeight: 600, color: "#172b4d" }}>Target: {mergeTarget.name}</div>
+              {mergeTarget.key_terms && mergeTarget.key_terms.length > 0 && (
+                <div style={{ color: "#5e6c84" }}>key_terms: {mergeTarget.key_terms.join(", ")}</div>
+              )}
+              {mergeTarget.summary && <div style={{ color: "#5e6c84" }}>{mergeTarget.summary}</div>}
+              {mergeTarget.tasks && mergeTarget.tasks.length > 0 && (
+                <div style={{ color: "#5e6c84", marginTop: 2 }}>
+                  Tasks: {mergeTarget.tasks.slice(0, 3).map((t) => t.task).filter(Boolean).join("; ")}
+                  {mergeTarget.tasks.length > 3 && ` +${mergeTarget.tasks.length - 3} more`}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ungrounded items — handles both string and {type, text} shape */}
+      {result?.extraction_grounded === false && result.ungrounded_items.length > 0 && (
+        <div style={{ fontSize: 11, color: "#ae2a19", marginTop: 6 }}>
+          ⚠ Items not grounded in current call transcript:{" "}
+          {result.ungrounded_items
+            .map((u) =>
+              typeof u === "string" ? u : (u?.text ?? JSON.stringify(u))
+            )
+            .filter((s) => s && s !== "undefined")
+            .join("; ") || "(LLM didn't specify)"}
+        </div>
+      )}
+
+      {/* Failed citations (needs_manual_review) */}
       {result && result.needs_manual_review && (result.failed_citations?.length ?? 0) > 0 && (
         <details style={{ fontSize: 11, color: "#5e6c84", marginTop: 6 }}>
-          <summary style={{ cursor: "pointer" }}>LLM evidence (citation issues)</summary>
+          <summary style={{ cursor: "pointer" }}>What went wrong with the LLM&apos;s evidence</summary>
           <ul style={{ marginTop: 4, paddingLeft: 20 }}>
             {(result.failed_citations ?? []).map((f, i) => (
               <li key={i} style={{ color: "#ae2a19" }}>{f}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {/* Extraction-grounding citations (if separate from verdict citations) */}
+      {extractionCitations.length > 0 && (
+        <details style={{ fontSize: 11, color: "#5e6c84", marginTop: 4 }}>
+          <summary style={{ cursor: "pointer" }}>Extraction grounding ({extractionCitations.length} quote{extractionCitations.length === 1 ? "" : "s"})</summary>
+          <ul style={{ marginTop: 4, paddingLeft: 20, color: "#42526e" }}>
+            {extractionCitations.map((c, i) => (
+              <li key={i} style={{ marginBottom: 4, fontStyle: "italic" }}>
+                &quot;{c.quote}&quot;
+              </li>
             ))}
           </ul>
         </details>
