@@ -285,25 +285,6 @@ async def merge_preview(call_id: str, background_tasks: BackgroundTasks):
     return {"status": "processing"}
 
 
-@router.post("/calls/{call_id}/topics/verify-not-discussed")
-async def verify_not_discussed(call_id: str, background_tasks: BackgroundTasks):
-    """Trigger not-discussed verification in background."""
-    logger.info(f"📥 [Topics] Verify not-discussed: call={call_id}")
-    db = get_client()
-
-    call_row = db.table("calls").select("verification_status").eq("id", call_id).execute().data
-    if not call_row:
-        raise HTTPException(status_code=404, detail=f"Call {call_id} not found")
-
-    status = call_row[0].get("verification_status", "idle")
-    if status == "processing":
-        logger.info(f"⚠️ [Topics] Verification already in progress: call={call_id}")
-        return {"status": "processing"}
-
-    db.table("calls").update({"verification_status": "processing", "verification_cache": None}).eq("id", call_id).execute()
-    background_tasks.add_task(run_verification_background, call_id)
-    logger.info(f"✅ [Topics] Background verification started: call={call_id}")
-    return {"status": "processing"}
 
 
 @router.post("/calls/{call_id}/topics/validate-updates")
@@ -764,4 +745,61 @@ async def verify_new(call_id: str, background_tasks: BackgroundTasks):
     db = get_client()
     db.table("calls").update({"verify_new_status": "processing", "verify_new_cache": None}).eq("id", call_id).execute()
     background_tasks.add_task(_run_verify_new_background, call_id)
+    return {"status": "processing"}
+
+
+# --------------------------------------------------------------------------- #
+# EPIC-16 — Pass ② /verify-not-discussed (lean transcript-only check)
+# --------------------------------------------------------------------------- #
+
+
+from backend.services.topic_verification import run_verify_not_discussed as _run_verify_not_discussed
+
+
+async def _run_verify_not_discussed_background(call_id: str) -> None:
+    """Pass ② for every old topic not in any match group."""
+    import asyncio
+    from backend.services.topics_service import _resolve_workflow_llm_for_category, _get_previous_topics
+    db = get_client()
+    try:
+        call_row = db.table("calls").select("project_id, transcript").eq("id", call_id).execute().data
+        if not call_row:
+            return
+        project_id = call_row[0]["project_id"]
+        transcript = call_row[0].get("transcript") or ""
+
+        groups = db.table("topic_match_groups").select("project_topic_ids").eq("call_id", call_id).execute().data
+        matched_ids = {pid for g in groups for pid in (g.get("project_topic_ids") or [])}
+
+        previous = _get_previous_topics(project_id, db)
+        not_discussed_candidates = [t for t in previous if t["topic_id"] not in matched_ids]
+
+        llm, model = _resolve_workflow_llm_for_category(project_id, "verify_not_discussed", db)
+
+        results = await asyncio.gather(*[
+            _run_verify_not_discussed(
+                {"name": t["name"], "key_terms": t.get("key_terms") or []},
+                transcript, call_id=call_id, llm=llm, model=model,
+            )
+            for t in not_discussed_candidates
+        ])
+        cache = {t["topic_id"]: r for t, r in zip(not_discussed_candidates, results)}
+        db.table("calls").update(
+            {"verify_not_discussed_cache": cache, "verify_not_discussed_status": "done"}
+        ).eq("id", call_id).execute()
+        logger.info(f"✅ [verify_not_discussed] done for call {call_id} ({len(results)} candidates)")
+    except Exception as e:
+        logger.exception(f"❌ [verify_not_discussed] failed for call {call_id}: {e}")
+        db.table("calls").update({"verify_not_discussed_status": "failed"}).eq("id", call_id).execute()
+
+
+@router.post("/calls/{call_id}/topics/verify-not-discussed")
+async def verify_not_discussed(call_id: str, background_tasks: BackgroundTasks):
+    """EPIC-16 Pass ② — verify each not-matched project topic truly wasn't discussed in call N."""
+    logger.info(f"📥 [verify_not_discussed] requested for call {call_id}")
+    db = get_client()
+    db.table("calls").update(
+        {"verify_not_discussed_status": "processing", "verify_not_discussed_cache": None}
+    ).eq("id", call_id).execute()
+    background_tasks.add_task(_run_verify_not_discussed_background, call_id)
     return {"status": "processing"}

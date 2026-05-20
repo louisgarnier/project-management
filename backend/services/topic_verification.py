@@ -4,6 +4,7 @@ import json
 import logging
 
 from backend.prompts.verify_new_topic import VERIFY_NEW_TOPIC_PROMPT
+from backend.prompts.verify_not_discussed import VERIFY_NOT_DISCUSSED_PROMPT
 from backend.services.citation_verify import verify_citations, find_quote_lines
 
 logger = logging.getLogger("calltracker.topic_verification")
@@ -85,3 +86,49 @@ async def run_verify_new(
         "needs_manual_review": True,
         "failed_citations": failures,
     }
+
+
+def _build_verify_not_discussed_prompt(topic: dict, transcript: str, call_id: str) -> str:
+    anchor = json.dumps({"name": topic.get("name"), "key_terms": topic.get("key_terms", [])}, indent=2)
+    return (
+        f"{VERIFY_NOT_DISCUSSED_PROMPT}\n\n"
+        f"TOPIC ANCHOR:\n{anchor}\n\n"
+        f"TRANSCRIPT (call_id={call_id}):\n{transcript}"
+    )
+
+
+async def run_verify_not_discussed(
+    topic: dict, transcript: str, *, call_id: str, llm: str, model: str | None
+) -> dict:
+    """Pass ② — verify a topic wasn't discussed in the supplied transcript.
+
+    Returns the LLM verdict with `needs_manual_review` set to True if citation
+    verification failed on both attempts (only relevant when verdict='actually_discussed').
+    """
+    prompt = _build_verify_not_discussed_prompt(topic, transcript, call_id)
+    result: dict = {}
+    failures: list[str] = []
+
+    for attempt in (1, 2):
+        result = await _call_llm(prompt, llm, model=model)
+        if not isinstance(result, dict):
+            logger.warning("⚠️ [verify_not_discussed] LLM returned non-dict on attempt %d", attempt)
+            failures = ["LLM returned non-dict"]
+            continue
+        citation = result.get("citation")
+        cits = [citation] if citation else []
+        for c in cits:
+            if not c.get("lines"):
+                computed = find_quote_lines(c.get("quote", ""), transcript)
+                if computed:
+                    c["lines"] = computed
+        ok, failures = verify_citations(cits, {call_id: transcript})
+        if ok:
+            return {**result, "needs_manual_review": False}
+        logger.warning("⚠️ [verify_not_discussed] citation verify failed on attempt %d: %s", attempt, failures)
+        prompt = (
+            f"{prompt}\n\nPREVIOUS ATTEMPT FAILED citation verification:\n"
+            f"{json.dumps(failures, indent=2)}\nRedo with a verbatim quote."
+        )
+
+    return {**result, "needs_manual_review": True, "failed_citations": failures}

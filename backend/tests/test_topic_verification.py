@@ -84,3 +84,31 @@ def test_resolve_workflow_llm_uses_artifact_types_first():
     llm, model = _resolve_workflow_llm_for_category("proj-1", "verify_new_topic", _FakeDB())
     assert llm == "claude"
     assert model == "claude-sonnet-4-6"
+
+
+def test_run_verify_not_discussed_not_found(monkeypatch):
+    """Happy path: topic not mentioned, citation=null."""
+    transcript = "We only discussed migration timeline today."
+    llm_result = {"verdict": "not_discussed", "citation": None}
+    monkeypatch.setattr(tv, "_call_llm", _llm_returns(llm_result))
+    out = asyncio.run(tv.run_verify_not_discussed(
+        {"name": "Performance testing", "key_terms": ["perf"]},
+        transcript, call_id="call-3", llm="claude", model=None
+    ))
+    assert out["verdict"] == "not_discussed"
+    assert out["citation"] is None
+    assert out["needs_manual_review"] is False
+
+
+def test_run_verify_not_discussed_found(monkeypatch):
+    transcript = "Hassan said the perf test passed."
+    llm_result = {"verdict": "actually_discussed",
+                  "citation": {"call_id": "call-3", "lines": "1-1", "quote": "the perf test passed"}}
+    monkeypatch.setattr(tv, "_call_llm", _llm_returns(llm_result))
+    out = asyncio.run(tv.run_verify_not_discussed(
+        {"name": "Performance testing", "key_terms": ["perf"]},
+        transcript, call_id="call-3", llm="claude", model=None
+    ))
+    assert out["verdict"] == "actually_discussed"
+    assert out["citation"]["quote"] == "the perf test passed"
+    assert out["needs_manual_review"] is False
