@@ -140,11 +140,11 @@ async def run_verify_new(
     failures: list[str] = []
 
     for attempt in (1, 2):
-        await _log(f"      [{name}] attempt {attempt}: sending to LLM (reading {len(transcripts)} past transcript(s), comparing against {len(project_topics)} existing project topic(s) to detect duplicates)")
+        await _log(f"      [{name}] attempt {attempt}: asking LLM to compare against {len(project_topics)} existing topic(s) using {len(transcripts)} past transcript(s)")
         result = await _call_llm(prompt, llm, model=model)
         if not isinstance(result, dict):
             logger.warning("⚠️ [verify_new] LLM returned non-dict on attempt %d", attempt)
-            await _log(f"      [{name}] attempt {attempt}: LLM returned non-dict — retrying")
+            await _log(f"      [{name}] attempt {attempt}: LLM response invalid — retrying")
             failures = ["LLM returned non-dict"]
             continue
         cits = result.get("citations") or []
@@ -154,13 +154,13 @@ async def run_verify_new(
                 computed = find_quote_lines(c.get("quote", ""), body)
                 if computed:
                     c["lines"] = computed
-        await _log(f"      [{name}] attempt {attempt}: LLM returned {len(cits)} citation(s) — verifying verbatim against transcripts")
+        await _log(f"      [{name}] attempt {attempt}: LLM responded with {len(cits)} supporting quote(s) — checking each one is actually in the transcript")
         ok, failures = verify_citations(cits, transcripts)
         if ok:
-            await _log(f"      [{name}] all {len(cits)} citations verified verbatim ✓")
+            await _log(f"      [{name}] all {len(cits)} quote(s) found in the transcripts ✓")
             return {**result, "needs_manual_review": False}
         logger.warning("⚠️ [verify_new] citation verify failed on attempt %d: %s", attempt, failures)
-        await _log(f"      [{name}] attempt {attempt}: {len(failures)}/{len(cits)} citation(s) failed verbatim check")
+        await _log(f"      [{name}] attempt {attempt}: {len(failures)} of {len(cits)} quote(s) NOT found in the transcripts — retrying")
         prompt = (
             f"{prompt}\n\nPREVIOUS ATTEMPT FAILED citation verification with these errors:\n"
             f"{json.dumps(failures, indent=2)}\nRedo with verbatim quotes copy-pasted from transcripts."
@@ -203,11 +203,11 @@ async def run_verify_not_discussed(
     failures: list[str] = []
 
     for attempt in (1, 2):
-        await _log(f"      [{name}] attempt {attempt}: scanning transcript ({len(transcript)} chars) for any mention")
+        await _log(f"      [{name}] attempt {attempt}: asking LLM to scan the current call transcript for any mention")
         result = await _call_llm(prompt, llm, model=model)
         if not isinstance(result, dict):
             logger.warning("⚠️ [verify_not_discussed] LLM returned non-dict on attempt %d", attempt)
-            await _log(f"      [{name}] attempt {attempt}: LLM returned non-dict — retrying")
+            await _log(f"      [{name}] attempt {attempt}: LLM response invalid — retrying")
             failures = ["LLM returned non-dict"]
             continue
         citation = result.get("citation")
@@ -218,14 +218,14 @@ async def run_verify_not_discussed(
                 if computed:
                     c["lines"] = computed
         if citation:
-            await _log(f"      [{name}] attempt {attempt}: LLM found a mention — verifying citation verbatim")
+            await _log(f"      [{name}] attempt {attempt}: LLM claims it found a mention — checking the quote is actually in the transcript")
         else:
-            await _log(f"      [{name}] attempt {attempt}: LLM confirmed no mention in transcript")
+            await _log(f"      [{name}] attempt {attempt}: LLM confirmed no mention in the transcript")
         ok, failures = verify_citations(cits, {call_id: transcript})
         if ok:
             return {**result, "needs_manual_review": False}
         logger.warning("⚠️ [verify_not_discussed] citation verify failed on attempt %d: %s", attempt, failures)
-        await _log(f"      [{name}] attempt {attempt}: {len(failures)} citation(s) failed verbatim check")
+        await _log(f"      [{name}] attempt {attempt}: the quote LLM cited is NOT in the transcript — retrying")
         prompt = (
             f"{prompt}\n\nPREVIOUS ATTEMPT FAILED citation verification:\n"
             f"{json.dumps(failures, indent=2)}\nRedo with a verbatim quote."
@@ -289,11 +289,11 @@ async def run_extract_topic_updates(
     failures: list[str] = []
 
     for attempt in (1, 2):
-        await _log(f"      [{name}] attempt {attempt}: sending to LLM (re-reading {len(transcripts)} transcript(s) chronologically)")
+        await _log(f"      [{name}] attempt {attempt}: asking LLM to re-extract from {len(transcripts)} transcript(s) (chronological)")
         result = await _call_llm(prompt, llm, model=model)
         if not isinstance(result, dict):
             logger.warning("⚠️ [extract_updates] LLM returned non-dict on attempt %d", attempt)
-            await _log(f"      [{name}] attempt {attempt}: LLM returned non-dict — retrying")
+            await _log(f"      [{name}] attempt {attempt}: LLM response invalid — retrying")
             failures = ["LLM returned non-dict"]
             continue
         snapshot = result.get("extracted_snapshot") or {}
@@ -305,13 +305,13 @@ async def run_extract_topic_updates(
                 computed = find_quote_lines(c.get("quote", ""), body)
                 if computed:
                     c["lines"] = computed
-        await _log(f"      [{name}] attempt {attempt}: LLM returned snapshot + {len(all_cits)} citation(s) — verifying verbatim")
+        await _log(f"      [{name}] attempt {attempt}: LLM responded with snapshot + {len(all_cits)} supporting quote(s) — checking each is actually in the transcripts")
         ok, failures = verify_citations(all_cits, transcripts)
         if ok:
-            await _log(f"      [{name}] all {len(all_cits)} citation(s) verified verbatim ✓")
+            await _log(f"      [{name}] all {len(all_cits)} quote(s) found in the transcripts ✓")
             return {**result, "needs_manual_review": False}
         logger.warning("⚠️ [extract_updates] citation verify failed on attempt %d: %s", attempt, failures)
-        await _log(f"      [{name}] attempt {attempt}: {len(failures)}/{len(all_cits)} citation(s) failed verbatim check")
+        await _log(f"      [{name}] attempt {attempt}: {len(failures)} of {len(all_cits)} quote(s) NOT found in the transcripts — retrying")
         prompt = (
             f"{prompt}\n\nPREVIOUS ATTEMPT FAILED citation verification:\n"
             f"{json.dumps(failures, indent=2)}\nRedo with verbatim quotes."

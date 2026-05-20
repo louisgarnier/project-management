@@ -679,10 +679,12 @@ async def _run_verify_new_background(call_id: str) -> None:
 
         await plog.log("Loading transcripts from all calls in the project…")
         calls = (
-            db.table("calls").select("id, transcript")
+            db.table("calls").select("id, transcript, title")
             .eq("project_id", project_id).order("created_at").execute().data
         )
         transcripts = {c["id"]: (c.get("transcript") or "") for c in calls if c.get("transcript")}
+        # Map call UUID → human-readable label (Call 1, Call 2, ...) for log messages.
+        call_label = {c["id"]: f"Call {i+1}" for i, c in enumerate(calls)}
         await plog.log(f"Loaded {len(transcripts)} transcript(s)")
 
         # key_terms lives on topic_updates, not the parent topics table. For anchor
@@ -707,10 +709,21 @@ async def _run_verify_new_background(call_id: str) -> None:
             n_topics = len(project_topics)
             if need_review:
                 fails = (r or {}).get("failed_citations") or []
-                summary = "; ".join(fails[:3])
-                if len(fails) > 3:
-                    summary += f"; +{len(fails)-3} more"
-                await plog.log(f"  ⚠ Topic \"{c['name']}\": needs manual review — citations couldn't be matched verbatim: {summary}")
+                # Aggregate by call: "3 in Call 1, 2 in Call 2"
+                per_call: dict = {}
+                for f in fails:
+                    for cid, label in call_label.items():
+                        if cid in f:
+                            per_call[label] = per_call.get(label, 0) + 1
+                            break
+                    else:
+                        per_call["?"] = per_call.get("?", 0) + 1
+                pieces = ", ".join(f"{n} in {lbl}" for lbl, n in per_call.items())
+                await plog.log(
+                    f"  ⚠ Topic \"{c['name']}\": needs manual review — the LLM cited supporting quotes "
+                    f"that couldn't be found verbatim in the transcripts ({pieces}). "
+                    f"The LLM probably paraphrased instead of copy-pasting — its verdict can't be trusted automatically."
+                )
             elif verdict == "truly_new":
                 ung = (r or {}).get("ungrounded_items") or []
                 msg = f"  ✓ Topic \"{c['name']}\": read {n_trans} past transcript(s), compared against {n_topics} existing topic(s) → confirmed NEW ({n_cits} citation(s))"
