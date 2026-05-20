@@ -687,14 +687,27 @@ async def _run_verify_new_background(call_id: str) -> None:
         call_label = {c["id"]: f"Call {i+1}" for i, c in enumerate(calls)}
         await plog.log(f"Loaded {len(transcripts)} transcript(s)")
 
-        # key_terms lives on topic_updates, not the parent topics table. For anchor
-        # purposes the name alone is enough — key_terms is bonus context for the LLM.
-        project_topics_rows = (
-            db.table("topics").select("id, name")
-            .eq("project_id", project_id).eq("archived", False).execute().data
-        )
-        project_topics = [{"topic_id": t["id"], "name": t["name"], "key_terms": []} for t in project_topics_rows]
-        await plog.log(f"Loaded {len(project_topics)} existing project topic(s) — these are the candidates the LLM will compare against (to detect duplicates)")
+        # For duplicate detection, the LLM needs more than just the topic name
+        # — it needs key_terms + summary + a quick view of tasks so it can tell
+        # "is this candidate the same thing as an existing topic?". key_terms,
+        # tasks, summary all live on topic_updates (latest per topic). Use
+        # _get_previous_topics which already does that aggregation.
+        from backend.services.topics_service import _get_previous_topics
+        previous = _get_previous_topics(project_id, db)
+        project_topics = []
+        for t in previous:
+            tasks_summary = [
+                (task.get("task") or "")[:80]
+                for task in (t.get("tasks") or [])[:5]
+            ]
+            project_topics.append({
+                "topic_id": t.get("topic_id"),
+                "name": t.get("name"),
+                "key_terms": t.get("key_terms") or [],
+                "summary": (t.get("summary") or "")[:200],
+                "task_briefs": tasks_summary,
+            })
+        await plog.log(f"Loaded {len(project_topics)} existing project topic(s) (with key_terms + summary + task briefs) — these are the candidates the LLM will compare against (to detect duplicates)")
 
         llm, model = _resolve_workflow_llm_for_category(project_id, "verify_new_topic", db)
         await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(new_candidates)} topic(s) in parallel — this can take 30-60s")

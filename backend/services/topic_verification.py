@@ -93,9 +93,21 @@ def _build_verify_new_prompt(
     transcripts_block = "\n\n".join(
         f"--- CALL {cid} ---\n{body}" for cid, body in transcripts.items()
     )
+    # Include name + key_terms + brief summary + 1-line task briefs for each
+    # existing topic so the LLM has enough signal to detect duplicates by
+    # semantics, not just name. tasks/OQ/decisions on existing topics are
+    # too verbose for this comparison purpose — we surface compact briefs.
     project_topics_block = json.dumps(
-        [{"topic_id": t.get("topic_id"), "name": t.get("name"), "key_terms": t.get("key_terms", [])}
-         for t in project_topics],
+        [
+            {
+                "topic_id": t.get("topic_id"),
+                "name": t.get("name"),
+                "key_terms": t.get("key_terms") or [],
+                "summary": t.get("summary") or "",
+                "task_briefs": t.get("task_briefs") or [],
+            }
+            for t in project_topics
+        ],
         indent=2,
     )
     candidate_block = json.dumps({
@@ -107,8 +119,8 @@ def _build_verify_new_prompt(
     }, indent=2)
     return (
         f"{VERIFY_NEW_TOPIC_PROMPT}\n\n"
-        f"CANDIDATE NEW TOPIC:\n{candidate_block}\n\n"
-        f"EXISTING PROJECT TOPICS (anchor only, names + key_terms):\n{project_topics_block}\n\n"
+        f"CANDIDATE NEW TOPIC (full data — what the user proposes as new):\n{candidate_block}\n\n"
+        f"EXISTING PROJECT TOPICS (name + key_terms + summary + brief task list for each — use these to check for duplicates):\n{project_topics_block}\n\n"
         f"TRANSCRIPTS:\n{transcripts_block}"
     )
 
