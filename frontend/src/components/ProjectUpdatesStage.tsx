@@ -79,13 +79,22 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     };
   }, []);
 
-  // Migrations from ① and ②
+  // Migrations from ① and ② — ONLY trust verdicts whose citations were
+  // successfully verified (needs_manual_review === false). Otherwise the topic
+  // stays in its original section so the user can re-verify or fix manually.
   const migratedFromNew = useMemo<Set<string>>(() => {
     const cache = eff.verify_new_cache ?? {};
     const ids = new Set<string>();
-    for (const r of Object.values(cache)) {
-      if (r?.verdict === "should_be_merged_with" && r.matched_topic_id) {
-        ids.add(r.matched_topic_id);
+    for (const [k, r] of Object.entries(cache)) {
+      if (k === "__progress__") continue;
+      const rr = r as VerifyNewResult | undefined;
+      if (
+        rr &&
+        rr.verdict === "should_be_merged_with" &&
+        rr.matched_topic_id &&
+        !rr.needs_manual_review
+      ) {
+        ids.add(rr.matched_topic_id);
       }
     }
     return ids;
@@ -95,7 +104,11 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     const cache = eff.verify_not_discussed_cache ?? {};
     const ids = new Set<string>();
     for (const [tid, r] of Object.entries(cache)) {
-      if (r?.verdict === "actually_discussed") ids.add(tid);
+      if (tid === "__progress__") continue;
+      const rr = r as VerifyNotDiscussedResult | undefined;
+      if (rr && rr.verdict === "actually_discussed" && !rr.needs_manual_review) {
+        ids.add(tid);
+      }
     }
     return ids;
   }, [eff.verify_not_discussed_cache]);
@@ -120,7 +133,12 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     const newCandidates = pending.filter((p) => newGroupCallNames.has(norm(p.name)));
     const newTopics = newCandidates.filter((p) => {
       const r = (eff.verify_new_cache ?? {})[p.name];
-      return !(r && r.verdict === "should_be_merged_with");
+      // Migrate out of Section 1 ONLY if the verdict is confidently merge AND
+      // citations were verified. needs_manual_review keeps the topic visible
+      // here so the user can re-verify or correct manually.
+      const confidentMerge =
+        r && r.verdict === "should_be_merged_with" && !r.needs_manual_review;
+      return !confidentMerge;
     });
 
     // Old project topics NOT in any match group AND not migrated to Merged by ②
