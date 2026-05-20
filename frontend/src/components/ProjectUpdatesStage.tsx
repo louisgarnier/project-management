@@ -51,6 +51,42 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
   const [live, setLive] = useState<Partial<Call>>({});
   const eff: Call = { ...call, ...live };
 
+  // ── User decisions (override LLM verdicts) ──
+  // Keys: lowercased topic name (Section 1) or topic_id (Section 2).
+  const [newDecisions, setNewDecisions] = useState<
+    Record<string, { action: "new" | "merge"; merge_to_id?: string | null }>
+  >({});
+  const [ndDecisions, setNdDecisions] = useState<
+    Record<string, { action: "not_discussed" | "discussed" }>
+  >({});
+
+  function resolveNewDecision(
+    name: string,
+    result: VerifyNewResult | undefined
+  ): { action: "new" | "merge"; merge_to_id?: string | null } {
+    const explicit = newDecisions[name.toLowerCase().trim()];
+    if (explicit) return explicit;
+    if (result && !result.needs_manual_review) {
+      if (result.verdict === "should_be_merged_with" && result.matched_topic_id) {
+        return { action: "merge", merge_to_id: result.matched_topic_id };
+      }
+      if (result.verdict === "truly_new") return { action: "new" };
+    }
+    return { action: "new" };
+  }
+  function resolveNdDecision(
+    topic_id: string,
+    result: VerifyNotDiscussedResult | undefined
+  ): { action: "not_discussed" | "discussed" } {
+    const explicit = ndDecisions[topic_id];
+    if (explicit) return explicit;
+    if (result && !result.needs_manual_review) {
+      if (result.verdict === "actually_discussed") return { action: "discussed" };
+      if (result.verdict === "not_discussed") return { action: "not_discussed" };
+    }
+    return { action: "not_discussed" };
+  }
+
   useEffect(() => {
     Promise.all([
       topicsAPI.getMatchGroups(call.id),
@@ -79,39 +115,33 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     };
   }, []);
 
-  // Migrations from ① and ② — ONLY trust verdicts whose citations were
-  // successfully verified (needs_manual_review === false). Otherwise the topic
-  // stays in its original section so the user can re-verify or fix manually.
+  // Migration sets derived from EFFECTIVE decisions (user override > LLM verdict
+  // > default). Used to compute section placement of project topics.
   const migratedFromNew = useMemo<Set<string>>(() => {
-    const cache = eff.verify_new_cache ?? {};
     const ids = new Set<string>();
-    for (const [k, r] of Object.entries(cache)) {
-      if (k === "__progress__") continue;
-      const rr = r as VerifyNewResult | undefined;
-      if (
-        rr &&
-        rr.verdict === "should_be_merged_with" &&
-        rr.matched_topic_id &&
-        !rr.needs_manual_review
-      ) {
-        ids.add(rr.matched_topic_id);
-      }
+    const cache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
+    for (const p of pending) {
+      const r = cache[p.name];
+      const d = resolveNewDecision(p.name, r);
+      if (d.action === "merge" && d.merge_to_id) ids.add(d.merge_to_id);
     }
     return ids;
-  }, [eff.verify_new_cache]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, eff.verify_new_cache, newDecisions]);
 
   const migratedFromNotDiscussed = useMemo<Set<string>>(() => {
-    const cache = eff.verify_not_discussed_cache ?? {};
     const ids = new Set<string>();
-    for (const [tid, r] of Object.entries(cache)) {
-      if (tid === "__progress__") continue;
-      const rr = r as VerifyNotDiscussedResult | undefined;
-      if (rr && rr.verdict === "actually_discussed" && !rr.needs_manual_review) {
-        ids.add(tid);
-      }
+    const cache = (eff.verify_not_discussed_cache ?? {}) as Record<string, VerifyNotDiscussedResult>;
+    for (const t of projectTopics) {
+      const tid = t.topic_id ?? "";
+      if (!tid) continue;
+      const r = cache[tid];
+      const d = resolveNdDecision(tid, r);
+      if (d.action === "discussed") ids.add(tid);
     }
     return ids;
-  }, [eff.verify_not_discussed_cache]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectTopics, eff.verify_not_discussed_cache, ndDecisions]);
 
   const sections = useMemo(() => {
     // Backend lowercases call_topic_names on save (save_match_groups), but
@@ -133,12 +163,9 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     const newCandidates = pending.filter((p) => newGroupCallNames.has(norm(p.name)));
     const newTopics = newCandidates.filter((p) => {
       const r = (eff.verify_new_cache ?? {})[p.name];
-      // Migrate out of Section 1 ONLY if the verdict is confidently merge AND
-      // citations were verified. needs_manual_review keeps the topic visible
-      // here so the user can re-verify or correct manually.
-      const confidentMerge =
-        r && r.verdict === "should_be_merged_with" && !r.needs_manual_review;
-      return !confidentMerge;
+      const d = resolveNewDecision(p.name, r);
+      // Topic stays in Section 1 unless effective decision is to merge with a real topic
+      return !(d.action === "merge" && d.merge_to_id);
     });
 
     // Old project topics NOT in any match group AND not migrated to Merged by ②
@@ -158,7 +185,8 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     const merged = projectTopics.filter((t) => mergedSet.has(t.topic_id ?? ""));
 
     return { newTopics, notInCall, merged };
-  }, [groups, pending, projectTopics, eff.verify_new_cache, migratedFromNew, migratedFromNotDiscussed]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, pending, projectTopics, eff.verify_new_cache, migratedFromNew, migratedFromNotDiscussed, newDecisions]);
 
   const stage1Done = eff.verify_new_status === "done";
   const stage2Done = eff.verify_not_discussed_status === "done";
@@ -232,10 +260,25 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
         payload.push({ ...p, topic_id: null });
       }
 
-      // For merged topics: use extracted snapshot if present, else fall back to raw
+      // Topics the user explicitly merged from New → existing topic.
+      // For these, the call topic's tasks/OQ/decisions are the source of truth
+      // (not the project topic's). They become a topic_update on the existing topic.
+      const userMergedFromNew = new Map<string, TopicData>();
+      const vnCache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
+      for (const p of pending) {
+        const r = vnCache[p.name];
+        const d = resolveNewDecision(p.name, r);
+        if (d.action === "merge" && d.merge_to_id) {
+          userMergedFromNew.set(d.merge_to_id, p);
+        }
+      }
+
+      // For merged topics: use extracted snapshot if present (Section 3 ran ③),
+      // else user-merged-from-new data if available, else raw project topic.
       for (const m of sections.merged) {
         const tid = m.topic_id ?? "";
         const extracted = extractCache[tid];
+        const fromNew = userMergedFromNew.get(tid);
         if (extracted) {
           const s = extracted.extracted_snapshot;
           payload.push({
@@ -249,10 +292,13 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             open_questions: s.open_questions as any,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             decisions: s.decisions as any,
-            citations: [], // citations live in extract cache; let backend pick them up
+            citations: [],
             evidence_trail: extracted.evidence_trail,
             needs_manual_review: extracted.needs_manual_review,
           });
+        } else if (fromNew) {
+          // Promote call topic content onto the existing project topic_id.
+          payload.push({ ...fromNew, topic_id: tid });
         } else {
           payload.push({ ...m, topic_id: tid });
         }
@@ -352,13 +398,22 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             entries={readProgress(eff.verify_new_cache)}
             active={busy === "①"}
           />
-          {sections.newTopics.map((t) => (
-            <NewTopicCard
-              key={t.name}
-              topic={t}
-              result={(eff.verify_new_cache ?? {})[t.name]}
-            />
-          ))}
+          {sections.newTopics.map((t) => {
+            const r = (eff.verify_new_cache ?? {})[t.name] as VerifyNewResult | undefined;
+            const d = resolveNewDecision(t.name, r);
+            return (
+              <NewTopicCard
+                key={t.name}
+                topic={t}
+                result={r}
+                decision={d}
+                projectTopics={projectTopics}
+                onDecisionChange={(next) =>
+                  setNewDecisions((prev) => ({ ...prev, [t.name.toLowerCase().trim()]: next }))
+                }
+              />
+            );
+          })}
         </section>
 
         {/* Section 2 — Not in call */}
@@ -382,13 +437,22 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             entries={readProgress(eff.verify_not_discussed_cache)}
             active={busy === "②"}
           />
-          {sections.notInCall.map((t) => (
-            <NotInCallCard
-              key={t.topic_id}
-              topic={t}
-              result={(eff.verify_not_discussed_cache ?? {})[t.topic_id ?? ""]}
-            />
-          ))}
+          {sections.notInCall.map((t) => {
+            const tid = t.topic_id ?? "";
+            const r = (eff.verify_not_discussed_cache ?? {})[tid] as VerifyNotDiscussedResult | undefined;
+            const d = resolveNdDecision(tid, r);
+            return (
+              <NotInCallCard
+                key={tid}
+                topic={t}
+                result={r}
+                decision={d}
+                onDecisionChange={(next) =>
+                  setNdDecisions((prev) => ({ ...prev, [tid]: next }))
+                }
+              />
+            );
+          })}
         </section>
 
         {/* Section 3 — Merged */}
@@ -500,17 +564,33 @@ function SectionHeader({
   );
 }
 
-function NewTopicCard({ topic, result }: { topic: TopicData; result?: VerifyNewResult }) {
+function NewTopicCard({
+  topic,
+  result,
+  decision,
+  projectTopics,
+  onDecisionChange,
+}: {
+  topic: TopicData;
+  result?: VerifyNewResult;
+  decision: { action: "new" | "merge"; merge_to_id?: string | null };
+  projectTopics: TopicData[];
+  onDecisionChange: (d: { action: "new" | "merge"; merge_to_id?: string | null }) => void;
+}) {
+  const isNewSelected = decision.action === "new";
+  const isMergeSelected = decision.action === "merge";
   return (
     <div style={cardStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <strong style={{ fontSize: 13, color: "#172b4d" }}>{topic.name}</strong>
-        {result?.verdict === "truly_new" && <span style={badgeGreen}>✓ truly new</span>}
-        {result?.verdict === "should_be_merged_with" && (
-          <span style={badgeAmber}>↻ moved to merged → {result.matched_topic_name}</span>
+        {result?.verdict === "truly_new" && !result.needs_manual_review && (
+          <span style={badgeGreen}>LLM: ✓ truly new</span>
+        )}
+        {result?.verdict === "should_be_merged_with" && !result.needs_manual_review && (
+          <span style={badgeAmber}>LLM: ↻ merge with {result.matched_topic_name}</span>
         )}
         {result?.needs_manual_review && (
-          <span style={badgeRed}>⚠ needs manual review</span>
+          <span style={badgeRed}>⚠ LLM uncertain — manual decision needed</span>
         )}
       </div>
       {topic.tasks && topic.tasks.length > 0 && (
@@ -528,6 +608,71 @@ function NewTopicCard({ topic, result }: { topic: TopicData; result?: VerifyNewR
           ⚠ Ungrounded items: {result.ungrounded_items.map((u) => u.text).join(", ")}
         </div>
       )}
+      {result && result.needs_manual_review && (result.failed_citations?.length ?? 0) > 0 && (
+        <details style={{ fontSize: 11, color: "#5e6c84", marginTop: 6 }}>
+          <summary style={{ cursor: "pointer" }}>LLM evidence (citation issues)</summary>
+          <ul style={{ marginTop: 4, paddingLeft: 20 }}>
+            {(result.failed_citations ?? []).map((f, i) => (
+              <li key={i} style={{ color: "#ae2a19" }}>{f}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {/* Decision row */}
+      {result && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 10,
+            paddingTop: 8,
+            borderTop: "1px solid #f0f1f3",
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: 10, color: "#5e6c84", fontWeight: 600, textTransform: "uppercase" }}>
+            Your decision:
+          </span>
+          <button
+            type="button"
+            onClick={() => onDecisionChange({ action: "new" })}
+            style={isNewSelected ? decisionButtonSelected : decisionButton}
+          >
+            ✓ Confirm new
+          </button>
+          <button
+            type="button"
+            onClick={() => onDecisionChange({ action: "merge", merge_to_id: decision.merge_to_id ?? null })}
+            style={isMergeSelected ? decisionButtonSelected : decisionButton}
+          >
+            ↻ Merge with…
+          </button>
+          {isMergeSelected && (
+            <select
+              value={decision.merge_to_id ?? ""}
+              onChange={(e) => onDecisionChange({ action: "merge", merge_to_id: e.target.value || null })}
+              style={{
+                fontSize: 11,
+                padding: "4px 8px",
+                border: "1px solid #dfe1e6",
+                borderRadius: 4,
+                background: "white",
+                color: "#172b4d",
+                fontFamily: "inherit",
+              }}
+            >
+              <option value="">— select topic —</option>
+              {projectTopics.map((t) => (
+                <option key={t.topic_id} value={t.topic_id ?? ""}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -535,21 +680,27 @@ function NewTopicCard({ topic, result }: { topic: TopicData; result?: VerifyNewR
 function NotInCallCard({
   topic,
   result,
+  decision,
+  onDecisionChange,
 }: {
   topic: TopicData;
   result?: VerifyNotDiscussedResult;
+  decision: { action: "not_discussed" | "discussed" };
+  onDecisionChange: (d: { action: "not_discussed" | "discussed" }) => void;
 }) {
+  const isNotDiscussedSelected = decision.action === "not_discussed";
+  const isDiscussedSelected = decision.action === "discussed";
   return (
     <div style={cardStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <strong style={{ fontSize: 13, color: "#172b4d" }}>{topic.name}</strong>
-        {result?.verdict === "not_discussed" && (
-          <span style={badgeGreen}>✓ not discussed</span>
+        {result?.verdict === "not_discussed" && !result.needs_manual_review && (
+          <span style={badgeGreen}>LLM: ✓ not discussed</span>
         )}
-        {result?.verdict === "actually_discussed" && (
-          <span style={badgeAmber}>↻ actually discussed — moved to merged</span>
+        {result?.verdict === "actually_discussed" && !result.needs_manual_review && (
+          <span style={badgeAmber}>LLM: ↻ actually discussed</span>
         )}
-        {result?.needs_manual_review && <span style={badgeRed}>⚠ needs manual review</span>}
+        {result?.needs_manual_review && <span style={badgeRed}>⚠ LLM uncertain</span>}
       </div>
       {topic.summary && (
         <div style={{ fontSize: 11, color: "#5e6c84", marginTop: 6 }}>
@@ -559,6 +710,37 @@ function NotInCallCard({
       {result?.verdict === "actually_discussed" && result.citation && (
         <div style={{ fontSize: 11, color: "#42526e", marginTop: 4, fontStyle: "italic" }}>
           &quot;{result.citation.quote}&quot;
+        </div>
+      )}
+      {result && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 10,
+            paddingTop: 8,
+            borderTop: "1px solid #f0f1f3",
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: 10, color: "#5e6c84", fontWeight: 600, textTransform: "uppercase" }}>
+            Your decision:
+          </span>
+          <button
+            type="button"
+            onClick={() => onDecisionChange({ action: "not_discussed" })}
+            style={isNotDiscussedSelected ? decisionButtonSelected : decisionButton}
+          >
+            ✓ Confirm not discussed
+          </button>
+          <button
+            type="button"
+            onClick={() => onDecisionChange({ action: "discussed" })}
+            style={isDiscussedSelected ? decisionButtonSelected : decisionButton}
+          >
+            ↻ Was actually discussed → move to Merged
+          </button>
         </div>
       )}
     </div>
@@ -691,4 +873,23 @@ const badgeRed: React.CSSProperties = {
   background: "#fff1f0",
   color: "#ae2a19",
   border: "1px solid #ffbdad",
+};
+
+const decisionButton: React.CSSProperties = {
+  fontSize: 11,
+  padding: "5px 10px",
+  borderRadius: 4,
+  border: "1px solid #c1c7d0",
+  background: "white",
+  color: "#42526e",
+  cursor: "pointer",
+  fontFamily: "inherit",
+  fontWeight: 600,
+};
+
+const decisionButtonSelected: React.CSSProperties = {
+  ...decisionButton,
+  background: "#0052cc",
+  color: "white",
+  border: "1px solid #0052cc",
 };
