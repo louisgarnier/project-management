@@ -8,15 +8,18 @@ from backend.library.seed import SYSTEM_LIBRARY, upsert_system_library
 # ── Model flip ────────────────────────────────────────────────────────────
 
 
+_ALLOWED_MODELS = {"deepseek/deepseek-v3.2", "anthropic/claude-sonnet-4-6"}
+
+
 def test_every_llm_or_hybrid_entry_uses_openrouter_deepseek():
-    """G8 / FR-13 — every system seed LLM/hybrid entry defaults to openrouter+deepseek."""
+    """G8 / FR-13 — every system seed LLM/hybrid entry defaults to openrouter+deepseek (or claude-sonnet for EPIC-16 RAG entries)."""
     for entry in SYSTEM_LIBRARY:
         if entry["kind"] in ("llm", "hybrid"):
             assert entry["llm"] == "openrouter", (
                 f"{entry['name']}: expected llm=openrouter, got {entry['llm']!r}"
             )
-            assert entry["model"] == "deepseek/deepseek-v3.2", (
-                f"{entry['name']}: expected model=deepseek/deepseek-v3.2, got {entry['model']!r}"
+            assert entry["model"] in _ALLOWED_MODELS, (
+                f"{entry['name']}: expected model in {_ALLOWED_MODELS}, got {entry['model']!r}"
             )
 
 
@@ -42,7 +45,7 @@ def test_v2_call_topics_entry_exists_and_is_default():
         f"{[m['name'] for m in matches]}"
     )
     entry = matches[0]
-    assert "v2" in entry["name"].lower() or "evidence-anchored" in entry["name"].lower()
+    assert "v2" in entry["name"].lower() or "v3" in entry["name"].lower() or "evidence-anchored" in entry["name"].lower()
     assert entry["kind"] == "llm"
     assert entry["llm"] == "openrouter"
     assert entry["model"] == "deepseek/deepseek-v3.2"
@@ -148,3 +151,21 @@ def test_upsert_does_not_modify_projects():
     assert all(t == "artifact_library" for t in touched_tables), (
         f"upsert touched non-artifact_library table(s): {set(touched_tables) - {'artifact_library'}}"
     )
+
+
+def test_three_new_rag_workflow_entries_seeded():
+    """EPIC-16: verify_new_topic, verify_not_discussed, extract_topic_updates exist as system seeded_by_default entries."""
+    from backend.library.seed import SYSTEM_LIBRARY
+    cats = {e["category"] for e in SYSTEM_LIBRARY if e.get("is_system") and e.get("seeded_by_default")}
+    assert "verify_new_topic" in cats
+    assert "verify_not_discussed" in cats
+    assert "extract_topic_updates" in cats
+
+
+def test_old_workflow_prompts_not_seeded_by_default():
+    """EPIC-16: project_topics / merge_verification / not_discussed_check (old) must no longer be seeded_by_default=True."""
+    from backend.library.seed import SYSTEM_LIBRARY
+    for e in SYSTEM_LIBRARY:
+        if e["category"] in ("project_topics", "merge_verification", "not_discussed_check"):
+            assert e.get("seeded_by_default") is False, f"{e['category']} should no longer be seeded by default"
+            assert e.get("is_system") is False, f"{e['category']} should no longer be is_system=True"

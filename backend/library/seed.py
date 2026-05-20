@@ -17,9 +17,12 @@ from backend.prompts.call_topics import (
     CALL_TOPICS_V2_PROMPT_BODY,
     CALL_TOPICS_V3_PROMPT_BODY,
 )
+from backend.prompts.extract_topic_updates import EXTRACT_TOPIC_UPDATES_PROMPT
 from backend.prompts.merge_verification import MERGE_VERIFICATION_DEFAULT_PROMPT
 from backend.prompts.not_discussed_check import NOT_DISCUSSED_DEFAULT_PROMPT
 from backend.prompts.project_topics import PROJECT_TOPICS_DEFAULT_PROMPT
+from backend.prompts.verify_new_topic import VERIFY_NEW_TOPIC_PROMPT
+from backend.prompts.verify_not_discussed import VERIFY_NOT_DISCUSSED_PROMPT
 
 # Find by name helper
 _ARTIFACTS_BY_NAME = {a["name"]: a for a in DEFAULT_ARTIFACTS}
@@ -81,7 +84,7 @@ SYSTEM_LIBRARY: list[dict] = [
         "model": "deepseek/deepseek-v3.2",
         "context_scope": "call",
         "category": "project_topics",
-        "is_system": True,
+        "is_system": False,
         "seeded_by_default": False,
     },
     {
@@ -94,7 +97,7 @@ SYSTEM_LIBRARY: list[dict] = [
         "model": "deepseek/deepseek-v3.2",
         "context_scope": "call",
         "category": "merge_verification",
-        "is_system": True,
+        "is_system": False,
         "seeded_by_default": False,
     },
     {
@@ -107,8 +110,49 @@ SYSTEM_LIBRARY: list[dict] = [
         "model": "deepseek/deepseek-v3.2",
         "context_scope": "call",
         "category": "not_discussed_check",
-        "is_system": True,
+        "is_system": False,
         "seeded_by_default": False,
+    },
+
+    # ── EPIC-16: RAG verification workflow prompts ──
+    {
+        "name": "Verify New Topic (RAG)",
+        "description": "Pass ① of project_updates. For each topic classified as new by matching, checks all prior transcripts to confirm it isn't a missed match, and verifies the call_topics extraction is grounded.",
+        "kind": "llm",
+        "prompt": VERIFY_NEW_TOPIC_PROMPT,
+        "template_id": None,
+        "llm": "openrouter",
+        "model": "anthropic/claude-sonnet-4-6",
+        "context_scope": "project",
+        "category": "verify_new_topic",
+        "is_system": True,
+        "seeded_by_default": True,
+    },
+    {
+        "name": "Verify Not Discussed (RAG)",
+        "description": "Pass ② of project_updates. For each old topic absent from match groups, checks the current call's transcript only to confirm it wasn't actually mentioned.",
+        "kind": "llm",
+        "prompt": VERIFY_NOT_DISCUSSED_PROMPT,
+        "template_id": None,
+        "llm": "openrouter",
+        "model": "anthropic/claude-sonnet-4-6",
+        "context_scope": "call",
+        "category": "verify_not_discussed",
+        "is_system": True,
+        "seeded_by_default": True,
+    },
+    {
+        "name": "Extract Topic Updates (RAG)",
+        "description": "Pass ③ of project_updates. Re-extracts each merged topic from raw transcripts (calls 1..N) and produces a citation-grounded snapshot + chronological evidence_trail. Replaces the old auto-merge prompt.",
+        "kind": "llm",
+        "prompt": EXTRACT_TOPIC_UPDATES_PROMPT,
+        "template_id": None,
+        "llm": "openrouter",
+        "model": "anthropic/claude-sonnet-4-6",
+        "context_scope": "project",
+        "category": "extract_topic_updates",
+        "is_system": True,
+        "seeded_by_default": True,
     },
 
     # ── Tier 2: Artifact prompts (user-generatable) ──
