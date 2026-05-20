@@ -86,12 +86,17 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
   }, [call.verify_not_discussed_cache]);
 
   const sections = useMemo(() => {
-    const matchedNames = new Set(groups.flatMap((g) => g.call_topic_names));
+    // Backend lowercases call_topic_names on save (save_match_groups), but
+    // pending.name keeps original case. Normalise both sides to compare.
+    const norm = (s: string) => s.toLowerCase().trim();
+    const matchedNames = new Set(
+      groups.flatMap((g) => g.call_topic_names.map(norm))
+    );
     const matchedProjectIds = new Set(groups.flatMap((g) => g.project_topic_ids));
 
     // New topics from this call = pending topics not in any match group
     // BUT exclude those that ① decided should be merged (they live in section 3 now)
-    const newCandidates = pending.filter((p) => !matchedNames.has(p.name));
+    const newCandidates = pending.filter((p) => !matchedNames.has(norm(p.name)));
     const newTopics = newCandidates.filter((p) => {
       const r = (call.verify_new_cache ?? {})[p.name];
       return !(r && r.verdict === "should_be_merged_with");
@@ -355,7 +360,9 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                 groups.some(
                   (g) =>
                     (g.project_topic_ids ?? []).includes(t.topic_id ?? "") &&
-                    g.call_topic_names.includes(p.name)
+                    g.call_topic_names.some(
+                      (n) => n.toLowerCase().trim() === p.name.toLowerCase().trim()
+                    )
                 )
               )}
               extracted={(call.extract_updates_cache ?? {})[t.topic_id ?? ""]}
