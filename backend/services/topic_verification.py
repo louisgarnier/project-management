@@ -214,6 +214,20 @@ def sanity_check_llm_vs_lexical(llm_result: dict, precheck: dict) -> str | None:
     return None
 
 
+def _looks_like_platform_term(term: str) -> bool:
+    """Return True for terms that are vendor/platform/tool names (not subject matter).
+    Used in post-LLM validation to detect "shared-platform-only" merges."""
+    platform_terms = {
+        "snowflake", "aws", "azure", "gcp", "google cloud", "python", "excel",
+        "tableau", "power bi", "powerbi", "sql", "postgres", "mysql", "mongodb",
+        "kafka", "spark", "airflow", "dbt", "looker", "salesforce", "sap",
+        "oracle", "redshift", "databricks", "jira", "confluence", "github",
+        "gitlab", "slack", "teams", "outlook", "google sheets", "google drive",
+        "docker", "kubernetes", "k8s", "terraform", "ansible",
+    }
+    return (term or "").lower().strip() in platform_terms
+
+
 def _build_verify_new_prompt(
     candidate: dict,
     project_topics: list[dict],
@@ -223,10 +237,9 @@ def _build_verify_new_prompt(
     transcripts_block = "\n\n".join(
         f"--- CALL {cid} ---\n{body}" for cid, body in transcripts.items()
     )
-    # Include name + key_terms + brief summary + 1-line task briefs for each
-    # existing topic so the LLM has enough signal to detect duplicates by
-    # semantics, not just name. tasks/OQ/decisions on existing topics are
-    # too verbose for this comparison purpose — we surface compact briefs.
+    # v2 (task-fit): send FULL tasks/OQ/decisions for each existing topic so
+    # the LLM can test work-continuity (would candidate's items belong on this
+    # topic's task list?) rather than surface similarity.
     project_topics_block = json.dumps(
         [
             {
@@ -234,7 +247,9 @@ def _build_verify_new_prompt(
                 "name": t.get("name"),
                 "key_terms": t.get("key_terms") or [],
                 "summary": t.get("summary") or "",
-                "task_briefs": t.get("task_briefs") or [],
+                "tasks": t.get("tasks") or [],
+                "open_questions": t.get("open_questions") or [],
+                "decisions": t.get("decisions") or [],
             }
             for t in project_topics
         ],
@@ -294,13 +309,24 @@ async def run_verify_new(
     failures: list[str] = []
 
     for attempt in (1, 2):
-        await _log(f"      [{name}] attempt {attempt}: asking LLM to check if this candidate is a duplicate of any of the {len(project_topics)} existing project topic(s) (referencing {len(transcripts)} past transcript(s))")
+        await _log(f"      [{name}] attempt {attempt}: asking LLM (task-fit framing — would candidate's tasks belong on any existing topic's task list?) over {len(project_topics)} existing topic(s), referencing {len(transcripts)} past transcript(s)")
         result = await _call_llm(prompt, llm, model=model)
         if not isinstance(result, dict):
             logger.warning("⚠️ [verify_new] LLM returned non-dict on attempt %d", attempt)
             await _log(f"      [{name}] attempt {attempt}: LLM response invalid — retrying")
             failures = ["LLM returned non-dict"]
             continue
+        # Normalise verdict field (new prompt outputs "final_verdict"; old code expects "verdict")
+        if "final_verdict" in result and "verdict" not in result:
+            result["verdict"] = result["final_verdict"]
+        # Log per-topic evaluations if present
+        evals = result.get("evaluations") or []
+        if evals:
+            yes_count = sum(1 for e in evals if e.get("task_fit") == "yes")
+            await _log(f"      [{name}] attempt {attempt}: LLM evaluated {len(evals)} existing topic(s) — {yes_count} task-fit YES, {len(evals) - yes_count} NO")
+            for e in evals:
+                if e.get("task_fit") == "yes":
+                    await _log(f"          ✓ \"{e.get('topic_name', '?')}\": {e.get('reason', '?')}")
         cits = result.get("citations") or []
         for c in cits:
             if not c.get("lines"):
@@ -313,12 +339,43 @@ async def run_verify_new(
         if ok:
             await _log(f"      [{name}] all {len(cits)} quote(s) found in the transcripts ✓")
             final = {**result, "needs_manual_review": False}
+
+            # ── Post-LLM validation (defense-in-depth) ──
+            # If verdict is merge, require ≥2 verdict-tagged citations.
+            # A single citation is too weak — the LLM commonly cites one
+            # tangentially-related quote to justify a wrong merge.
+            if final.get("verdict") == "should_be_merged_with":
+                verdict_cits = [c for c in cits if (c.get("for") or "verdict") == "verdict"]
+                if len(verdict_cits) < 2:
+                    final["needs_manual_review"] = True
+                    final["sanity_flag"] = "insufficient_verdict_citations"
+                    final.setdefault("failed_citations", []).append(
+                        f"merge verdict requires ≥2 verdict citations, got {len(verdict_cits)}"
+                    )
+                    await _log(f"      [{name}] ⚠ merge verdict has only {len(verdict_cits)} verdict citation(s) (need ≥2) — downgrading to needs_manual_review")
+                else:
+                    # Check shared terms aren't only platform names
+                    shared_terms_for_target = []
+                    if precheck:
+                        target_overlap = next(
+                            (o for o in (precheck.get("topic_overlaps") or [])
+                             if o.get("topic_id") == final.get("matched_topic_id")),
+                            None,
+                        )
+                        if target_overlap:
+                            shared_terms_for_target = target_overlap.get("shared_terms") or []
+                    if shared_terms_for_target and all(_looks_like_platform_term(t) for t in shared_terms_for_target):
+                        final["needs_manual_review"] = True
+                        final["sanity_flag"] = "platform_terms_only_overlap"
+                        await _log(f"      [{name}] ⚠ shared terms with target are platform/vendor names only ({', '.join(shared_terms_for_target)}) — downgrading to needs_manual_review")
+
             if precheck is not None:
                 final["lexical_precheck"] = precheck
-                flag = sanity_check_llm_vs_lexical(final, precheck)
-                if flag:
-                    final["sanity_flag"] = flag
-                    await _log(f"      [{name}] ⚠ sanity flag: {flag} — LLM verdict disagrees with lexical pre-check")
+                if not final.get("sanity_flag"):
+                    flag = sanity_check_llm_vs_lexical(final, precheck)
+                    if flag:
+                        final["sanity_flag"] = flag
+                        await _log(f"      [{name}] ⚠ sanity flag: {flag} — LLM verdict disagrees with lexical pre-check")
             return final
         logger.warning("⚠️ [verify_new] citation verify failed on attempt %d: %s", attempt, failures)
         await _log(f"      [{name}] attempt {attempt}: {len(failures)} of {len(cits)} quote(s) NOT found in the transcripts — retrying")

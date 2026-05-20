@@ -647,7 +647,7 @@ function NewTopicCard({
         )}
       </div>
 
-      {/* Sanity flag — LLM verdict contradicts lexical pre-check */}
+      {/* Sanity flags */}
       {result?.sanity_flag === "llm_recommends_merge_but_no_overlap" && (
         <div style={{ marginTop: 8, padding: 8, background: "#fff1f0", border: "1px solid #ffbdad", borderRadius: 4, fontSize: 11, color: "#ae2a19" }}>
           ⚠ <strong>Sanity flag:</strong> LLM recommends merge with &quot;{result.matched_topic_name}&quot; but the lexical pre-check
@@ -659,6 +659,43 @@ function NewTopicCard({
           ⚠ <strong>Sanity flag:</strong> LLM says truly new, but the lexical pre-check shows strong key_terms overlap with an existing topic.
           Possible missed merge — review the comparison below.
         </div>
+      )}
+      {result?.sanity_flag === "insufficient_verdict_citations" && (
+        <div style={{ marginTop: 8, padding: 8, background: "#fff1f0", border: "1px solid #ffbdad", borderRadius: 4, fontSize: 11, color: "#ae2a19" }}>
+          ⚠ <strong>Sanity flag:</strong> LLM proposed merge with only 1 supporting quote (need ≥2 for confidence). Manual decision required.
+        </div>
+      )}
+      {result?.sanity_flag === "platform_terms_only_overlap" && (
+        <div style={{ marginTop: 8, padding: 8, background: "#fff1f0", border: "1px solid #ffbdad", borderRadius: 4, fontSize: 11, color: "#ae2a19" }}>
+          ⚠ <strong>Sanity flag:</strong> The shared term(s) between candidate and merge target are only platform/vendor names (e.g. Snowflake, AWS). Different work streams that just happen to use the same tool. Manual decision required.
+        </div>
+      )}
+
+      {/* Merge reasoning (from new task-fit prompt) */}
+      {result?.merge_reasoning && (
+        <div style={{ marginTop: 8, padding: 8, background: "#fafbfc", border: "1px solid #ebecf0", borderRadius: 4, fontSize: 11, color: "#42526e" }}>
+          <strong style={{ color: "#5e6c84", fontSize: 10, textTransform: "uppercase" }}>LLM merge reasoning:</strong>
+          <div style={{ marginTop: 2 }}>{result.merge_reasoning}</div>
+        </div>
+      )}
+
+      {/* Per-topic evaluations — full audit trail of the LLM's task-fit checks */}
+      {result?.evaluations && result.evaluations.length > 0 && (
+        <details style={{ marginTop: 8, fontSize: 11 }}>
+          <summary style={{ cursor: "pointer", color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", fontSize: 10 }}>
+            Task-fit evaluations ({result.evaluations.length} existing topic{result.evaluations.length === 1 ? "" : "s"} checked)
+          </summary>
+          <ul style={{ marginTop: 4, paddingLeft: 16, color: "#42526e" }}>
+            {result.evaluations.map((e) => (
+              <li key={e.topic_id} style={{ marginBottom: 4 }}>
+                <span style={{ color: e.task_fit === "yes" ? "#36b37e" : "#97a0af", fontWeight: 600, marginRight: 4 }}>
+                  {e.task_fit === "yes" ? "✓ YES" : "✗ no"}
+                </span>
+                <strong>{e.topic_name}</strong>: {e.reason}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       {/* Lexical pre-check breakdown */}

@@ -692,27 +692,24 @@ async def _run_verify_new_background(call_id: str) -> None:
         past_labels = ", ".join(call_label[c["id"]] for c in past_calls)
         await plog.log(f"Loaded {len(transcripts)} past transcript(s) — {past_labels or '(none — first call of project)'}")
 
-        # For duplicate detection, the LLM needs more than just the topic name
-        # — it needs key_terms + summary + a quick view of tasks so it can tell
-        # "is this candidate the same thing as an existing topic?". key_terms,
-        # tasks, summary all live on topic_updates (latest per topic). Use
-        # _get_previous_topics which already does that aggregation.
+        # Pass ① v2 (task-fit): send FULL tasks/OQ/decisions for each existing
+        # topic so the LLM can do the work-continuity test (would candidate's
+        # tasks naturally fit on this topic's task list?) rather than just
+        # surface-similarity matching. Verbose but precise.
         from backend.services.topics_service import _get_previous_topics
         previous = _get_previous_topics(project_id, db)
         project_topics = []
         for t in previous:
-            tasks_summary = [
-                (task.get("task") or "")[:80]
-                for task in (t.get("tasks") or [])[:5]
-            ]
             project_topics.append({
                 "topic_id": t.get("topic_id"),
                 "name": t.get("name"),
                 "key_terms": t.get("key_terms") or [],
-                "summary": (t.get("summary") or "")[:200],
-                "task_briefs": tasks_summary,
+                "summary": t.get("summary") or "",
+                "tasks": t.get("tasks") or [],
+                "open_questions": t.get("open_questions") or [],
+                "decisions": t.get("decisions") or [],
             })
-        await plog.log(f"Loaded {len(project_topics)} reference topic(s) from previous calls (NOT verified — just used as comparison list: 'is the new candidate a duplicate of any of these existing topics?'). Each ref includes key_terms + summary + task briefs.")
+        await plog.log(f"Loaded {len(project_topics)} reference topic(s) with FULL tasks + open_questions + decisions (for task-fit comparison: 'would the candidate's items belong on this topic's task list?'). NOT verified — just the comparison pool.")
 
         llm, model = _resolve_workflow_llm_for_category(project_id, "verify_new_topic", db)
         await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(new_candidates)} topic(s) in parallel — this can take 30-60s")

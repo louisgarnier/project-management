@@ -367,12 +367,24 @@ export interface LexicalPrecheck {
 
 export type SanityFlag =
   | "llm_recommends_merge_but_no_overlap"
-  | "llm_says_new_but_strong_overlap_exists";
+  | "llm_says_new_but_strong_overlap_exists"
+  | "insufficient_verdict_citations"
+  | "platform_terms_only_overlap";
+
+export interface PerTopicEvaluation {
+  topic_id: string;
+  topic_name: string;
+  task_fit: "yes" | "no";
+  reason: string;
+}
 
 export interface VerifyNewResult {
   verdict: VerifyNewVerdict;
+  final_verdict?: VerifyNewVerdict;  // new prompt field (mirror of verdict)
   matched_topic_id: string | null;
   matched_topic_name: string | null;
+  merge_reasoning?: string;
+  evaluations?: PerTopicEvaluation[];
   extraction_grounded: boolean;
   ungrounded_items: { type: "task" | "open_question" | "decision"; text: string }[];
   citations: Citation[];
