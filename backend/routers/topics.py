@@ -699,11 +699,30 @@ async def _run_verify_new_background(call_id: str) -> None:
 
         async def _one(c):
             await plog.log(f"  → Topic \"{c['name']}\": calling LLM…")
-            r = await _run_verify_new(c, project_topics, transcripts, llm=llm, model=model)
+            r = await _run_verify_new(c, project_topics, transcripts, llm=llm, model=model, log_fn=plog.log)
             verdict = (r or {}).get("verdict", "?")
             need_review = (r or {}).get("needs_manual_review")
-            tag = "⚠ needs manual review" if need_review else verdict
-            await plog.log(f"  ✓ Topic \"{c['name']}\": {tag}")
+            n_cits = len((r or {}).get("citations") or [])
+            n_trans = len(transcripts)
+            n_topics = len(project_topics)
+            if need_review:
+                fails = (r or {}).get("failed_citations") or []
+                summary = "; ".join(fails[:3])
+                if len(fails) > 3:
+                    summary += f"; +{len(fails)-3} more"
+                await plog.log(f"  ⚠ Topic \"{c['name']}\": needs manual review — citations couldn't be matched verbatim: {summary}")
+            elif verdict == "truly_new":
+                ung = (r or {}).get("ungrounded_items") or []
+                msg = f"  ✓ Topic \"{c['name']}\": scanned {n_trans} transcript(s) against {n_topics} existing topic(s) → confirmed NEW ({n_cits} citation(s))"
+                if ung:
+                    items = ", ".join((u.get("text") or "?")[:60] for u in ung[:3])
+                    msg += f"  ⚠ but {len(ung)} extracted item(s) not grounded in transcript: {items}"
+                await plog.log(msg)
+            elif verdict == "should_be_merged_with":
+                tname = (r or {}).get("matched_topic_name") or "?"
+                await plog.log(f"  ↻ Topic \"{c['name']}\": scanned {n_trans} transcript(s) → matches existing topic \"{tname}\" (moving to Merged section)")
+            else:
+                await plog.log(f"  ✓ Topic \"{c['name']}\": {verdict}")
             return r
 
         results = await asyncio.gather(*[_one(c) for c in new_candidates])
@@ -776,10 +795,21 @@ async def _run_verify_not_discussed_background(call_id: str) -> None:
             await plog.log(f"  → Topic \"{t['name']}\": scanning current call transcript…")
             r = await _run_verify_not_discussed(
                 {"name": t["name"], "key_terms": t.get("key_terms") or []},
-                transcript, call_id=call_id, llm=llm, model=model,
+                transcript, call_id=call_id, llm=llm, model=model, log_fn=plog.log,
             )
             verdict = (r or {}).get("verdict", "?")
-            await plog.log(f"  ✓ Topic \"{t['name']}\": {verdict}")
+            need_review = (r or {}).get("needs_manual_review")
+            if need_review:
+                fails = (r or {}).get("failed_citations") or []
+                await plog.log(f"  ⚠ Topic \"{t['name']}\": needs manual review — citation issue: {'; '.join(fails[:2])}")
+            elif verdict == "not_discussed":
+                await plog.log(f"  ✓ Topic \"{t['name']}\": confirmed NOT discussed in this call")
+            elif verdict == "actually_discussed":
+                cit = (r or {}).get("citation") or {}
+                q = (cit.get("quote") or "")[:80]
+                await plog.log(f"  ↻ Topic \"{t['name']}\": actually mentioned (\"{q}…\") → moving to Merged section")
+            else:
+                await plog.log(f"  ✓ Topic \"{t['name']}\": {verdict}")
             return r
 
         results = await asyncio.gather(*[_one(t) for t in not_discussed_candidates])
@@ -876,7 +906,7 @@ async def _run_extract_updates_background(call_id: str) -> None:
             await plog.log(f"  → Topic \"{t['name']}\": re-extracting from transcripts…")
             r = await _run_extract(
                 {"name": t["name"], "key_terms": t.get("key_terms") or []},
-                transcripts, llm=llm, model=model,
+                transcripts, llm=llm, model=model, log_fn=plog.log,
             )
             need_review = (r or {}).get("needs_manual_review")
             snapshot = (r or {}).get("extracted_snapshot") or {}
@@ -884,8 +914,14 @@ async def _run_extract_updates_background(call_id: str) -> None:
             decs_n = len(snapshot.get("decisions") or [])
             oqs_n = len(snapshot.get("open_questions") or [])
             trail_n = len((r or {}).get("evidence_trail") or [])
-            tag = "⚠ needs manual review" if need_review else f"{tasks_n} task(s), {oqs_n} OQ, {decs_n} decision(s), {trail_n} citation(s)"
-            await plog.log(f"  ✓ Topic \"{t['name']}\": {tag}")
+            if need_review:
+                fails = (r or {}).get("failed_citations") or []
+                summary = "; ".join(fails[:3])
+                if len(fails) > 3:
+                    summary += f"; +{len(fails)-3} more"
+                await plog.log(f"  ⚠ Topic \"{t['name']}\": needs manual review — citations failed: {summary}")
+            else:
+                await plog.log(f"  ✓ Topic \"{t['name']}\": extracted {tasks_n} task(s), {oqs_n} OQ, {decs_n} decision(s) with {trail_n} chronological citation(s)")
             return r
 
         results = await asyncio.gather(*[_one(t) for t in anchors])
