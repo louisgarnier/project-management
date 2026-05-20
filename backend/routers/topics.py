@@ -659,48 +659,55 @@ async def _run_verify_new_background(call_id: str) -> None:
     """Run Pass ① for every new topic in this call's pending_topics, persist to verify_new_cache."""
     import asyncio
     from backend.services.topics_service import _resolve_workflow_llm_for_category
+    from backend.services.topic_verification import ProgressLogger
     db = get_client()
+    plog = ProgressLogger(db, call_id, "verify_new_cache")
     try:
+        await plog.start()
+        await plog.log("Starting Pass ① — Verify new topics")
         call_row = db.table("calls").select("project_id, pending_topics").eq("id", call_id).execute().data
         if not call_row:
             return
         project_id = call_row[0]["project_id"]
         pending = call_row[0].get("pending_topics") or []
 
-        # Determine which pending topics are "new" (NOT in any match group)
-        groups = db.table("topic_match_groups").select("call_topic_names").eq("call_id", call_id).execute().data
-        matched_names = {n.lower().strip() for g in groups for n in (g.get("call_topic_names") or [])}
-        new_candidates = [t for t in pending if t["name"].lower().strip() not in matched_names]
+        groups = db.table("topic_match_groups").select("call_topic_names, project_topic_ids").eq("call_id", call_id).execute().data
+        # A "new" candidate = pending topic whose name is in a group with empty project_topic_ids
+        new_group_names = {n.lower().strip() for g in groups if not (g.get("project_topic_ids") or []) for n in (g.get("call_topic_names") or [])}
+        new_candidates = [t for t in pending if t["name"].lower().strip() in new_group_names]
+        await plog.log(f"Found {len(new_candidates)} new-topic candidate(s) to verify")
 
-        # Load all transcripts in this project (chronological)
+        await plog.log("Loading transcripts from all calls in the project…")
         calls = (
-            db.table("calls")
-            .select("id, transcript")
-            .eq("project_id", project_id)
-            .order("created_at")
-            .execute()
-            .data
+            db.table("calls").select("id, transcript")
+            .eq("project_id", project_id).order("created_at").execute().data
         )
         transcripts = {c["id"]: (c.get("transcript") or "") for c in calls if c.get("transcript")}
+        await plog.log(f"Loaded {len(transcripts)} transcript(s)")
 
-        # Load existing project topics as anchors
         project_topics_rows = (
-            db.table("topics")
-            .select("id, name, key_terms")
-            .eq("project_id", project_id)
-            .eq("archived", False)
-            .execute()
-            .data
+            db.table("topics").select("id, name, key_terms")
+            .eq("project_id", project_id).eq("archived", False).execute().data
         )
         project_topics = [{"topic_id": t["id"], "name": t["name"], "key_terms": t.get("key_terms") or []} for t in project_topics_rows]
+        await plog.log(f"Loaded {len(project_topics)} existing project topic(s) as anchors")
 
         llm, model = _resolve_workflow_llm_for_category(project_id, "verify_new_topic", db)
+        await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(new_candidates)} topic(s) in parallel — this can take 30-60s")
 
-        results = await asyncio.gather(*[
-            _run_verify_new(c, project_topics, transcripts, llm=llm, model=model)
-            for c in new_candidates
-        ])
+        async def _one(c):
+            await plog.log(f"  → Topic \"{c['name']}\": calling LLM…")
+            r = await _run_verify_new(c, project_topics, transcripts, llm=llm, model=model)
+            verdict = (r or {}).get("verdict", "?")
+            need_review = (r or {}).get("needs_manual_review")
+            tag = "⚠ needs manual review" if need_review else verdict
+            await plog.log(f"  ✓ Topic \"{c['name']}\": {tag}")
+            return r
+
+        results = await asyncio.gather(*[_one(c) for c in new_candidates])
         cache = {c["name"]: r for c, r in zip(new_candidates, results)}
+        cache["__progress__"] = plog.entries_snapshot()
+        cache["__progress__"].append({"ts": __import__("datetime").datetime.utcnow().isoformat() + "Z", "msg": f"Pass ① complete — {len(results)} topic(s) verified"})
 
         db.table("calls").update(
             {"verify_new_cache": cache, "verify_new_status": "done"}
@@ -708,7 +715,13 @@ async def _run_verify_new_background(call_id: str) -> None:
         logger.info(f"✅ [verify_new] done for call {call_id} ({len(results)} candidates)")
     except Exception as e:
         logger.exception(f"❌ [verify_new] failed for call {call_id}: {e}")
+        try:
+            await plog.log(f"❌ ERROR: {e}")
+        except Exception:
+            pass
         db.table("calls").update({"verify_new_status": "failed"}).eq("id", call_id).execute()
+    finally:
+        await plog.stop()
 
 
 @router.post("/calls/{call_id}/topics/verify-new")
@@ -732,38 +745,58 @@ from backend.services.topic_verification import run_verify_not_discussed as _run
 async def _run_verify_not_discussed_background(call_id: str) -> None:
     """Pass ② for every old topic not in any match group."""
     import asyncio
+    import datetime as _dt2
     from backend.services.topics_service import _resolve_workflow_llm_for_category, _get_previous_topics
+    from backend.services.topic_verification import ProgressLogger
     db = get_client()
+    plog = ProgressLogger(db, call_id, "verify_not_discussed_cache")
     try:
+        await plog.start()
+        await plog.log("Starting Pass ② — Verify not discussed")
         call_row = db.table("calls").select("project_id, transcript").eq("id", call_id).execute().data
         if not call_row:
             return
         project_id = call_row[0]["project_id"]
         transcript = call_row[0].get("transcript") or ""
+        await plog.log(f"Loaded transcript for current call ({len(transcript)} chars)")
 
         groups = db.table("topic_match_groups").select("project_topic_ids").eq("call_id", call_id).execute().data
         matched_ids = {pid for g in groups for pid in (g.get("project_topic_ids") or [])}
 
         previous = _get_previous_topics(project_id, db)
         not_discussed_candidates = [t for t in previous if t["topic_id"] not in matched_ids]
+        await plog.log(f"Found {len(not_discussed_candidates)} candidate topic(s) marked not-discussed")
 
         llm, model = _resolve_workflow_llm_for_category(project_id, "verify_not_discussed", db)
+        await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(not_discussed_candidates)} topic(s) in parallel")
 
-        results = await asyncio.gather(*[
-            _run_verify_not_discussed(
+        async def _one(t):
+            await plog.log(f"  → Topic \"{t['name']}\": scanning current call transcript…")
+            r = await _run_verify_not_discussed(
                 {"name": t["name"], "key_terms": t.get("key_terms") or []},
                 transcript, call_id=call_id, llm=llm, model=model,
             )
-            for t in not_discussed_candidates
-        ])
+            verdict = (r or {}).get("verdict", "?")
+            await plog.log(f"  ✓ Topic \"{t['name']}\": {verdict}")
+            return r
+
+        results = await asyncio.gather(*[_one(t) for t in not_discussed_candidates])
         cache = {t["topic_id"]: r for t, r in zip(not_discussed_candidates, results)}
+        cache["__progress__"] = plog.entries_snapshot()
+        cache["__progress__"].append({"ts": _dt2.datetime.utcnow().isoformat() + "Z", "msg": f"Pass ② complete — {len(results)} topic(s) checked"})
         db.table("calls").update(
             {"verify_not_discussed_cache": cache, "verify_not_discussed_status": "done"}
         ).eq("id", call_id).execute()
         logger.info(f"✅ [verify_not_discussed] done for call {call_id} ({len(results)} candidates)")
     except Exception as e:
         logger.exception(f"❌ [verify_not_discussed] failed for call {call_id}: {e}")
+        try:
+            await plog.log(f"❌ ERROR: {e}")
+        except Exception:
+            pass
         db.table("calls").update({"verify_not_discussed_status": "failed"}).eq("id", call_id).execute()
+    finally:
+        await plog.stop()
 
 
 @router.post("/calls/{call_id}/topics/verify-not-discussed")
@@ -789,9 +822,14 @@ from backend.services.topic_verification import run_extract_topic_updates as _ru
 async def _run_extract_updates_background(call_id: str) -> None:
     """Pass ③ — full re-extraction for every merged topic (incl. ones migrated by Pass ① + ②)."""
     import asyncio
+    import datetime as _dt3
     from backend.services.topics_service import _resolve_workflow_llm_for_category
+    from backend.services.topic_verification import ProgressLogger
     db = get_client()
+    plog = ProgressLogger(db, call_id, "extract_updates_cache")
     try:
+        await plog.start()
+        await plog.log("Starting Pass ③ — Extract updates from transcripts")
         call_row = db.table("calls").select(
             "project_id, verify_new_cache, verify_not_discussed_cache"
         ).eq("id", call_id).execute().data
@@ -799,15 +837,11 @@ async def _run_extract_updates_background(call_id: str) -> None:
             return
         project_id = call_row[0]["project_id"]
 
-        # Collect merged topic anchors from three sources:
-        # 1. project topics already in match_groups
         groups = db.table("topic_match_groups").select("project_topic_ids").eq("call_id", call_id).execute().data
         matched_ids = list({pid for g in groups for pid in (g.get("project_topic_ids") or [])})
-        # 2. project topics moved by Pass ② (verdict=actually_discussed)
         nd_cache = call_row[0].get("verify_not_discussed_cache") or {}
         moved_from_nd = [tid for tid, r in nd_cache.items() if (r or {}).get("verdict") == "actually_discussed"]
         matched_ids = list(set(matched_ids + moved_from_nd))
-        # 3. project topics that Pass ① decided a "new" candidate should be merged into
         vn_cache = call_row[0].get("verify_new_cache") or {}
         moved_from_new = [
             (r or {}).get("matched_topic_id")
@@ -815,39 +849,58 @@ async def _run_extract_updates_background(call_id: str) -> None:
             if (r or {}).get("verdict") == "should_be_merged_with" and (r or {}).get("matched_topic_id")
         ]
         matched_ids = list({*matched_ids, *moved_from_new})
+        await plog.log(f"Collected {len(matched_ids)} merged topic anchor(s) (incl. migrations from ① and ②)")
 
         anchors = (
-            db.table("topics")
-            .select("id, name, key_terms")
-            .in_("id", matched_ids)
-            .execute()
-            .data
+            db.table("topics").select("id, name, key_terms")
+            .in_("id", matched_ids).execute().data
         ) if matched_ids else []
 
-        # Load all transcripts in this project (chronological)
+        await plog.log("Loading all transcripts in the project (chronological)…")
         calls = (
             db.table("calls").select("id, transcript")
             .eq("project_id", project_id).order("created_at").execute().data
         )
         transcripts = {c["id"]: (c.get("transcript") or "") for c in calls if c.get("transcript")}
+        total_tokens_approx = sum(len(t) for t in transcripts.values()) // 4
+        await plog.log(f"Loaded {len(transcripts)} transcript(s) — approx {total_tokens_approx:,} tokens of context per topic")
 
         llm, model = _resolve_workflow_llm_for_category(project_id, "extract_topic_updates", db)
+        await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(anchors)} topic(s) in parallel — this can take 1-2 min")
 
-        results = await asyncio.gather(*[
-            _run_extract(
+        async def _one(t):
+            await plog.log(f"  → Topic \"{t['name']}\": re-extracting from transcripts…")
+            r = await _run_extract(
                 {"name": t["name"], "key_terms": t.get("key_terms") or []},
                 transcripts, llm=llm, model=model,
             )
-            for t in anchors
-        ])
+            need_review = (r or {}).get("needs_manual_review")
+            snapshot = (r or {}).get("extracted_snapshot") or {}
+            tasks_n = len(snapshot.get("tasks") or [])
+            decs_n = len(snapshot.get("decisions") or [])
+            oqs_n = len(snapshot.get("open_questions") or [])
+            trail_n = len((r or {}).get("evidence_trail") or [])
+            tag = "⚠ needs manual review" if need_review else f"{tasks_n} task(s), {oqs_n} OQ, {decs_n} decision(s), {trail_n} citation(s)"
+            await plog.log(f"  ✓ Topic \"{t['name']}\": {tag}")
+            return r
+
+        results = await asyncio.gather(*[_one(t) for t in anchors])
         cache = {t["id"]: r for t, r in zip(anchors, results)}
+        cache["__progress__"] = plog.entries_snapshot()
+        cache["__progress__"].append({"ts": _dt3.datetime.utcnow().isoformat() + "Z", "msg": f"Pass ③ complete — {len(results)} topic(s) extracted"})
         db.table("calls").update(
             {"extract_updates_cache": cache, "extract_updates_status": "done"}
         ).eq("id", call_id).execute()
         logger.info(f"✅ [extract_updates] done for call {call_id} ({len(results)} topics)")
     except Exception as e:
         logger.exception(f"❌ [extract_updates] failed for call {call_id}: {e}")
+        try:
+            await plog.log(f"❌ ERROR: {e}")
+        except Exception:
+            pass
         db.table("calls").update({"extract_updates_status": "failed"}).eq("id", call_id).execute()
+    finally:
+        await plog.stop()
 
 
 @router.post("/calls/{call_id}/topics/extract-updates")

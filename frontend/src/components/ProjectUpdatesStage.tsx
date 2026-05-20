@@ -12,6 +12,16 @@ import type {
   ExtractedUpdateResult,
 } from "@/types";
 import EvidenceTrail from "./EvidenceTrail";
+import ProgressLog, { type ProgressEntry } from "./ProgressLog";
+
+// Reserved key inside the *_cache JSONB columns where the backend writes its
+// step-by-step progress log. See backend/services/topic_verification.py::ProgressLogger.
+const PROGRESS_KEY = "__progress__";
+function readProgress(cache: Record<string, unknown> | null | undefined): ProgressEntry[] {
+  if (!cache) return [];
+  const raw = (cache as Record<string, unknown>)[PROGRESS_KEY];
+  return Array.isArray(raw) ? (raw as ProgressEntry[]) : [];
+}
 
 type Props = {
   call: Call;
@@ -35,6 +45,11 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+  // Live cache+status overlay updated on every poll tick. Lets the ProgressLog
+  // panels show backend progress in real time without waiting for the final
+  // window.location.reload at the end of a pass.
+  const [live, setLive] = useState<Partial<Call>>({});
+  const eff: Call = { ...call, ...live };
 
   useEffect(() => {
     Promise.all([
@@ -66,7 +81,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
 
   // Migrations from ① and ②
   const migratedFromNew = useMemo<Set<string>>(() => {
-    const cache = call.verify_new_cache ?? {};
+    const cache = eff.verify_new_cache ?? {};
     const ids = new Set<string>();
     for (const r of Object.values(cache)) {
       if (r?.verdict === "should_be_merged_with" && r.matched_topic_id) {
@@ -74,16 +89,16 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       }
     }
     return ids;
-  }, [call.verify_new_cache]);
+  }, [eff.verify_new_cache]);
 
   const migratedFromNotDiscussed = useMemo<Set<string>>(() => {
-    const cache = call.verify_not_discussed_cache ?? {};
+    const cache = eff.verify_not_discussed_cache ?? {};
     const ids = new Set<string>();
     for (const [tid, r] of Object.entries(cache)) {
       if (r?.verdict === "actually_discussed") ids.add(tid);
     }
     return ids;
-  }, [call.verify_not_discussed_cache]);
+  }, [eff.verify_not_discussed_cache]);
 
   const sections = useMemo(() => {
     // Backend lowercases call_topic_names on save (save_match_groups), but
@@ -104,7 +119,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     // Then exclude those that ① later decided should be merged (they live in section 3).
     const newCandidates = pending.filter((p) => newGroupCallNames.has(norm(p.name)));
     const newTopics = newCandidates.filter((p) => {
-      const r = (call.verify_new_cache ?? {})[p.name];
+      const r = (eff.verify_new_cache ?? {})[p.name];
       return !(r && r.verdict === "should_be_merged_with");
     });
 
@@ -125,11 +140,11 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     const merged = projectTopics.filter((t) => mergedSet.has(t.topic_id ?? ""));
 
     return { newTopics, notInCall, merged };
-  }, [groups, pending, projectTopics, call.verify_new_cache, migratedFromNew, migratedFromNotDiscussed]);
+  }, [groups, pending, projectTopics, eff.verify_new_cache, migratedFromNew, migratedFromNotDiscussed]);
 
-  const stage1Done = call.verify_new_status === "done";
-  const stage2Done = call.verify_not_discussed_status === "done";
-  const stage3Done = call.extract_updates_status === "done";
+  const stage1Done = eff.verify_new_status === "done";
+  const stage2Done = eff.verify_not_discussed_status === "done";
+  const stage3Done = eff.extract_updates_status === "done";
   const allDone = stage1Done && stage2Done && stage3Done;
 
   const triggerPass = async (which: "①" | "②" | "③") => {
@@ -144,6 +159,16 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       pollRef.current = setInterval(async () => {
         try {
           const fresh = await callsAPI.getCall(call.id);
+          // Always refresh the live overlay so the ProgressLog panel updates
+          // mid-flight while the backend writes new entries into the cache.
+          setLive({
+            verify_new_cache: fresh.verify_new_cache,
+            verify_new_status: fresh.verify_new_status,
+            verify_not_discussed_cache: fresh.verify_not_discussed_cache,
+            verify_not_discussed_status: fresh.verify_not_discussed_status,
+            extract_updates_cache: fresh.extract_updates_cache,
+            extract_updates_status: fresh.extract_updates_status,
+          });
           const status =
             which === "①"
               ? fresh.verify_new_status
@@ -156,12 +181,11 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
               pollRef.current = null;
             }
             setBusy(null);
-            // Notify parent to refresh the call prop so cache fields appear in state.
+            // Notify parent (if listener registered) so the source-of-truth `call`
+            // prop also refreshes; otherwise we stay on the live overlay (no
+            // hard-reload — would clobber the ProgressLog the user just saw).
             if (onPollCall) {
               await onPollCall();
-            } else {
-              // Fallback: hard reload so the parent re-fetches.
-              window.location.reload();
             }
           }
         } catch (e) {
@@ -178,7 +202,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     setSaving(true);
     setError(null);
     try {
-      const extractCache = call.extract_updates_cache ?? {};
+      const extractCache = eff.extract_updates_cache ?? {};
       const matchedProjectIds = new Set(groups.flatMap((g) => g.project_topic_ids));
       // matchedProjectIds is used implicitly via sections.merged — suppress unused var
       void matchedProjectIds;
@@ -306,11 +330,15 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             done={stage1Done}
             disabled={false}
           />
+          <ProgressLog
+            entries={readProgress(eff.verify_new_cache)}
+            active={busy === "①"}
+          />
           {sections.newTopics.map((t) => (
             <NewTopicCard
               key={t.name}
               topic={t}
-              result={(call.verify_new_cache ?? {})[t.name]}
+              result={(eff.verify_new_cache ?? {})[t.name]}
             />
           ))}
         </section>
@@ -332,11 +360,15 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             done={stage2Done}
             disabled={!stage1Done}
           />
+          <ProgressLog
+            entries={readProgress(eff.verify_not_discussed_cache)}
+            active={busy === "②"}
+          />
           {sections.notInCall.map((t) => (
             <NotInCallCard
               key={t.topic_id}
               topic={t}
-              result={(call.verify_not_discussed_cache ?? {})[t.topic_id ?? ""]}
+              result={(eff.verify_not_discussed_cache ?? {})[t.topic_id ?? ""]}
             />
           ))}
         </section>
@@ -358,6 +390,10 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             done={stage3Done}
             disabled={!stage2Done}
           />
+          <ProgressLog
+            entries={readProgress(eff.extract_updates_cache)}
+            active={busy === "③"}
+          />
           {sections.merged.map((t) => (
             <MergedTopicCard
               key={t.topic_id}
@@ -371,7 +407,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                     )
                 )
               )}
-              extracted={(call.extract_updates_cache ?? {})[t.topic_id ?? ""]}
+              extracted={(eff.extract_updates_cache ?? {})[t.topic_id ?? ""]}
               fromNew={migratedFromNew.has(t.topic_id ?? "")}
               fromNotDiscussed={migratedFromNotDiscussed.has(t.topic_id ?? "")}
               callsById={callsById}

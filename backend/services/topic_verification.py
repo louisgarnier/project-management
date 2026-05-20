@@ -1,5 +1,7 @@
 """EPIC-16 — Orchestration for the 3 RAG verification passes."""
 
+import asyncio
+import datetime as _dt
 import json
 import logging
 
@@ -15,6 +17,74 @@ logger = logging.getLogger("calltracker.topic_verification")
 async def _call_llm(prompt: str, llm: str, *, model: str | None) -> dict:
     from backend.services.topics_service import _call_llm as _ts_call_llm
     return await _ts_call_llm(prompt, llm, model=model)
+
+
+# ── Progress log helper ────────────────────────────────────────────────────────
+# Used by the 3 background tasks to surface per-step progress in the UI. Writes
+# accumulated entries to calls.<cache_field>.__progress__ periodically while
+# verification runs. Frontend polls the cache and renders the log.
+
+
+class ProgressLogger:
+    """Collects timestamped progress messages + flushes them to a JSONB cache field.
+
+    Usage:
+        plog = ProgressLogger(db, call_id, "verify_new_cache")
+        await plog.start()  # initial flush + start background flusher
+        await plog.log("Loading transcripts…")
+        ...
+        await plog.stop()   # final flush + stop flusher
+    """
+
+    def __init__(self, db, call_id: str, cache_field: str, flush_interval_s: float = 2.0):
+        self._db = db
+        self._call_id = call_id
+        self._cache_field = cache_field
+        self._flush_interval = flush_interval_s
+        self._entries: list[dict] = []
+        self._lock = asyncio.Lock()
+        self._stop = asyncio.Event()
+        self._task: asyncio.Task | None = None
+
+    async def log(self, msg: str) -> None:
+        async with self._lock:
+            self._entries.append({"ts": _dt.datetime.utcnow().isoformat() + "Z", "msg": msg})
+        logger.info(f"📥 [progress:{self._cache_field}] {msg}")
+
+    def entries_snapshot(self) -> list[dict]:
+        """Return a copy of all accumulated entries (used in final cache write)."""
+        return list(self._entries)
+
+    def _flush_sync(self) -> None:
+        # Read-modify-write the cache field. Best-effort — tolerates concurrent writes.
+        try:
+            row = self._db.table("calls").select(self._cache_field).eq("id", self._call_id).execute().data
+            cache = (row[0].get(self._cache_field) if row else None) or {}
+            cache["__progress__"] = list(self._entries)
+            self._db.table("calls").update({self._cache_field: cache}).eq("id", self._call_id).execute()
+        except Exception as e:
+            logger.warning(f"⚠️ [progress] flush failed: {e}")
+
+    async def _flusher_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=self._flush_interval)
+            except asyncio.TimeoutError:
+                pass
+            self._flush_sync()
+
+    async def start(self) -> None:
+        self._flush_sync()
+        self._task = asyncio.create_task(self._flusher_loop())
+
+    async def stop(self) -> None:
+        self._stop.set()
+        if self._task:
+            try:
+                await self._task
+            except Exception:
+                pass
+        self._flush_sync()
 
 
 def _build_verify_new_prompt(
