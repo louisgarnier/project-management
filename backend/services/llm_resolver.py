@@ -1,8 +1,10 @@
-"""Resolve the effective LLM + model for a given artifact type on a given project,
-using the three-tier cascade:
-    1. artifact_type.llm / .model (if set)
-    2. project.default_llm / .default_model (if set)
-    3. system_settings.default_llm / .default_model (always set)
+"""Resolve the effective LLM + model for any prompt — ALWAYS project-level.
+
+Post-EPIC-16: per-prompt and per-artifact_type LLM overrides are intentionally
+ignored. The single source of truth is projects.default_llm + default_model,
+with system_settings as fallback. The legacy 4-arg signature is preserved for
+backwards compatibility with existing call sites; the first two args are
+accepted but DISCARDED.
 """
 
 from backend.database.supabase_client import get_client
@@ -15,12 +17,13 @@ def resolve_effective_llm_model(
     project_model: str | None,
     db=None,
 ) -> tuple[str, str | None]:
-    """Return (effective_llm, effective_model) walking the cascade."""
-    if type_llm:
-        return (type_llm, type_model)
+    """Return (effective_llm, effective_model).
+
+    type_llm and type_model are accepted for signature compatibility but ignored.
+    Resolution: project_llm/model → system_settings → 'openrouter' fallback.
+    """
     if project_llm:
         return (project_llm, project_model)
-    # Fall back to system_settings
     if db is None:
         db = get_client()
     try:
@@ -38,5 +41,4 @@ def resolve_effective_llm_model(
             )
     except Exception:
         pass
-    # Ultimate fallback
     return ("openrouter", "deepseek/deepseek-v3.2")

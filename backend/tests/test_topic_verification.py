@@ -60,8 +60,9 @@ def test_run_verify_new_retries_then_flags_manual_review(monkeypatch):
     assert mock_llm.call_count == 2  # 1 initial + 1 retry
 
 
-def test_resolve_workflow_llm_uses_artifact_types_first():
-    """Verify resolution: artifact_types → projects → system_settings."""
+def test_resolve_workflow_llm_uses_project_default():
+    """Post-EPIC-16: resolver reads ONLY projects.default_llm/default_model.
+    artifact_types overrides are intentionally ignored — project is the single source of truth."""
     from backend.services.topics_service import _resolve_workflow_llm_for_category
 
     class _FakeDB:
@@ -75,15 +76,18 @@ def test_resolve_workflow_llm_uses_artifact_types_first():
         def execute(self):
             class _R: pass
             r = _R()
-            if self._t == "artifact_types":
+            if self._t == "projects":
+                r.data = [{"default_llm": "openrouter", "default_model": "anthropic/claude-sonnet-4-6"}]
+            elif self._t == "artifact_types":
+                # Even if artifact_types has an override, it must be ignored.
                 r.data = [{"llm": "claude", "model": "claude-sonnet-4-6"}]
             else:
                 r.data = []
             return r
 
     llm, model = _resolve_workflow_llm_for_category("proj-1", "verify_new_topic", _FakeDB())
-    assert llm == "claude"
-    assert model == "claude-sonnet-4-6"
+    assert llm == "openrouter"
+    assert model == "anthropic/claude-sonnet-4-6"
 
 
 def test_run_verify_not_discussed_not_found(monkeypatch):

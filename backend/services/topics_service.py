@@ -373,14 +373,14 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
 def _resolve_call_topics_prompt(
     call_id: str, db,
 ) -> tuple[str, str, str | None, str]:
-    """Resolve the call_topics prompt strictly from the artifact_library.
+    """Resolve the call_topics prompt + the project-level LLM/model.
 
-    Order:
-      1. calls.call_topics_prompt_id → artifact_library row
-      2. artifact_library where category='call_topics' AND seeded_by_default=true
-      3. ValueError('no_call_topics_prompt') — no Python-side fallback.
+    Prompt body: from artifact_library (per-call selection → seeded default).
+    LLM/model: post-EPIC-16, always from projects.default_llm — never from the
+    library entry. The 4-tuple shape is preserved for caller signature compat.
 
     Returns (prompt_body, llm_provider, model_id_or_None, library_entry_name).
+    Raises ValueError if no call_topics library entry exists.
     """
     call_row = (
         db.table("calls")
@@ -392,44 +392,40 @@ def _resolve_call_topics_prompt(
     if not call_row:
         raise ValueError(f"Call {call_id} not found")
     selected_id = call_row[0].get("call_topics_prompt_id")
+    project_id = call_row[0]["project_id"]
 
+    prompt_body: str | None = None
+    lib_name: str | None = None
     if selected_id:
         rows = (
             db.table("artifact_library")
-            .select("id, name, prompt, llm, model, category")
+            .select("id, name, prompt, category")
             .eq("id", selected_id)
             .execute()
             .data
         )
         if rows and rows[0].get("category") == "call_topics":
-            r = rows[0]
-            return (
-                r["prompt"],
-                (r.get("llm") or "openrouter"),
-                r.get("model"),
-                r.get("name") or "(unnamed)",
-            )
+            prompt_body = rows[0]["prompt"]
+            lib_name = rows[0].get("name") or "(unnamed)"
 
-    rows = (
-        db.table("artifact_library")
-        .select("id, name, prompt, llm, model")
-        .eq("category", "call_topics")
-        .eq("seeded_by_default", True)
-        .execute()
-        .data
-    )
-    if rows:
-        r = rows[0]
-        return (
-            r["prompt"],
-            (r.get("llm") or "openrouter"),
-            r.get("model"),
-            r.get("name") or "(unnamed)",
+    if prompt_body is None:
+        rows = (
+            db.table("artifact_library")
+            .select("id, name, prompt")
+            .eq("category", "call_topics")
+            .eq("seeded_by_default", True)
+            .execute()
+            .data
         )
+        if not rows:
+            raise ValueError(
+                "no_call_topics_prompt: artifact_library has no call_topics entry"
+            )
+        prompt_body = rows[0]["prompt"]
+        lib_name = rows[0].get("name") or "(unnamed)"
 
-    raise ValueError(
-        "no_call_topics_prompt: artifact_library has no call_topics entry"
-    )
+    llm, model = _resolve_workflow_llm_for_category(project_id, "call_topics", db)
+    return prompt_body, llm, model, lib_name or "(unnamed)"
 
 
 async def _call_llm(
@@ -647,28 +643,18 @@ def _get_topics_prompt(
 def _resolve_workflow_llm_for_category(
     project_id: str, category: str, db
 ) -> tuple[str, str | None]:
-    """Resolve (llm, model) for a workflow category via the existing chain:
-    artifact_types per-project → projects.default_llm → system_settings → 'openrouter' fallback.
+    """Resolve (llm, model) for any workflow category — project-level only.
 
-    Used by EPIC-16 RAG verification passes (verify_new_topic, verify_not_discussed,
-    extract_topic_updates) and any future workflow category that needs a runtime LLM resolution.
+    Post-EPIC-16: per-prompt and per-artifact_type overrides are intentionally
+    ignored. Resolution: projects.default_llm → system_settings → 'openrouter'.
+    The `category` arg is kept for signature compatibility / logging but unused.
     """
-    rows = (
-        db.table("artifact_types")
-        .select("llm, model")
-        .eq("project_id", project_id)
-        .eq("category", category)
-        .limit(1)
-        .execute()
-        .data
-    )
-    llm = rows[0].get("llm") if rows else None
-    model = rows[0].get("model") if rows else None
-    if not llm:
-        proj = db.table("projects").select("default_llm, default_model").eq("id", project_id).execute().data
-        if proj:
-            llm = proj[0].get("default_llm")
-            model = model or proj[0].get("default_model")
+    llm: str | None = None
+    model: str | None = None
+    proj = db.table("projects").select("default_llm, default_model").eq("id", project_id).execute().data
+    if proj:
+        llm = proj[0].get("default_llm")
+        model = proj[0].get("default_model")
     if not llm:
         try:
             settings = db.table("system_settings").select("default_llm, default_model").eq("id", 1).execute().data

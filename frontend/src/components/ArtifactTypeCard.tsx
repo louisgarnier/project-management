@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { ArtifactType, LLMProvider, ContextScope, LibraryEntry, SystemSettings } from "@/types";
-import { MODEL_RECOMMENDATIONS, PROVIDER_LABELS, estimateCost } from "@/constants/models";
+import { PROVIDER_LABELS, estimateCost } from "@/constants/models";
 import { artifactTypesAPI } from "@/api/client";
 import PublishToLibraryDialog from "@/components/PublishToLibraryDialog";
 
@@ -293,25 +293,9 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefau
           </div>
         )}
 
-        {/* Edit mode — provider/scope pickers (LLM + hybrid only) */}
+        {/* Edit mode — context_scope only. LLM/Model selection is now project-level (post-EPIC-16). */}
         {editing && effectiveKind !== "template" && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-            <select
-              value={llm ?? "inherit"}
-              onChange={(e) => {
-                const val = e.target.value;
-                setLlm(val === "inherit" ? null : (val as LLMProvider));
-                if (val !== "openrouter") setModel(null);
-              }}
-              style={{ fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "5px 8px", background: "white", color: "#172b4d" }}
-            >
-              <option value="inherit">{PROVIDER_LABELS.inherit}</option>
-              <option value="groq">{PROVIDER_LABELS.groq}</option>
-              <option value="deepseek">{PROVIDER_LABELS.deepseek}</option>
-              <option value="claude">{PROVIDER_LABELS.claude}</option>
-              <option value="openai">{PROVIDER_LABELS.openai}</option>
-              <option value="openrouter">{PROVIDER_LABELS.openrouter}</option>
-            </select>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
             <select
               value={contextScope}
               onChange={(e) => setContextScope(e.target.value as ContextScope)}
@@ -320,6 +304,9 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefau
               <option value="call">Call only</option>
               <option value="project">Full project</option>
             </select>
+            <span style={{ fontSize: 10, color: "#97a0af" }}>
+              LLM/Model use the project default ({effectiveLlm}{effectiveModel ? ` · ${effectiveModel}` : ""}) — change at project level.
+            </span>
           </div>
         )}
 
@@ -401,39 +388,7 @@ export default function ArtifactTypeCard({ type, projectDefaultLlm, projectDefau
               /* ── LLM kind ── */
               editing ? (
                 <>
-                  {/* OpenRouter model picker */}
-                  {llm === "openrouter" && (
-                    <div style={{ marginTop: 10, marginBottom: 8 }}>
-                      <label style={{ fontSize: 11, color: "#5e6c84", display: "block", marginBottom: 4 }}>
-                        Model (OpenRouter slug)
-                      </label>
-                      <input
-                        type="text"
-                        list={`openrouter-models-${type.id}`}
-                        value={model ?? ""}
-                        onChange={(e) => setModel(e.target.value)}
-                        placeholder="e.g. deepseek/deepseek-v3.2 — type any slug or click ▾ for suggestions"
-                        style={{ fontSize: 12, border: "1px solid #dfe1e6", borderRadius: 4, padding: "6px 8px", fontFamily: "ui-monospace, Menlo, monospace", width: "100%", boxSizing: "border-box" }}
-                      />
-                      <datalist id={`openrouter-models-${type.id}`}>
-                        {(MODEL_RECOMMENDATIONS[type.category] ?? []).map((m) => (
-                          <option key={m.slug} value={m.slug}>
-                            {m.label}{m.priceHint ? ` · ${m.priceHint}` : ""}
-                          </option>
-                        ))}
-                      </datalist>
-                      <p style={{ fontSize: 10, color: "#97a0af", marginTop: 4 }}>
-                        Any model on <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" style={{ color: "#0052cc" }}>openrouter.ai/models</a> works — paste its slug here.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Cost estimate when editing with OpenRouter */}
-                  {llm === "openrouter" && (
-                    <div style={{ padding: "4px 0", fontSize: 11, color: "#5e6c84" }}>
-                      Cost estimate: {estimateCost(model)} per call
-                    </div>
-                  )}
+                  {/* Per-prompt LLM/Model picker removed (post-EPIC-16). Project default is the sole source. */}
 
                   {/* Expandable prompt textarea */}
                   <div style={{ position: "relative", marginTop: 8 }}>

@@ -275,8 +275,11 @@ def test_resolve_prompt_uses_call_selected_id():
     })
     prompt, llm, model, name = topics_service._resolve_call_topics_prompt("c1", db)
     assert prompt == "v2 body"
+    # Post-EPIC-16: llm/model resolved via project default (then system_settings),
+    # not from the library row. Fake DB has no projects/system_settings rows →
+    # ultimate fallback to "openrouter"/None.
     assert llm == "openrouter"
-    assert model == "deepseek/deepseek-v3.2"
+    assert model is None
     assert name == "v2"
 
 
