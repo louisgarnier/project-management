@@ -5,6 +5,12 @@
 -- new workflow categories — extend both constraints to allow them.
 -- Manual application required via Supabase dashboard.
 
+-- ── Cleanup orphan rows from dropped EPIC-15 Phase 2 ──
+-- The 'chronology' category was introduced by Phase 2 (dropped 2026-05-20).
+-- Its library row remained in DB after rollback. Delete it before re-adding
+-- the constraint, otherwise ADD CONSTRAINT validation fails.
+DELETE FROM public.artifact_library WHERE category = 'chronology';
+
 -- ── artifact_library.category ──
 ALTER TABLE public.artifact_library
   DROP CONSTRAINT IF EXISTS artifact_library_category_check;
