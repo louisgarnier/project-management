@@ -104,6 +104,10 @@ class TopicIn(BaseModel):
     is_parked: bool = False
     importance: Literal["high", "medium", "low"] = "medium"
     rationale: str = ""
+    # EPIC-16 RAG-pass output fields — optional so old callers don't break
+    citations: list = []
+    evidence_trail: list = []
+    needs_manual_review: bool = False
 
     @field_validator("status", mode="before")
     @classmethod
@@ -355,6 +359,9 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
         "tasks": topic.get("tasks", []),
         "open_questions": topic.get("open_questions", []),
         "decisions": topic.get("decisions", []),
+        "citations": topic.get("citations") or [],
+        "evidence_trail": topic.get("evidence_trail") or [],
+        "needs_manual_review": bool(topic.get("needs_manual_review")),
         "status": _status_rollup(topic.get("tasks", [])),
     }
     if topic.get("transcript_excerpt"):
@@ -932,510 +939,6 @@ async def save_match_groups(call_id: str, groups: list[dict]) -> dict:
     return {"saved": len(groups)}
 
 
-async def run_merge_preview(call_id: str) -> list[dict]:
-    """
-    For each match group:
-    - matched (project_topic_ids has entries): run LLM to merge existing topic + call topics → updated recap
-    - new (project_topic_ids empty): return call topics as-is, topic_id=None
-
-    Returns a list of topic dicts ready for ProjectUpdatesStage review.
-    Each item has all TopicData fields plus topic_id (existing UUID or None).
-    """
-    db = get_client()
-
-    call_row = (
-        db.table("calls")
-        .select("project_id, pending_topics")
-        .eq("id", call_id)
-        .execute()
-        .data
-    )
-    if not call_row:
-        raise ValueError(f"Call {call_id} not found")
-    project_id = call_row[0]["project_id"]
-    pending: list[dict] = call_row[0].get("pending_topics") or []
-
-    groups = (
-        db.table("topic_match_groups")
-        .select("project_topic_ids, call_topic_names")
-        .eq("call_id", call_id)
-        .execute()
-        .data
-    )
-
-    # Build lookup: call topic name → topic dict
-    pending_by_name = {t["name"].lower().strip(): t for t in pending}
-
-    # Load previous project topics for context
-    previous = _get_previous_topics(project_id, db)
-    prev_by_id = {t["topic_id"]: t for t in previous}
-
-    # Get LLM config
-    stored_prompt, stored_llm, stored_model = _get_topics_prompt(
-        project_id, db, category="project_topics"
-    )
-    proj_rows = (
-        db.table("projects")
-        .select("default_llm, default_model, context")
-        .eq("id", project_id)
-        .execute()
-        .data
-    )
-    if stored_llm is None:
-        stored_llm = proj_rows[0].get("default_llm") if proj_rows else None
-    if stored_model is None:
-        stored_model = proj_rows[0].get("default_model") if proj_rows else None
-    if not stored_llm:
-        # Inherit from system_settings (Tier 3)
-        try:
-            settings_row = (
-                db.table("system_settings")
-                .select("default_llm, default_model")
-                .eq("id", 1)
-                .execute()
-                .data
-            )
-            if settings_row:
-                stored_llm = settings_row[0].get("default_llm") or "openrouter"
-                stored_model = stored_model or settings_row[0].get("default_model")
-        except Exception:
-            stored_llm = "openrouter"
-    llm = stored_llm or "openrouter"
-    model = stored_model
-    project_context = (proj_rows[0].get("context") or "").strip() if proj_rows else ""
-
-    base_merge_instructions = stored_prompt or (
-        "You are merging an existing project topic record with one or more new call topics that match it. "
-        "Produce an updated topic that synthesises the history with the latest call information.\n\n"
-        "CRITICAL RULES — follow these exactly:\n"
-        "1. NEVER drop follow-up items. Include ALL follow-ups from ALL sources (existing + new). "
-        "If both the existing topic and the call topic have follow-ups, UNION them — do not pick a subset.\n"
-        "2. NEVER drop decisions. Include ALL decisions from ALL sources.\n"
-        "3. The summary must cover ALL key points discussed — do not compress or omit details. "
-        "If the discussion touched on specific numbers, dates, names, or commitments, include them.\n"
-        "4. When in doubt, include more detail rather than less. Completeness beats brevity.\n"
-        "5. Update status, sentiment, and owner to reflect the CURRENT state after this call.\n"
-        "6. Preserve the exact wording of follow-up items and decisions unless they are truly duplicates."
-    )
-    merge_instructions = (
-        f"Project context:\n{project_context}\n\n{base_merge_instructions}"
-        if project_context
-        else base_merge_instructions
-    )
-
-    async def merge_one(group: dict) -> list[dict]:
-        """Return a list of topic dicts for one match group.
-
-        Handles three group types:
-        - Empty project_topic_ids (new topics): single call topic → as-is; multiple → LLM merge into one
-        - Single project_topic_ids (1:1 match): LLM merge existing + call topics → updated existing
-        - Multiple project_topic_ids (M:N merge): LLM merge all → one new topic, sources get archived
-        """
-        ptids = group.get("project_topic_ids") or []
-        call_names = group.get("call_topic_names", [])
-        call_matches = [
-            pending_by_name[n.lower().strip()]
-            for n in call_names
-            if n.lower().strip() in pending_by_name
-        ]
-
-        if not ptids:
-            # New topic(s) from call
-            if not call_matches:
-                logger.warning(
-                    "⚠️ [Topics] match group has empty project_topic_ids but no matching call topics — skipping"
-                )
-                return []
-            if len(call_matches) == 1:
-                return [{**call_matches[0], "topic_id": None}]
-            # Multiple call topics grouped as new → LLM merge into one with proposed name
-            try:
-                call_excerpts_parts = []
-                for m in call_matches:
-                    part = f'Topic: "{m.get("name", "")}"\n'
-                    part += f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
-                    part += f'Summary: {m.get("summary", "")}'
-                    fups = m.get("follow_up_items") or []
-                    if fups:
-                        part += "\nFollow-ups:\n" + "\n".join(f"  - {f}" for f in fups)
-                    decs = m.get("decisions") or []
-                    if decs:
-                        part += "\nDecisions:\n" + "\n".join(f"  - {d}" for d in decs)
-                    call_excerpts_parts.append(part)
-                call_excerpts = "\n\n".join(call_excerpts_parts)
-                prompt = (
-                    f"{merge_instructions}\n\n"
-                    f"Multiple call topics need to be merged into ONE topic.\n"
-                    f"They were extracted separately but cover the same subject.\n"
-                    f"Propose a concise name that captures the combined scope.\n\n"
-                    f"Call topics to merge:\n{call_excerpts}\n\n"
-                    f"Remember: UNION all follow_up_items and decisions from every topic. "
-                    f"The summary must cover ALL key points from ALL topics being merged.\n\n"
-                    f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
-                )
-                merged = await _call_llm(prompt, llm, model=model)
-                if isinstance(merged, list):
-                    merged = merged[0] if merged else {}
-                if not _is_valid_topic_shape(merged):
-                    logger.error(
-                        f"❌ [Topics] New-topic merge returned non-topic shape — "
-                        f"keys={list(merged.keys()) if isinstance(merged, dict) else type(merged).__name__} "
-                        f"— returning first call topic as-is"
-                    )
-                    return [{**call_matches[0], "topic_id": None}]
-                return [{**merged, "topic_id": None}]
-            except Exception as e:
-                logger.error(
-                    f"❌ [Topics] New-topic merge failed: {e} — returning first topic"
-                )
-                return [{**call_matches[0], "topic_id": None}]
-
-        if len(ptids) == 1:
-            # Standard 1:1 match — update existing topic with RAG context
-            ptid = ptids[0]
-            existing = prev_by_id.get(ptid)
-            if not existing:
-                base = call_matches[0] if call_matches else {}
-                return [{**base, "topic_id": ptid}]
-
-            if not call_matches:
-                return [{**existing, "topic_id": ptid}]
-
-            # Build RAG context from historical transcript excerpts
-            excerpt_context = build_lineage_evidence_block(
-                existing.get("name", ""), ptid, db
-            )
-            call_excerpts_parts = []
-            for m in call_matches:
-                part = f'New from this call: "{m.get("name", "")}"\n'
-                part += f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
-                part += f'Summary: {m.get("summary", "")}'
-                fups = m.get("follow_up_items") or []
-                if fups:
-                    part += "\nFollow-ups from this call:\n" + "\n".join(
-                        f"  - {f}" for f in fups
-                    )
-                decs = m.get("decisions") or []
-                if decs:
-                    part += "\nDecisions from this call:\n" + "\n".join(
-                        f"  - {d}" for d in decs
-                    )
-                call_excerpts_parts.append(part)
-            call_excerpts = "\n\n".join(call_excerpts_parts)
-
-            try:
-                prompt = (
-                    f"{merge_instructions}\n\n"
-                    f"Historical discussion (grounded in actual transcripts):\n{excerpt_context}\n\n"
-                    f"Current state:\n{json.dumps(existing, indent=2)}\n\n"
-                    f"New call topic(s) matching this:\n{call_excerpts}\n\n"
-                    f"Synthesize into an updated topic. Ground your summary in the transcript excerpts, "
-                    f"not just prior summaries.\n"
-                    f"UNION all follow_up_items from both existing and new — never drop any.\n"
-                    f"UNION all decisions from both existing and new — never drop any.\n"
-                    f"The summary must include ALL key points from both historical and new discussion.\n\n"
-                    f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
-                )
-                merged = await _call_llm(prompt, llm, model=model)
-                if isinstance(merged, list):
-                    merged = merged[0] if merged else {}
-                if not _is_valid_topic_shape(merged):
-                    logger.error(
-                        f"❌ [Topics] 1:1 merge returned non-topic shape for "
-                        f"'{existing.get('name', '?')}' — "
-                        f"keys={list(merged.keys()) if isinstance(merged, dict) else type(merged).__name__} "
-                        f"— returning existing unchanged"
-                    )
-                    return [{**existing, "topic_id": ptid}]
-                return [{**merged, "topic_id": ptid}]
-            except Exception as e:
-                logger.error(
-                    f"❌ [Topics] LLM merge failed for topic {ptid}: {e} — returning existing unchanged"
-                )
-                return [{**existing, "topic_id": ptid}]
-
-        # M:N merge — multiple existing topics + call topics → one new topic
-        existing_topics = [prev_by_id[pid] for pid in ptids if pid in prev_by_id]
-        all_inputs = existing_topics + call_matches
-        if not all_inputs:
-            logger.warning("⚠️ [Topics] M:N group has no resolvable topics — skipping")
-            return []
-
-        # Build RAG context for each source topic
-        excerpt_sections = "\n\n".join(
-            build_lineage_evidence_block(prev_by_id[pid].get("name", ""), pid, db)
-            for pid in ptids
-            if pid in prev_by_id
-        )
-        call_excerpts_parts = []
-        for m in call_matches:
-            part = f'New from this call: "{m.get("name", "")}"\n'
-            part += f'Transcript: {m.get("transcript_excerpt", "(none)")}\n'
-            part += f'Summary: {m.get("summary", "")}'
-            fups = m.get("follow_up_items") or []
-            if fups:
-                part += "\nFollow-ups from this call:\n" + "\n".join(
-                    f"  - {f}" for f in fups
-                )
-            decs = m.get("decisions") or []
-            if decs:
-                part += "\nDecisions from this call:\n" + "\n".join(
-                    f"  - {d}" for d in decs
-                )
-            call_excerpts_parts.append(part)
-        call_excerpts = "\n\n".join(call_excerpts_parts)
-
-        try:
-            prompt = (
-                f"{merge_instructions}\n\n"
-                f"You are merging multiple existing project topics into ONE new topic.\n"
-                f"Propose a concise name that captures the combined scope.\n\n"
-                f"Historical discussions (grounded in actual transcripts):\n{excerpt_sections}\n\n"
-                f"Current state of existing topics:\n{json.dumps(existing_topics, indent=2)}\n\n"
-                f"New call topic(s):\n{call_excerpts}\n\n"
-                f"Synthesize everything into a single merged topic. Ground your summary in the "
-                f"transcript excerpts, not just prior summaries.\n"
-                f"UNION all follow_up_items from EVERY source topic — never drop any.\n"
-                f"UNION all decisions from EVERY source topic — never drop any.\n"
-                f"The summary must include ALL key points from ALL topics being merged.\n\n"
-                f"Return a single merged topic JSON:\n{_TOPIC_SCHEMA}"
-            )
-            merged = await _call_llm(prompt, llm, model=model)
-            if isinstance(merged, list):
-                merged = merged[0] if merged else {}
-            if not _is_valid_topic_shape(merged):
-                logger.error(
-                    f"❌ [Topics] M:N merge returned non-topic shape — "
-                    f"keys={list(merged.keys()) if isinstance(merged, dict) else type(merged).__name__} "
-                    f"— returning first existing topic unchanged"
-                )
-                return [
-                    {**existing_topics[0], "topic_id": None, "_source_topic_ids": ptids}
-                ]
-            return [{**merged, "topic_id": None, "_source_topic_ids": ptids}]
-        except Exception as e:
-            logger.error(
-                f"❌ [Topics] M:N merge failed: {e} — returning first existing unchanged"
-            )
-            return [
-                {**existing_topics[0], "topic_id": None, "_source_topic_ids": ptids}
-            ]
-
-    per_group = await asyncio.gather(*[merge_one(g) for g in groups])
-    # Flatten: each merge_one returns a list (1 item for matched/M:N groups, N for new groups)
-    results = [item for sublist in per_group for item in sublist]
-
-    # Collect all project_topic_ids that are in match groups
-    matched_project_ids: set[str] = set()
-    for g in groups:
-        for pid in g.get("project_topic_ids") or []:
-            matched_project_ids.add(pid)
-
-    # Build not-discussed entries for project topics NOT in any match group
-    not_discussed = []
-    for t in previous:
-        if t["topic_id"] not in matched_project_ids:
-            not_discussed.append({**t, "not_discussed": True})
-
-    return [r for r in results if r] + not_discussed
-
-
-async def _verify_merged_topics(call_id: str, merged_topics: list[dict]) -> list[dict]:
-    """
-    Post-merge verification pass: for each discussed topic, check the merged result
-    against the full transcript to ensure no follow-ups, decisions, or key details were lost.
-    Returns the verified/corrected topic list.
-    """
-    db = get_client()
-
-    call_row = (
-        db.table("calls")
-        .select("project_id, transcript")
-        .eq("id", call_id)
-        .execute()
-        .data
-    )
-    if not call_row:
-        return merged_topics
-    project_id = call_row[0]["project_id"]
-    transcript = call_row[0].get("transcript") or ""
-    if not transcript:
-        logger.info(
-            f"⚠️ [MergeVerify] No transcript for call {call_id} — skipping verification"
-        )
-        return merged_topics
-
-    # Get the merge_verification prompt
-    stored_prompt, stored_llm, stored_model = _get_topics_prompt(
-        project_id, db, category="merge_verification"
-    )
-    proj_rows = (
-        db.table("projects")
-        .select("default_llm, default_model")
-        .eq("id", project_id)
-        .execute()
-        .data
-    )
-    _proj_llm = (proj_rows[0].get("default_llm") if proj_rows else None) or None
-    _proj_model = proj_rows[0].get("default_model") if proj_rows else None
-    if not stored_llm and not _proj_llm:
-        # Inherit from system_settings (Tier 3)
-        try:
-            settings_row = (
-                db.table("system_settings")
-                .select("default_llm, default_model")
-                .eq("id", 1)
-                .execute()
-                .data
-            )
-            if settings_row:
-                _proj_llm = settings_row[0].get("default_llm") or "openrouter"
-                _proj_model = _proj_model or settings_row[0].get("default_model")
-        except Exception:
-            _proj_llm = "openrouter"
-    llm = stored_llm or _proj_llm or "openrouter"
-    model = stored_model or _proj_model
-    verify_instructions = stored_prompt or (
-        "You are a quality reviewer for project topic data. "
-        "Verify that the merged topic did NOT lose any important information. "
-        "Check: are ALL follow-up items preserved? ALL decisions? Does the summary cover all key points? "
-        "Return the corrected topic as JSON. Only ADD back what was lost, never remove anything."
-    )
-
-    # Collect all source follow-ups and decisions for each topic
-    # so the verification prompt can compare against them
-    groups = (
-        db.table("topic_match_groups")
-        .select("project_topic_ids, call_topic_names")
-        .eq("call_id", call_id)
-        .execute()
-        .data
-    )
-    pending_row = (
-        db.table("calls").select("pending_topics").eq("id", call_id).execute().data
-    )
-    pending: list[dict] = (
-        (pending_row[0].get("pending_topics") or []) if pending_row else []
-    )
-    pending_by_name = {t["name"].lower().strip(): t for t in pending}
-
-    previous = _get_previous_topics(project_id, db)
-    prev_by_id = {t["topic_id"]: t for t in previous}
-
-    # Build a map of source data per discussed topic for the verification prompt
-    # Match merged topics to their groups by topic_id or name
-    source_data_map: dict[int, dict] = {}
-    for idx, topic in enumerate(merged_topics):
-        if topic.get("not_discussed"):
-            continue
-        all_follow_ups: list[str] = []
-        all_decisions: list[str] = []
-
-        # Find the matching group
-        tid = topic.get("topic_id")
-        tname = (topic.get("name") or "").lower().strip()
-        matched_group = None
-        for g in groups:
-            ptids = g.get("project_topic_ids") or []
-            cnames = [n.lower().strip() for n in (g.get("call_topic_names") or [])]
-            if tid and tid in ptids:
-                matched_group = g
-                break
-            if any(n == tname for n in cnames):
-                matched_group = g
-                break
-
-        if matched_group:
-            # Collect from existing project topics
-            for pid in matched_group.get("project_topic_ids") or []:
-                existing = prev_by_id.get(pid, {})
-                all_follow_ups.extend(existing.get("follow_up_items") or [])
-                all_decisions.extend(existing.get("decisions") or [])
-            # Collect from call topics
-            for cname in matched_group.get("call_topic_names") or []:
-                ct = pending_by_name.get(cname.lower().strip(), {})
-                all_follow_ups.extend(ct.get("follow_up_items") or [])
-                all_decisions.extend(ct.get("decisions") or [])
-
-        source_data_map[idx] = {
-            "all_follow_ups": all_follow_ups,
-            "all_decisions": all_decisions,
-        }
-
-    verified = list(merged_topics)  # copy
-    for idx, topic in enumerate(merged_topics):
-        if topic.get("not_discussed"):
-            continue
-        source = source_data_map.get(idx)
-        if not source:
-            continue
-
-        source_follow_ups = source["all_follow_ups"]
-        source_decisions = source["all_decisions"]
-
-        try:
-            # Fix 6.4: prefer ancestor-aware lineage evidence when the merged
-            # topic has a persisted topic_id. This lets the verifier see
-            # per-call excerpts/decisions/follow-ups from archived sources —
-            # not just the current call. When topic_id is None (brand-new
-            # M:N merge result not yet written), fall back to the flat
-            # source-lists path since there is no lineage to walk.
-            tid_for_lineage = topic.get("topic_id")
-            if tid_for_lineage:
-                evidence_block = build_lineage_evidence_block(
-                    topic.get("name", ""), tid_for_lineage, db
-                )
-                evidence_section = (
-                    f"== Lineage evidence (all calls that contributed to this topic, "
-                    f"including archived ancestor sources — every follow-up, decision, "
-                    f"and detail here must be preserved) ==\n{evidence_block}\n\n"
-                )
-            else:
-                evidence_section = (
-                    f"== Source follow-up items (must ALL be present) ==\n"
-                    f"{json.dumps(source_follow_ups, indent=2)}\n\n"
-                    f"== Source decisions (must ALL be present) ==\n"
-                    f"{json.dumps(source_decisions, indent=2)}\n\n"
-                )
-
-            prompt = (
-                f"{verify_instructions}\n\n"
-                f"== Merged topic (to verify) ==\n{json.dumps(topic, indent=2)}\n\n"
-                f"{evidence_section}"
-                f"== Current call full transcript ==\n"
-                f"{transcript}\n\n"
-                f"Verify ALL key points from ALL calls in the lineage are preserved, "
-                f"not just the current call's. Add back any missing follow-ups, "
-                f"decisions, or key details. Never remove or shorten anything that "
-                f"was already correct.\n"
-                f"Return the corrected topic JSON (same schema).\n"
-                f"{_TOPIC_SCHEMA}"
-            )
-            corrected = await _call_llm(prompt, llm, model=model)
-            if isinstance(corrected, list):
-                corrected = corrected[0] if corrected else topic
-            if not _is_valid_topic_shape(corrected):
-                logger.error(
-                    f"❌ [MergeVerify] LLM returned non-topic shape for "
-                    f"'{topic.get('name', '?')}' — "
-                    f"keys={list(corrected.keys()) if isinstance(corrected, dict) else type(corrected).__name__} "
-                    f"— keeping original"
-                )
-                continue
-            # Preserve internal fields
-            corrected["topic_id"] = topic.get("topic_id")
-            if "_source_topic_ids" in topic:
-                corrected["_source_topic_ids"] = topic["_source_topic_ids"]
-            verified[idx] = corrected
-            logger.info(f"✅ [MergeVerify] Verified topic: {topic.get('name', '?')}")
-        except Exception as e:
-            logger.error(
-                f"❌ [MergeVerify] Verification failed for '{topic.get('name', '?')}': {e} — keeping original"
-            )
-
-    return verified
-
-
 async def run_merge_background(call_id: str) -> None:
     """
     Run run_merge_preview in the background, then verify each merged topic
@@ -1464,154 +967,6 @@ async def run_merge_background(call_id: str) -> None:
         logger.exception(f"❌ [Topics] Background merge failed: {e}")
 
 
-async def verify_not_discussed_topics(call_id: str) -> dict:
-    """
-    Check each not-discussed topic against the call transcript using the
-    not_discussed_check workflow prompt. Returns a dict keyed by topic_id
-    with {discussed: bool, transcript_excerpt: str|None, reasoning: str}.
-    """
-    db = get_client()
-
-    call_row = (
-        db.table("calls")
-        .select("project_id, transcript")
-        .eq("id", call_id)
-        .execute()
-        .data
-    )
-    if not call_row:
-        raise ValueError(f"Call {call_id} not found")
-    project_id = call_row[0]["project_id"]
-    transcript = call_row[0].get("transcript") or ""
-    if not transcript:
-        logger.warning(f"⚠️ [Verification] No transcript for call {call_id}")
-        return {}
-
-    # Load match groups to identify which project topics are NOT discussed
-    groups = (
-        db.table("topic_match_groups")
-        .select("project_topic_ids")
-        .eq("call_id", call_id)
-        .execute()
-        .data
-    )
-    matched_ids: set[str] = set()
-    for g in groups:
-        for pid in g.get("project_topic_ids") or []:
-            matched_ids.add(pid)
-
-    previous = _get_previous_topics(project_id, db)
-    not_discussed = [t for t in previous if t["topic_id"] not in matched_ids]
-
-    if not not_discussed:
-        logger.info(f"✅ [Verification] No not-discussed topics for call {call_id}")
-        return {}
-
-    # Get the not_discussed_check prompt and LLM
-    stored_prompt, stored_llm, stored_model = _get_topics_prompt(
-        project_id, db, category="not_discussed_check"
-    )
-    proj_rows = (
-        db.table("projects")
-        .select("default_llm, default_model")
-        .eq("id", project_id)
-        .execute()
-        .data
-    )
-    _proj_llm = (proj_rows[0].get("default_llm") if proj_rows else None) or None
-    _proj_model = proj_rows[0].get("default_model") if proj_rows else None
-    if not stored_llm and not _proj_llm:
-        # Inherit from system_settings (Tier 3)
-        try:
-            settings_row = (
-                db.table("system_settings")
-                .select("default_llm, default_model")
-                .eq("id", 1)
-                .execute()
-                .data
-            )
-            if settings_row:
-                _proj_llm = settings_row[0].get("default_llm") or "openrouter"
-                _proj_model = _proj_model or settings_row[0].get("default_model")
-        except Exception:
-            _proj_llm = "openrouter"
-    llm = stored_llm or _proj_llm or "openrouter"
-    model = stored_model or _proj_model
-    check_instructions = stored_prompt or (
-        "You are checking whether a project topic was actually discussed in a call transcript.\n"
-        "Given the topic name, its latest summary, and the full call transcript, determine:\n"
-        "1. Was this topic mentioned or discussed in the call? (yes/no)\n"
-        "2. If yes, provide the relevant transcript excerpt.\n\n"
-        'Return JSON: {"discussed": true/false, "transcript_excerpt": "..." or null, '
-        '"reasoning": "one sentence explanation"}'
-    )
-
-    results: dict[str, dict] = {}
-
-    for topic in not_discussed:
-        topic_id = topic["topic_id"]
-        try:
-            prompt = (
-                f"{check_instructions}\n\n"
-                f"Topic name: {topic['name']}\n"
-                f"Topic summary: {topic.get('summary', '(no summary)')}\n\n"
-                f"Call transcript:\n{transcript}"
-            )
-            raw = await call_llm_raw(_EXTRACT_SYSTEM, prompt, llm, model=model)
-            raw = raw.strip()
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            parsed = json.loads(raw.strip())
-            # Some LLMs wrap the object in a single-element list despite the
-            # explicit schema. Unwrap defensively.
-            if isinstance(parsed, list):
-                parsed = parsed[0] if parsed else {}
-            if not isinstance(parsed, dict):
-                raise ValueError(f"expected JSON object, got {type(parsed).__name__}")
-            results[topic_id] = {
-                "discussed": bool(parsed.get("discussed", False)),
-                "transcript_excerpt": parsed.get("transcript_excerpt"),
-                "reasoning": parsed.get("reasoning", ""),
-                "error": None,
-            }
-            logger.info(
-                f"🔍 [Verification] {topic['name']}: discussed={results[topic_id]['discussed']}"
-            )
-        except Exception as e:
-            logger.error(f"❌ [Verification] Failed for topic {topic['name']}: {e}")
-            results[topic_id] = {
-                "discussed": None,
-                "transcript_excerpt": None,
-                "reasoning": "",
-                "error": str(e),
-            }
-
-    return results
-
-
-async def run_verification_background(call_id: str) -> None:
-    """Run verify_not_discussed_topics in background, saving to verification_cache."""
-    db = get_client()
-    try:
-        result = await verify_not_discussed_topics(call_id)
-        db.table("calls").update(
-            {
-                "verification_cache": result,
-                "verification_status": "done",
-            }
-        ).eq("id", call_id).execute()
-        logger.info(
-            f"✅ [Verification] Background verification complete for call {call_id}"
-        )
-    except Exception as e:
-        db.table("calls").update({"verification_status": "failed"}).eq(
-            "id", call_id
-        ).execute()
-        logger.exception(f"❌ [Verification] Background verification failed: {e}")
-
-
 async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
     """
     Save merged/reviewed topics and advance to artifacts.
@@ -1620,6 +975,11 @@ async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
     match groups and pending_topics are preserved as permanent records.
     """
     db = get_client()
+
+    # Load the EPIC-16 extract-updates cache so we can forward citations + evidence_trail
+    # into the topic_updates rows for topics that went through Pass ③.
+    cache_row = db.table("calls").select("extract_updates_cache").eq("id", call_id).execute().data
+    extract_cache: dict = (cache_row[0].get("extract_updates_cache") or {}) if cache_row else {}
 
     # Idempotent: delete any topic_updates this call previously saved before re-saving.
     # This prevents duplicate rows if validate_project_updates is called more than once
@@ -1666,6 +1026,17 @@ async def validate_project_updates(call_id: str, topics: list[dict]) -> dict:
     }
     topic_updates = []
     for t in topics_to_save:
+        # Merge in EPIC-16 extract_updates_cache results (citations, evidence_trail,
+        # needs_manual_review, and any extracted snapshot fields).
+        extract_result = extract_cache.get(t.get("topic_id")) or {}
+        extracted = extract_result.get("extracted_snapshot") or {}
+        if extracted:
+            for key in ("summary", "status", "tasks", "open_questions", "decisions"):
+                if not t.get(key):
+                    t[key] = extracted.get(key)
+            t["citations"] = extract_result.get("citations") or []
+            t["evidence_trail"] = extract_result.get("evidence_trail") or []
+            t["needs_manual_review"] = extract_result.get("needs_manual_review", False)
         model_data = {k: v for k, v in t.items() if k not in clean_fields}
         model_data["topic_id"] = t.get("topic_id")
         model_data["disposition"] = None
@@ -1794,6 +1165,9 @@ async def save_topics(call_id: str, topics: list[TopicUpdate]) -> dict:
             "tasks": t.tasks,
             "open_questions": t.open_questions,
             "decisions": t.decisions,
+            "citations": getattr(t, "citations", None) or [],
+            "evidence_trail": getattr(t, "evidence_trail", None) or [],
+            "needs_manual_review": bool(getattr(t, "needs_manual_review", False)),
             "summary": t.summary,
             "transcript_excerpt": t.transcript_excerpt,
         }
@@ -2079,6 +1453,20 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
                 f"⚠️ [Rollback] Could not clear verification fields (non-fatal): {e}"
             )
 
+    def _clear_rag_pass_fields() -> None:
+        """Clear the 3 EPIC-16 pass caches/statuses."""
+        payload = json.dumps({
+            "verify_new_cache": None, "verify_new_status": "idle",
+            "verify_not_discussed_cache": None, "verify_not_discussed_status": "idle",
+            "extract_updates_cache": None, "extract_updates_status": "idle",
+        })
+        db.postgrest.session.patch(
+            f"/calls?id=eq.{call_id}",
+            content=payload,
+            headers={"Content-Type": "application/json", "Prefer": "return=representation"},
+        )
+        logger.info(f"🗄️ [Rollback] Cleared RAG pass fields for call {call_id}")
+
     def _un_merge_topics() -> None:
         """Reverse M:N merge: un-archive source topics, delete merged-into topics created at this call.
 
@@ -2244,6 +1632,7 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         _mark_artifacts_stale()
         _clear_merge_fields()
         _clear_verification_fields()
+        _clear_rag_pass_fields()
 
     elif target_stage == "call_topics":
         # Restore extraction_cache FIRST — topic_updates may be the only source (Call 1 auto-advance
@@ -2321,6 +1710,7 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         _delete_match_groups()
         _clear_merge_fields()
         _clear_verification_fields()
+        _clear_rag_pass_fields()
         _mark_artifacts_stale()
 
     elif target_stage == "transcript":
@@ -2333,6 +1723,7 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         _clear_extraction_fields()
         _clear_merge_fields()
         _clear_verification_fields()
+        _clear_rag_pass_fields()
 
     else:
         raise ValueError(f"Unknown target_stage: {target_stage}")

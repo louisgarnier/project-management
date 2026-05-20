@@ -8,8 +8,8 @@ from backend.services.topic_lineage import (
 from backend.services.topics_service import (
     save_topics, validate_call, generate_brief,
     list_project_topics, list_call_topics, extract_call_topics, aggregate_topics,
-    get_pending_topics, save_match_groups, run_merge_preview, validate_project_updates,
-    run_extraction_background, run_merge_background, run_verification_background,
+    get_pending_topics, save_match_groups, validate_project_updates,
+    run_extraction_background,
     list_topics_timeline,
     list_topics_prior_to_call, rollback_to_stage,
     TopicUpdate,
@@ -177,16 +177,12 @@ class MatchGroupPayload(PydanticBaseModel):
 
 
 @router.post("/calls/{call_id}/topics/save-matches", status_code=200)
-async def save_matches(call_id: str, groups: list[MatchGroupPayload], background_tasks: BackgroundTasks):
+async def save_matches(call_id: str, groups: list[MatchGroupPayload]):
     """Save manual match groups and advance to project_updates."""
     logger.info(f"📥 [Topics] Save matches: call={call_id}, groups={len(groups)}")
     try:
         result = await save_match_groups(call_id, [g.model_dump() for g in groups])
-        # Trigger not-discussed verification in background
-        db = get_client()
-        db.table("calls").update({"verification_status": "processing", "verification_cache": None}).eq("id", call_id).execute()
-        background_tasks.add_task(run_verification_background, call_id)
-        logger.info(f"✅ [Topics] Triggered background verification for call {call_id}")
+        logger.info(f"✅ [Topics] Saved match groups; project_updates stage advanced")
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -260,29 +256,6 @@ async def get_match_groups(call_id: str):
 
     logger.info(f"✅ [Topics] Returned {len(result)} match groups")
     return result
-
-
-@router.post("/calls/{call_id}/topics/merge-preview")
-async def merge_preview(call_id: str, background_tasks: BackgroundTasks):
-    """Fire-and-forget merge preview. Result saved to calls.merge_cache."""
-    logger.info(f"📥 [Topics] Background merge requested: call={call_id}")
-    db = get_client()
-
-    call_row = db.table("calls").select("merge_status").eq("id", call_id).execute().data
-    if not call_row:
-        raise HTTPException(status_code=404, detail=f"Call {call_id} not found")
-
-    status = call_row[0].get("merge_status", "idle")
-    if status == "processing":
-        logger.info(f"⚠️ [Topics] Merge already in progress: call={call_id}")
-        return {"status": "processing"}
-
-    # Mark as processing and fire background task
-    db.table("calls").update({"merge_status": "processing", "merge_cache": None}).eq("id", call_id).execute()
-    background_tasks.add_task(run_merge_background, call_id)
-
-    logger.info(f"✅ [Topics] Background merge started: call={call_id}")
-    return {"status": "processing"}
 
 
 
