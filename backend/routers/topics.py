@@ -691,3 +691,77 @@ async def brief(call_id: str):
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+# --------------------------------------------------------------------------- #
+# EPIC-16 — Pass ① /verify-new
+# --------------------------------------------------------------------------- #
+
+
+from backend.services.topic_verification import run_verify_new as _run_verify_new
+
+
+async def _run_verify_new_background(call_id: str) -> None:
+    """Run Pass ① for every new topic in this call's pending_topics, persist to verify_new_cache."""
+    import asyncio
+    from backend.services.topics_service import _resolve_workflow_llm_for_category
+    db = get_client()
+    try:
+        call_row = db.table("calls").select("project_id, pending_topics").eq("id", call_id).execute().data
+        if not call_row:
+            return
+        project_id = call_row[0]["project_id"]
+        pending = call_row[0].get("pending_topics") or []
+
+        # Determine which pending topics are "new" (NOT in any match group)
+        groups = db.table("topic_match_groups").select("call_topic_names").eq("call_id", call_id).execute().data
+        matched_names = {n.lower().strip() for g in groups for n in (g.get("call_topic_names") or [])}
+        new_candidates = [t for t in pending if t["name"].lower().strip() not in matched_names]
+
+        # Load all transcripts in this project (chronological)
+        calls = (
+            db.table("calls")
+            .select("id, transcript")
+            .eq("project_id", project_id)
+            .order("created_at")
+            .execute()
+            .data
+        )
+        transcripts = {c["id"]: (c.get("transcript") or "") for c in calls if c.get("transcript")}
+
+        # Load existing project topics as anchors
+        project_topics_rows = (
+            db.table("topics")
+            .select("id, name, key_terms")
+            .eq("project_id", project_id)
+            .eq("archived", False)
+            .execute()
+            .data
+        )
+        project_topics = [{"topic_id": t["id"], "name": t["name"], "key_terms": t.get("key_terms") or []} for t in project_topics_rows]
+
+        llm, model = _resolve_workflow_llm_for_category(project_id, "verify_new_topic", db)
+
+        results = await asyncio.gather(*[
+            _run_verify_new(c, project_topics, transcripts, llm=llm, model=model)
+            for c in new_candidates
+        ])
+        cache = {c["name"]: r for c, r in zip(new_candidates, results)}
+
+        db.table("calls").update(
+            {"verify_new_cache": cache, "verify_new_status": "done"}
+        ).eq("id", call_id).execute()
+        logger.info(f"✅ [verify_new] done for call {call_id} ({len(results)} candidates)")
+    except Exception as e:
+        logger.exception(f"❌ [verify_new] failed for call {call_id}: {e}")
+        db.table("calls").update({"verify_new_status": "failed"}).eq("id", call_id).execute()
+
+
+@router.post("/calls/{call_id}/topics/verify-new")
+async def verify_new(call_id: str, background_tasks: BackgroundTasks):
+    """EPIC-16 Pass ① — verify that newly-classified topics are truly new + extraction-grounded."""
+    logger.info(f"📥 [verify_new] requested for call {call_id}")
+    db = get_client()
+    db.table("calls").update({"verify_new_status": "processing", "verify_new_cache": None}).eq("id", call_id).execute()
+    background_tasks.add_task(_run_verify_new_background, call_id)
+    return {"status": "processing"}

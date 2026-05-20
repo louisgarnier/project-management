@@ -637,6 +637,42 @@ def _get_topics_prompt(
     return rows[0]["prompt"], rows[0].get("llm"), rows[0].get("model")
 
 
+def _resolve_workflow_llm_for_category(
+    project_id: str, category: str, db
+) -> tuple[str, str | None]:
+    """Resolve (llm, model) for a workflow category via the existing chain:
+    artifact_types per-project → projects.default_llm → system_settings → 'openrouter' fallback.
+
+    Used by EPIC-16 RAG verification passes (verify_new_topic, verify_not_discussed,
+    extract_topic_updates) and any future workflow category that needs a runtime LLM resolution.
+    """
+    rows = (
+        db.table("artifact_types")
+        .select("llm, model")
+        .eq("project_id", project_id)
+        .eq("category", category)
+        .limit(1)
+        .execute()
+        .data
+    )
+    llm = rows[0].get("llm") if rows else None
+    model = rows[0].get("model") if rows else None
+    if not llm:
+        proj = db.table("projects").select("default_llm, default_model").eq("id", project_id).execute().data
+        if proj:
+            llm = proj[0].get("default_llm")
+            model = model or proj[0].get("default_model")
+    if not llm:
+        try:
+            settings = db.table("system_settings").select("default_llm, default_model").eq("id", 1).execute().data
+            if settings:
+                llm = settings[0].get("default_llm") or "openrouter"
+                model = model or settings[0].get("default_model")
+        except Exception:
+            llm = "openrouter"
+    return llm or "openrouter", model
+
+
 async def extract_call_topics(call_id: str) -> list[dict]:
     """
     Extract topics from this call's transcript using the v2 schema.

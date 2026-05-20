@@ -1,0 +1,86 @@
+"""Tests for topic_verification — EPIC-16 RAG passes orchestration."""
+
+import asyncio
+from unittest.mock import AsyncMock
+
+from backend.services import topic_verification as tv
+
+
+def _llm_returns(payload):
+    """Build an AsyncMock returning a fixed JSON-serializable payload."""
+    return AsyncMock(return_value=payload)
+
+
+def test_run_verify_new_truly_new(monkeypatch):
+    """Happy path: LLM returns truly_new with one verified citation."""
+    transcripts = {"call-1": "We talked about onboarding redesign."}
+    project_topics = []
+    candidate = {
+        "name": "Customer onboarding redesign",
+        "key_terms": ["onboarding"],
+        "tasks": [{"task": "Mockup new flow", "next_step": "", "owner": "", "status": "open"}],
+        "open_questions": [],
+        "decisions": [],
+    }
+    llm_result = {
+        "verdict": "truly_new",
+        "matched_topic_id": None,
+        "matched_topic_name": None,
+        "extraction_grounded": True,
+        "ungrounded_items": [],
+        "citations": [
+            {"call_id": "call-1", "lines": "1-1", "quote": "onboarding redesign", "for": "extraction"}
+        ],
+    }
+    monkeypatch.setattr(tv, "_call_llm", _llm_returns(llm_result))
+
+    out = asyncio.run(tv.run_verify_new(candidate, project_topics, transcripts, llm="claude", model=None))
+    assert out["verdict"] == "truly_new"
+    assert out["needs_manual_review"] is False
+    assert len(out["citations"]) == 1
+
+
+def test_run_verify_new_retries_then_flags_manual_review(monkeypatch):
+    """When LLM citations fail post-verify twice, return needs_manual_review=True."""
+    transcripts = {"call-1": "real body text."}
+    candidate = {"name": "Foo", "key_terms": ["foo"]}
+    llm_result_bad = {
+        "verdict": "truly_new",
+        "matched_topic_id": None,
+        "matched_topic_name": None,
+        "extraction_grounded": True,
+        "ungrounded_items": [],
+        "citations": [{"call_id": "call-1", "lines": "1-1", "quote": "FABRICATED", "for": "extraction"}],
+    }
+    mock_llm = AsyncMock(side_effect=[llm_result_bad, llm_result_bad])
+    monkeypatch.setattr(tv, "_call_llm", mock_llm)
+
+    out = asyncio.run(tv.run_verify_new(candidate, [], transcripts, llm="claude", model=None))
+    assert out["needs_manual_review"] is True
+    assert mock_llm.call_count == 2  # 1 initial + 1 retry
+
+
+def test_resolve_workflow_llm_uses_artifact_types_first():
+    """Verify resolution: artifact_types → projects → system_settings."""
+    from backend.services.topics_service import _resolve_workflow_llm_for_category
+
+    class _FakeDB:
+        _t: str
+        def table(self, name):
+            self._t = name
+            return self
+        def select(self, *_a, **_kw): return self
+        def eq(self, *_a, **_kw): return self
+        def limit(self, _): return self
+        def execute(self):
+            class _R: pass
+            r = _R()
+            if self._t == "artifact_types":
+                r.data = [{"llm": "claude", "model": "claude-sonnet-4-6"}]
+            else:
+                r.data = []
+            return r
+
+    llm, model = _resolve_workflow_llm_for_category("proj-1", "verify_new_topic", _FakeDB())
+    assert llm == "claude"
+    assert model == "claude-sonnet-4-6"
