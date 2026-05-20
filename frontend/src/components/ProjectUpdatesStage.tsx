@@ -1,650 +1,627 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { topicsAPI } from "@/api/client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { callsAPI, topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { Call, TopicData } from "@/types";
+import type {
+  Call,
+  TopicData,
+  MatchGroup,
+  VerifyNewResult,
+  VerifyNotDiscussedResult,
+  ExtractedUpdateResult,
+} from "@/types";
+import EvidenceTrail from "./EvidenceTrail";
 
 type Props = {
-  callId: string;
-  projectId: string;
   call: Call;
-  onValidated: () => void;
+  projectId: string;
+  /** New prop name — preferred. */
+  onValidateComplete?: () => void;
+  /** Legacy prop name from KanbanBoard/page.tsx — keep until parent is updated. */
+  onValidated?: () => void;
   onPollCall?: () => Promise<void>;
+  /** Legacy prop — ignored; call.id is used instead. */
+  callId?: string;
 };
 
-const SEL: React.CSSProperties = {
-  fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4,
-  padding: "3px 7px", background: "white", color: "#172b4d",
-  fontFamily: "inherit", cursor: "pointer",
-};
-
-const STATUS_BADGE: Record<string, React.CSSProperties> = {
-  open:        { background: "#e9f0ff", color: "#0052cc" },
-  in_progress: { background: "#fff4e6", color: "#974f0c" },
-  resolved:    { background: "#e3fcef", color: "#006644" },
-};
-
-const SENTIMENT_COLOR: Record<string, string> = {
-  positive: "#216e4e", neutral: "#5e6c84", concern: "#ae2a19",
-};
-
-function TopicRow({ topic, onChange, onViewEvidence }: {
-  topic: TopicData;
-  onChange: (t: TopicData) => void;
-  onViewEvidence?: (topicId: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [newFollowUp, setNewFollowUp] = useState("");
-  const isNew = !topic.topic_id;
-
-  return (
-    <div style={{
-      borderBottom: "1px solid #f0f1f3",
-      paddingLeft: expanded ? 17 : 20,
-      paddingRight: 20,
-      paddingTop: 10,
-      paddingBottom: 10,
-      borderLeft: expanded ? "3px solid #0052cc" : `3px solid ${isNew ? "#79dbb2" : "transparent"}`,
-      background: expanded ? "#fafbfc" : "white",
-    }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flex: 1, minWidth: 0 }}>
-          {expanded ? (
-            <input
-              value={topic.name}
-              onChange={(e) => onChange({ ...topic, name: e.target.value })}
-              style={{ fontSize: 13, fontWeight: 600, color: "#172b4d",
-                border: "none", borderBottom: "2px solid #0052cc", outline: "none",
-                background: "transparent", flex: 1, minWidth: 0, fontFamily: "inherit" }}
-            />
-          ) : (
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#172b4d" }}>{topic.name}</span>
-          )}
-          <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
-            padding: "2px 6px", borderRadius: 3, whiteSpace: "nowrap", flexShrink: 0,
-            ...(STATUS_BADGE[topic.status ?? "open"] ?? STATUS_BADGE.open) }}>
-            {(topic.status ?? "open").replace("_", " ")}
-          </span>
-          {isNew && (
-            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
-              padding: "2px 6px", borderRadius: 3, background: "#f0fdf7", color: "#36b37e", flexShrink: 0 }}>
-              New
-            </span>
-          )}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          {onViewEvidence && topic.topic_id && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewEvidence(topic.topic_id!);
-              }}
-              style={{
-                background: "none", border: "none", cursor: "pointer",
-                fontSize: 11, color: "#0052cc", padding: 0, fontFamily: "inherit",
-                textDecoration: "underline",
-              }}
-            >
-              View evidence
-            </button>
-          )}
-          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-            color: SENTIMENT_COLOR[topic.sentiment ?? "neutral"] ?? "#5e6c84" }}>
-            {topic.sentiment}
-          </span>
-          <button onClick={() => setExpanded((v) => !v)}
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13,
-              padding: "0 2px", color: expanded ? "#0052cc" : "#97a0af", lineHeight: 1 }}>
-            ✎
-          </button>
-        </div>
-      </div>
-
-      {!expanded && topic.summary && (
-        <p style={{ fontSize: 12, color: "#5e6c84", margin: "3px 0 0", lineHeight: 1.5 }}>
-          {topic.summary}
-        </p>
-      )}
-      {!expanded && (topic.follow_up_items ?? []).map((item, i) => (
-        <div key={i} style={{ fontSize: 11, color: "#5e6c84", paddingTop: 2 }}>→ {item}</div>
-      ))}
-
-      {expanded && (
-        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <select value={topic.status ?? "open"} onChange={(e) => onChange({ ...topic, status: e.target.value as TopicData["status"] })} style={SEL}>
-              <option value="open">Open</option>
-              <option value="in_progress">In Progress</option>
-              <option value="resolved">Resolved</option>
-            </select>
-            <select value={topic.owner ?? "Us"} onChange={(e) => onChange({ ...topic, owner: e.target.value as TopicData["owner"] })} style={SEL}>
-              <option value="Us">Us</option>
-              <option value="Client">Client</option>
-              <option value="Both">Both</option>
-            </select>
-            <select value={topic.sentiment ?? "neutral"} onChange={(e) => onChange({ ...topic, sentiment: e.target.value as TopicData["sentiment"] })} style={SEL}>
-              <option value="positive">Positive</option>
-              <option value="neutral">Neutral</option>
-              <option value="concern">Concern</option>
-            </select>
-          </div>
-          <textarea
-            value={topic.summary ?? ""}
-            onChange={(e) => onChange({ ...topic, summary: e.target.value })}
-            placeholder="Summary…"
-            rows={3}
-            style={{ fontSize: 12, color: "#172b4d", border: "1px solid #dfe1e6", borderRadius: 4,
-              padding: "6px 8px", resize: "vertical", fontFamily: "inherit",
-              width: "100%", boxSizing: "border-box" }}
-          />
-          <div>
-            {(topic.follow_up_items ?? []).map((item, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                <span style={{ color: "#97a0af", fontSize: 11 }}>→</span>
-                <input value={item}
-                  onChange={(e) => {
-                    const items = [...(topic.follow_up_items ?? [])];
-                    items[i] = e.target.value;
-                    onChange({ ...topic, follow_up_items: items });
-                  }}
-                  style={{ flex: 1, fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "3px 6px", fontFamily: "inherit" }}
-                />
-                <button onClick={() => onChange({ ...topic, follow_up_items: (topic.follow_up_items ?? []).filter((_, idx) => idx !== i) })}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "#bfc5ce", fontSize: 11 }}>✕</button>
-              </div>
-            ))}
-            <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
-              <input
-                value={newFollowUp}
-                onChange={(e) => setNewFollowUp(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newFollowUp.trim()) {
-                    onChange({ ...topic, follow_up_items: [...(topic.follow_up_items ?? []), newFollowUp.trim()] });
-                    setNewFollowUp("");
-                  }
-                }}
-                placeholder="Add follow-up…"
-                style={{ flex: 1, fontSize: 11, border: "1px solid #dfe1e6", borderRadius: 4, padding: "3px 6px", fontFamily: "inherit" }}
-              />
-              <button
-                onClick={() => {
-                  if (newFollowUp.trim()) {
-                    onChange({ ...topic, follow_up_items: [...(topic.follow_up_items ?? []), newFollowUp.trim()] });
-                    setNewFollowUp("");
-                  }
-                }}
-                style={{ fontSize: 11, color: "#0052cc", background: "none", border: "1px solid #b3c6e8", borderRadius: 4, padding: "3px 10px", cursor: "pointer" }}>
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function ProjectUpdatesStage({ callId, projectId, call, onValidated, onPollCall }: Props) {
-  const alreadyMerged = call.merge_status === "done" && !!(call.merge_cache?.length);
-  const [topics, setTopics] = useState<TopicData[]>(() => alreadyMerged ? (call.merge_cache ?? []) : []);
-  const [starting, setStarting] = useState(false);   // button click in-flight
-  const [merging, setMerging] = useState(() => call.merge_status === "processing");
-  const [merged, setMerged] = useState(alreadyMerged);
-  const [validating, setValidating] = useState(false);
+export default function ProjectUpdatesStage({ call, projectId, onValidateComplete, onValidated, onPollCall }: Props) {
+  // Normalise: accept either prop name for the completion callback.
+  const fireComplete = onValidateComplete ?? onValidated ?? (() => {});
+  const [projectTopics, setProjectTopics] = useState<TopicData[]>([]);
+  const [pending, setPending] = useState<TopicData[]>([]);
+  const [groups, setGroups] = useState<MatchGroup[]>([]);
+  const [busy, setBusy] = useState<null | "①" | "②" | "③">(null);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(() => call.verification_status === "processing");
-  const [verificationCache, setVerificationCache] = useState<Call["verification_cache"]>(call.verification_cache);
-  // Track whether we've applied the cache to avoid overwriting user edits
-  const mergeApplied = useRef(alreadyMerged);
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load topics on mount
   useEffect(() => {
-    // If merge already done, load from cache
-    if (call.merge_status === "done" && call.merge_cache) {
-      setTopics(call.merge_cache);
-      setMerged(true);
-      mergeApplied.current = true;
-      logger.info("Loaded topics from merge_cache", { component: "ProjectUpdatesStage" });
-      return;
-    }
-    // Otherwise reconstruct from match groups (covers: idle, processing, failed)
     Promise.all([
-      topicsAPI.getMatchGroups(callId),
-      topicsAPI.getPending(callId),
-      topicsAPI.priorToCall(projectId, callId),
-    ]).then(([groups, pending, projectTopics]) => {
-      const pendingByName = new Map(pending.map((t: TopicData) => [t.name.toLowerCase().trim(), t]));
-      const projectById = new Map(projectTopics.map((t: TopicData) => [t.topic_id ?? "", t]));
-      const matchedProjectIds = new Set(
-        groups.flatMap((g: { project_topic_ids: string[]; call_topic_names: string[] }) => g.project_topic_ids)
-      );
+      topicsAPI.getMatchGroups(call.id),
+      topicsAPI.getPending(call.id),
+      topicsAPI.priorToCall(projectId, call.id),
+    ])
+      .then(([g, p, pr]) => {
+        setGroups(
+          g.map((x: { project_topic_ids: string[]; call_topic_names: string[] }) => ({
+            project_topic_ids: x.project_topic_ids ?? [],
+            call_topic_names: x.call_topic_names ?? [],
+          }))
+        );
+        setPending(p);
+        setProjectTopics(pr);
+      })
+      .catch((e: unknown) => {
+        logger.error("[ProjectUpdatesStage] load failed", { data: e });
+        setError("Failed to load data");
+      });
+  }, [call.id, projectId]);
 
-      const result: TopicData[] = [];
-
-      for (const g of groups as { project_topic_ids: string[]; call_topic_names: string[] }[]) {
-        if (g.project_topic_ids.length === 0) {
-          for (const name of g.call_topic_names) {
-            const ct = pendingByName.get(name.toLowerCase().trim());
-            if (ct) result.push({ ...ct, topic_id: undefined });
-          }
-        } else {
-          for (const pid of g.project_topic_ids) {
-            const existing = projectById.get(pid);
-            if (existing) {
-              result.push({ ...existing, pending_merge: true });
-            }
-          }
-        }
-      }
-
-      for (const pt of projectTopics as TopicData[]) {
-        if (!matchedProjectIds.has(pt.topic_id ?? "")) {
-          result.push({ ...pt, not_discussed: true });
-        }
-      }
-
-      logger.info(`Auto-populated ${result.length} topics`, { component: "ProjectUpdatesStage" });
-      setTopics(result);
-    }).catch(() => setError("Failed to load topics"));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
-  // Watch for merge completion when polling
-  useEffect(() => {
-    if (call.merge_status === "done" && call.merge_cache && !mergeApplied.current) {
-      setTopics(call.merge_cache);
-      setMerged(true);
-      setMerging(false);
-      mergeApplied.current = true;
-      logger.info("Merge complete — applied cache", { component: "ProjectUpdatesStage" });
+  // Migrations from ① and ②
+  const migratedFromNew = useMemo<Set<string>>(() => {
+    const cache = call.verify_new_cache ?? {};
+    const ids = new Set<string>();
+    for (const r of Object.values(cache)) {
+      if (r?.verdict === "should_be_merged_with" && r.matched_topic_id) {
+        ids.add(r.matched_topic_id);
+      }
     }
-    if (call.merge_status === "failed" && merging) {
-      setMerging(false);
-      setError("Merge failed — please try again.");
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [call.merge_status, call.merge_cache]);
+    return ids;
+  }, [call.verify_new_cache]);
 
-  // Watch for verification completion
-  useEffect(() => {
-    if (call.verification_status === "done" && call.verification_cache) {
-      setVerificationCache(call.verification_cache);
-      setVerifying(false);
+  const migratedFromNotDiscussed = useMemo<Set<string>>(() => {
+    const cache = call.verify_not_discussed_cache ?? {};
+    const ids = new Set<string>();
+    for (const [tid, r] of Object.entries(cache)) {
+      if (r?.verdict === "actually_discussed") ids.add(tid);
     }
-    if (call.verification_status === "failed" && verifying) {
-      setVerifying(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [call.verification_status, call.verification_cache]);
+    return ids;
+  }, [call.verify_not_discussed_cache]);
 
-  // Poll every 3s while merging or verifying
-  useEffect(() => {
-    if ((!merging && !verifying) || !onPollCall) return;
-    const interval = setInterval(async () => {
-      await onPollCall();
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [merging, verifying, onPollCall]);
+  const sections = useMemo(() => {
+    const matchedNames = new Set(groups.flatMap((g) => g.call_topic_names));
+    const matchedProjectIds = new Set(groups.flatMap((g) => g.project_topic_ids));
 
-  async function handleRunMerge() {
-    setStarting(true);
+    // New topics from this call = pending topics not in any match group
+    // BUT exclude those that ① decided should be merged (they live in section 3 now)
+    const newCandidates = pending.filter((p) => !matchedNames.has(p.name));
+    const newTopics = newCandidates.filter((p) => {
+      const r = (call.verify_new_cache ?? {})[p.name];
+      return !(r && r.verdict === "should_be_merged_with");
+    });
+
+    // Old project topics NOT in any match group AND not migrated to Merged by ②
+    const notInCall = projectTopics.filter((t) => {
+      const tid = t.topic_id ?? "";
+      if (matchedProjectIds.has(tid)) return false;
+      if (migratedFromNotDiscussed.has(tid)) return false;
+      return true;
+    });
+
+    // Merged topics = (a) matched project topics + (b) ② migrations + (c) ① migrations
+    const mergedSet = new Set<string>([
+      ...matchedProjectIds,
+      ...migratedFromNotDiscussed,
+      ...migratedFromNew,
+    ]);
+    const merged = projectTopics.filter((t) => mergedSet.has(t.topic_id ?? ""));
+
+    return { newTopics, notInCall, merged };
+  }, [groups, pending, projectTopics, call.verify_new_cache, migratedFromNew, migratedFromNotDiscussed]);
+
+  const stage1Done = call.verify_new_status === "done";
+  const stage2Done = call.verify_not_discussed_status === "done";
+  const stage3Done = call.extract_updates_status === "done";
+  const allDone = stage1Done && stage2Done && stage3Done;
+
+  const triggerPass = async (which: "①" | "②" | "③") => {
+    setBusy(which);
     setError(null);
     try {
-      await topicsAPI.mergePreview(callId);
-      setMerging(true);
-      mergeApplied.current = false;
-      logger.info("Merge started in background", { component: "ProjectUpdatesStage" });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Merge failed");
+      if (which === "①") await topicsAPI.verifyNew(call.id);
+      else if (which === "②") await topicsAPI.verifyNotDiscussed(call.id);
+      else await topicsAPI.extractUpdates(call.id);
+
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        try {
+          const fresh = await callsAPI.getCall(call.id);
+          const status =
+            which === "①"
+              ? fresh.verify_new_status
+              : which === "②"
+                ? fresh.verify_not_discussed_status
+                : fresh.extract_updates_status;
+          if (status === "done" || status === "failed") {
+            if (pollRef.current) {
+              clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+            setBusy(null);
+            // Notify parent to refresh the call prop so cache fields appear in state.
+            if (onPollCall) {
+              await onPollCall();
+            } else {
+              // Fallback: hard reload so the parent re-fetches.
+              window.location.reload();
+            }
+          }
+        } catch (e) {
+          logger.error("[ProjectUpdatesStage] poll failed", { data: e });
+        }
+      }, 3000);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to trigger pass");
+      setBusy(null);
+    }
+  };
+
+  const handleSaveContinue = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const extractCache = call.extract_updates_cache ?? {};
+      const matchedProjectIds = new Set(groups.flatMap((g) => g.project_topic_ids));
+      // matchedProjectIds is used implicitly via sections.merged — suppress unused var
+      void matchedProjectIds;
+
+      const payload: TopicData[] = [];
+
+      // For new topics that truly are new (not migrated): persist raw pending data
+      for (const p of sections.newTopics) {
+        payload.push({ ...p, topic_id: null });
+      }
+
+      // For merged topics: use extracted snapshot if present, else fall back to raw
+      for (const m of sections.merged) {
+        const tid = m.topic_id ?? "";
+        const extracted = extractCache[tid];
+        if (extracted) {
+          const s = extracted.extracted_snapshot;
+          payload.push({
+            ...m,
+            topic_id: tid,
+            summary: s.summary,
+            status: s.status,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            tasks: s.tasks as any,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            open_questions: s.open_questions as any,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            decisions: s.decisions as any,
+            citations: [], // citations live in extract cache; let backend pick them up
+            evidence_trail: extracted.evidence_trail,
+            needs_manual_review: extracted.needs_manual_review,
+          });
+        } else {
+          payload.push({ ...m, topic_id: tid });
+        }
+      }
+
+      // Not-discussed topics: backend will mark not_discussed=true via flag in payload
+      for (const t of sections.notInCall) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        payload.push({ ...t, not_discussed: true } as any);
+      }
+
+      await topicsAPI.validateUpdates(call.id, payload);
+      fireComplete();
+    } catch (e: unknown) {
+      logger.error("[ProjectUpdatesStage] save failed", { data: e });
+      setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
-      setStarting(false);
+      setSaving(false);
     }
-  }
+  };
 
-  async function handleValidate() {
-    setValidating(true);
-    setError(null);
-    try {
-      await topicsAPI.validateUpdates(callId, topics);
-      onValidated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Validation failed");
-    } finally {
-      setValidating(false);
-    }
-  }
-
-  async function handleRerunVerification() {
-    setError(null);
-    try {
-      await topicsAPI.verifyNotDiscussed(callId);
-      setVerifying(true);
-      setVerificationCache(null);
-      logger.info("Verification re-run triggered", { component: "ProjectUpdatesStage" });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Re-run check failed");
-    }
-  }
-
-  async function handlePromote(topic: TopicData) {
-    // Move from not_discussed straight to editable Updated Topics section.
-    // Persist as a ptid-only match group so re-running merge or refreshing the
-    // page doesn't wipe the promotion (backend rebuilds from match_groups).
-    if (!topic.topic_id) return;
-    try {
-      await topicsAPI.promoteNotDiscussed(callId, topic.topic_id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Promote failed");
-      return;
-    }
-    setTopics(prev => prev.map(t =>
-      t === topic ? { ...t, not_discussed: false, pending_merge: false } : t
-    ));
-  }
-
-  const newTopics = topics.filter(t => !t.not_discussed && !t.topic_id);
-  const mergeTopics = topics.filter(t => t.pending_merge);
-  const updatedTopics = topics.filter(t => !t.not_discussed && !!t.topic_id && !t.pending_merge);
-  const notDiscussed = topics.filter(t => t.not_discussed);
-  const discussed = topics.filter(t => !t.not_discussed);
+  // Build callsById from the projectTopics' implicit calls? We need a separate call to enumerate calls.
+  // For the evidence trail we need all calls in the project. Since calls list isn't loaded here,
+  // we synthesize minimal entries — the trail rendering needs id + title + created_at to sort/label.
+  // Simplest path: lazy-load when ③ done.
+  const [callsById, setCallsById] = useState<Record<string, Pick<Call, "id" | "title" | "created_at">>>({});
+  useEffect(() => {
+    if (!stage3Done) return;
+    // Lazy-fetch all calls of the project to build a callsById map.
+    // Try the project-calls endpoint if available; otherwise synthesize from current call only.
+    (async () => {
+      try {
+        // No direct callsAPI for project calls list? Fall back to a single-call map.
+        // If a project-calls endpoint exists, use it.
+        // @ts-expect-error — listForProject may or may not exist
+        const list = await callsAPI.listForProject?.(projectId);
+        if (Array.isArray(list)) {
+          const map: Record<string, Pick<Call, "id" | "title" | "created_at">> = {};
+          for (const c of list) {
+            map[c.id] = { id: c.id, title: c.title ?? "", created_at: c.created_at ?? "" };
+          }
+          setCallsById(map);
+          return;
+        }
+      } catch {
+        // ignore — fall through to single-call synth
+      }
+      setCallsById({
+        [call.id]: { id: call.id, title: call.title, created_at: call.created_at },
+      });
+    })();
+  }, [stage3Done, projectId, call.id, call.title, call.created_at]);
 
   return (
-    <>
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-
-      {/* Header */}
-      <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid #dfe1e6", flexShrink: 0 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: "#172b4d", margin: "0 0 4px" }}>
-          Project Topic Updates
+      <header style={{ padding: "14px 20px", borderBottom: "1px solid #dfe1e6" }}>
+        <h2 style={{ margin: 0, fontSize: 15, color: "#172b4d" }}>
+          Project Updates · {call.title ?? "Untitled"}
         </h2>
-        <div style={{ fontSize: 12, color: "#5e6c84" }}>
-          Step 2 of 2 — Review and merge topic updates before saving to the project.
-        </div>
-      </div>
+      </header>
 
       {error && (
-        <div style={{ margin: "0 20px", marginTop: 12, background: "#fff1f0", border: "1px solid #ffbdad",
-          borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#ae2a19", flexShrink: 0 }}>
+        <div
+          style={{
+            margin: 16,
+            padding: 12,
+            background: "#fff1f0",
+            color: "#ae2a19",
+            borderRadius: 6,
+            border: "1px solid #ffbdad",
+            fontSize: 12,
+          }}
+        >
           {error}
         </div>
       )}
 
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+        {/* Section 1 — New topics */}
+        <section style={{ marginBottom: 24 }}>
+          <SectionHeader
+            title="1. New topics from this call"
+            count={sections.newTopics.length}
+            button={
+              <button
+                disabled={busy !== null || sections.newTopics.length === 0}
+                onClick={() => triggerPass("①")}
+                style={passButton(stage1Done)}
+              >
+                {busy === "①" ? "Running…" : stage1Done ? "Re-verify ①" : "① Verify new"}
+              </button>
+            }
+            done={stage1Done}
+            disabled={false}
+          />
+          {sections.newTopics.map((t) => (
+            <NewTopicCard
+              key={t.name}
+              topic={t}
+              result={(call.verify_new_cache ?? {})[t.name]}
+            />
+          ))}
+        </section>
 
-        {/* Section 1: New Topics */}
-        {newTopics.length > 0 && (
-          <>
-            <div style={{ padding: "10px 20px 6px", fontSize: 11, fontWeight: 700, color: "#5e6c84",
-              textTransform: "uppercase", letterSpacing: ".05em", borderBottom: "1px solid #f4f5f7" }}>
-              New Topics ({newTopics.length})
-            </div>
-            {newTopics.map((t) => {
-              const i = topics.indexOf(t);
-              return (
-                <TopicRow
-                  key={t.topic_id ?? t.name ?? i}
-                  topic={t}
-                  onChange={(updated) => {
-                    const next = [...topics];
-                    next[i] = updated;
-                    setTopics(next);
-                  }}
-                />
-              );
-            })}
-          </>
+        {/* Section 2 — Not in call */}
+        <section style={{ marginBottom: 24 }}>
+          <SectionHeader
+            title="2. Old topics not in this call"
+            count={sections.notInCall.length}
+            button={
+              <button
+                disabled={!stage1Done || busy !== null || sections.notInCall.length === 0}
+                onClick={() => triggerPass("②")}
+                style={passButton(stage2Done)}
+              >
+                {busy === "②" ? "Running…" : stage2Done ? "Re-verify ②" : "② Verify not discussed"}
+              </button>
+            }
+            done={stage2Done}
+            disabled={!stage1Done}
+          />
+          {sections.notInCall.map((t) => (
+            <NotInCallCard
+              key={t.topic_id}
+              topic={t}
+              result={(call.verify_not_discussed_cache ?? {})[t.topic_id ?? ""]}
+            />
+          ))}
+        </section>
+
+        {/* Section 3 — Merged */}
+        <section style={{ marginBottom: 24 }}>
+          <SectionHeader
+            title="3. Merged topics"
+            count={sections.merged.length}
+            button={
+              <button
+                disabled={!stage2Done || busy !== null || sections.merged.length === 0}
+                onClick={() => triggerPass("③")}
+                style={passButton(stage3Done)}
+              >
+                {busy === "③" ? "Running…" : stage3Done ? "Re-extract ③" : "③ Extract updates"}
+              </button>
+            }
+            done={stage3Done}
+            disabled={!stage2Done}
+          />
+          {sections.merged.map((t) => (
+            <MergedTopicCard
+              key={t.topic_id}
+              projectTopic={t}
+              callMatches={pending.filter((p) =>
+                groups.some(
+                  (g) =>
+                    (g.project_topic_ids ?? []).includes(t.topic_id ?? "") &&
+                    g.call_topic_names.includes(p.name)
+                )
+              )}
+              extracted={(call.extract_updates_cache ?? {})[t.topic_id ?? ""]}
+              fromNew={migratedFromNew.has(t.topic_id ?? "")}
+              fromNotDiscussed={migratedFromNotDiscussed.has(t.topic_id ?? "")}
+              callsById={callsById}
+            />
+          ))}
+        </section>
+      </div>
+
+      <footer
+        style={{
+          padding: 12,
+          borderTop: "1px solid #dfe1e6",
+          display: "flex",
+          justifyContent: "flex-end",
+        }}
+      >
+        <button
+          disabled={!allDone || saving}
+          onClick={handleSaveContinue}
+          style={{
+            padding: "8px 22px",
+            borderRadius: 6,
+            border: "none",
+            background: allDone && !saving ? "#0052cc" : "#f4f5f7",
+            color: allDone && !saving ? "white" : "#97a0af",
+            cursor: allDone && !saving ? "pointer" : "default",
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: "inherit",
+          }}
+        >
+          {saving ? "Saving…" : "Save & Continue → Artifacts"}
+        </button>
+      </footer>
+    </div>
+  );
+}
+
+// ── Helper components ──────────────────────────────────────────────────────
+
+function SectionHeader({
+  title,
+  count,
+  button,
+  done,
+  disabled,
+}: {
+  title: string;
+  count: number;
+  button: React.ReactNode;
+  done: boolean;
+  disabled: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "8px 12px",
+        background: disabled ? "#f4f5f7" : "#fafbfc",
+        opacity: disabled ? 0.5 : 1,
+        borderRadius: 6,
+        marginBottom: 8,
+      }}
+    >
+      <span style={{ fontSize: 13, fontWeight: 700, color: "#172b4d" }}>
+        {title} ({count}) {done && <span style={{ color: "#36b37e", marginLeft: 6 }}>✓ done</span>}
+      </span>
+      {button}
+    </div>
+  );
+}
+
+function NewTopicCard({ topic, result }: { topic: TopicData; result?: VerifyNewResult }) {
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <strong style={{ fontSize: 13, color: "#172b4d" }}>{topic.name}</strong>
+        {result?.verdict === "truly_new" && <span style={badgeGreen}>✓ truly new</span>}
+        {result?.verdict === "should_be_merged_with" && (
+          <span style={badgeAmber}>↻ moved to merged → {result.matched_topic_name}</span>
         )}
+        {result?.needs_manual_review && (
+          <span style={badgeRed}>⚠ needs manual review</span>
+        )}
+      </div>
+      {topic.tasks && topic.tasks.length > 0 && (
+        <ul style={{ fontSize: 12, color: "#5e6c84", marginTop: 6, paddingLeft: 20 }}>
+          {topic.tasks.map((t, i) => (
+            <li key={i}>
+              {t.task}
+              {t.next_step && <> → {t.next_step}</>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {result?.extraction_grounded === false && result.ungrounded_items.length > 0 && (
+        <div style={{ fontSize: 11, color: "#ae2a19", marginTop: 6 }}>
+          ⚠ Ungrounded items: {result.ungrounded_items.map((u) => u.text).join(", ")}
+        </div>
+      )}
+    </div>
+  );
+}
 
-        {/* Section 2a: Needs Merge (before merge runs or while merging) */}
-        {mergeTopics.length > 0 && (
-          <div style={{ marginTop: newTopics.length > 0 ? 8 : 0 }}>
-            <div style={{ padding: "8px 20px 6px", borderTop: newTopics.length > 0 ? "1px solid #dfe1e6" : undefined,
-              borderBottom: "1px solid #dfe1e6", background: "#f4f5f7" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#97a0af",
-                letterSpacing: ".05em" }}>
-                Updated Topics — {mergeTopics.length} need{mergeTopics.length !== 1 ? "" : "s"} merge
-              </div>
-              <div style={{ fontSize: 11, color: "#97a0af", marginTop: 2 }}>
-                {merging
-                  ? "⏳ Merging in background… you can navigate away and come back."
-                  : "Showing existing data — click Run Merge to generate AI-updated content"}
-              </div>
+function NotInCallCard({
+  topic,
+  result,
+}: {
+  topic: TopicData;
+  result?: VerifyNotDiscussedResult;
+}) {
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <strong style={{ fontSize: 13, color: "#172b4d" }}>{topic.name}</strong>
+        {result?.verdict === "not_discussed" && (
+          <span style={badgeGreen}>✓ not discussed</span>
+        )}
+        {result?.verdict === "actually_discussed" && (
+          <span style={badgeAmber}>↻ actually discussed — moved to merged</span>
+        )}
+        {result?.needs_manual_review && <span style={badgeRed}>⚠ needs manual review</span>}
+      </div>
+      {topic.summary && (
+        <div style={{ fontSize: 11, color: "#5e6c84", marginTop: 6 }}>
+          Latest snapshot: {topic.summary}
+        </div>
+      )}
+      {result?.verdict === "actually_discussed" && result.citation && (
+        <div style={{ fontSize: 11, color: "#42526e", marginTop: 4, fontStyle: "italic" }}>
+          &quot;{result.citation.quote}&quot;
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MergedTopicCard({
+  projectTopic,
+  callMatches,
+  extracted,
+  fromNew,
+  fromNotDiscussed,
+  callsById,
+}: {
+  projectTopic: TopicData;
+  callMatches: TopicData[];
+  extracted?: ExtractedUpdateResult;
+  fromNew: boolean;
+  fromNotDiscussed: boolean;
+  callsById: Record<string, Pick<Call, "id" | "title" | "created_at">>;
+}) {
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <strong style={{ fontSize: 13, color: "#172b4d" }}>{projectTopic.name}</strong>
+        {fromNew && <span style={badgeAmber}>moved from New</span>}
+        {fromNotDiscussed && <span style={badgeAmber}>moved from Not discussed</span>}
+        {extracted && !extracted.needs_manual_review && (
+          <span style={badgeGreen}>✓ Verified</span>
+        )}
+        {extracted?.needs_manual_review && (
+          <span style={badgeRed}>⚠ needs manual review</span>
+        )}
+      </div>
+
+      {/* Side-by-side: previous (project topic latest snapshot) | this call (call topics merged into this group) */}
+      {!extracted && (
+        <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, color: "#5e6c84", fontSize: 10 }}>
+              PREVIOUS
             </div>
-
-            {/* Run Merge button (only when not merging) */}
-            {!merging && (
-              <div style={{ padding: "8px 20px", borderBottom: "1px solid #f0f1f3" }}>
-                <button
-                  onClick={handleRunMerge}
-                  disabled={starting}
-                  style={{
-                    padding: "7px 16px", borderRadius: 6, border: "none",
-                    background: starting ? "#f4f5f7" : "#0052cc",
-                    color: starting ? "#97a0af" : "white",
-                    fontSize: 12, fontWeight: 600, cursor: starting ? "default" : "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {starting ? "Starting…" : `Run Merge for ${mergeTopics.length} topic${mergeTopics.length !== 1 ? "s" : ""}`}
-                </button>
-                <span style={{ fontSize: 11, color: "#97a0af", marginLeft: 12 }}>
-                  Generates AI-merged summaries for matched topics
-                </span>
-              </div>
-            )}
-
-            {/* Placeholder rows — italic, read-only */}
-            {mergeTopics.map((t, idx) => (
-              <div key={t.topic_id ?? t.name ?? idx}
-                style={{ opacity: 0.65, borderBottom: "1px solid #f0f1f3",
-                  paddingLeft: 20, paddingRight: 20, paddingTop: 10, paddingBottom: 10,
-                  borderLeft: "3px solid transparent", background: "white",
-                  fontStyle: "italic" }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#172b4d" }}>{t.name}</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
-                    padding: "2px 6px", borderRadius: 3, whiteSpace: "nowrap", flexShrink: 0,
-                    ...(STATUS_BADGE[t.status ?? "open"] ?? STATUS_BADGE.open) }}>
-                    {(t.status ?? "open").replace("_", " ")}
-                  </span>
-                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-                    color: SENTIMENT_COLOR[t.sentiment ?? "neutral"] ?? "#5e6c84", marginLeft: "auto" }}>
-                    {t.sentiment}
-                  </span>
-                </div>
-                {t.summary && (
-                  <p style={{ fontSize: 12, color: "#5e6c84", margin: "3px 0 0", lineHeight: 1.5 }}>
-                    {t.summary}
-                  </p>
-                )}
+            <div style={{ color: "#42526e" }}>{projectTopic.summary || "(no summary)"}</div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, color: "#5e6c84", fontSize: 10 }}>
+              THIS CALL ({callMatches.length})
+            </div>
+            {callMatches.map((m, i) => (
+              <div key={i} style={{ color: "#42526e", marginBottom: 4 }}>
+                <strong>{m.name}</strong>: {m.summary || "(no summary)"}
               </div>
             ))}
           </div>
-        )}
-
-        {/* Section 2b: Updated Topics (after merge runs — editable) */}
-        {updatedTopics.length > 0 && (
-          <div style={{ marginTop: newTopics.length > 0 ? 8 : 0 }}>
-            <div style={{ padding: "8px 20px 6px", borderTop: newTopics.length > 0 ? "1px solid #dfe1e6" : undefined,
-              borderBottom: "1px solid #dfe1e6", background: "#f4f5f7" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#5e6c84",
-                letterSpacing: ".05em" }}>
-                Updated Topics ({updatedTopics.length})
-              </div>
-              <div style={{ fontSize: 11, color: "#97a0af", marginTop: 2 }}>
-                AI-merged summaries — review and edit before saving
-              </div>
-            </div>
-            {updatedTopics.map((t) => {
-              const i = topics.indexOf(t);
-              return (
-                <TopicRow
-                  key={t.topic_id ?? t.name ?? i}
-                  topic={t}
-                  onChange={(updated) => {
-                    const next = [...topics];
-                    next[i] = updated;
-                    setTopics(next);
-                  }}
-                />
-              );
-            })}
-          </div>
-        )}
-
-        {/* Section 3: Not Discussed */}
-        {notDiscussed.length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ padding: "8px 20px 6px", borderTop: "1px solid #dfe1e6", borderBottom: "1px solid #dfe1e6",
-              background: "#f4f5f7", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#97a0af",
-                  letterSpacing: ".05em" }}>
-                  Not discussed in this call&nbsp;&nbsp;({notDiscussed.length} topic{notDiscussed.length !== 1 ? "s" : ""})
-                  {verifying && <span style={{ fontWeight: 400, textTransform: "none", marginLeft: 8 }}>⏳ Verifying…</span>}
-                </div>
-                <div style={{ fontSize: 11, color: "#97a0af", marginTop: 2 }}>
-                  These topics exist in the project but were not mentioned in this call. They carry over unchanged.
-                </div>
-              </div>
-              <button
-                onClick={handleRerunVerification}
-                disabled={verifying}
-                title="Re-run the LLM check against the transcript for every topic below"
-                style={{ padding: "4px 10px", borderRadius: 4, border: "1px solid #dfe1e6",
-                  background: verifying ? "#f4f5f7" : "white", color: verifying ? "#97a0af" : "#5e6c84",
-                  fontSize: 11, cursor: verifying ? "default" : "pointer", fontFamily: "inherit",
-                  whiteSpace: "nowrap", flexShrink: 0 }}
-              >
-                {verifying ? "Checking…" : "Re-run check"}
-              </button>
-            </div>
-            {notDiscussed.map((t, idx) => {
-              const v = verificationCache?.[t.topic_id ?? ""];
-              const hasEntry = !!v;
-              const hasError = !!v?.error;
-              const isFlagged = !hasError && v?.discussed === true;
-              const isConfirmed = !hasError && v?.discussed === false;
-              const isChecking = verifying && !hasEntry;
-              const notChecked = !verifying && !hasEntry;
-              return (
-                <div key={t.topic_id ?? t.name ?? idx}
-                  style={{
-                    opacity: isFlagged ? 1 : 0.7,
-                    borderBottom: "1px solid #f0f1f3",
-                    paddingLeft: 20, paddingRight: 20, paddingTop: 10, paddingBottom: 10,
-                    borderLeft: isFlagged ? "3px solid #ff991f" : hasError ? "3px solid #de350b" : "3px solid transparent",
-                    background: isFlagged ? "#fffae6" : hasError ? "#ffebe6" : "white",
-                  }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ color: "#97a0af", fontSize: 12 }}>•</span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "#172b4d" }}>{t.name}</span>
-                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase",
-                      padding: "2px 6px", borderRadius: 3, whiteSpace: "nowrap", flexShrink: 0,
-                      ...(STATUS_BADGE[t.status ?? "open"] ?? STATUS_BADGE.open) }}>
-                      {(t.status ?? "open").replace("_", " ")}
-                    </span>
-                    {isFlagged && (
-                      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
-                        background: "#fff4e6", color: "#974f0c", border: "1px solid #ff991f", whiteSpace: "nowrap", flexShrink: 0 }}>
-                        ⚠ Discussed in call
-                      </span>
-                    )}
-                    {isConfirmed && (
-                      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
-                        background: "#e3fcef", color: "#006644", whiteSpace: "nowrap", flexShrink: 0 }}>
-                        ✓ Check ran · not discussed
-                      </span>
-                    )}
-                    {hasError && (
-                      <span title={v?.error ?? ""} style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
-                        background: "#ffebe6", color: "#bf2600", border: "1px solid #de350b", whiteSpace: "nowrap", flexShrink: 0 }}>
-                        ✕ Check failed
-                      </span>
-                    )}
-                    {isChecking && (
-                      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
-                        background: "#deebff", color: "#0747a6", border: "1px solid #4c9aff", whiteSpace: "nowrap", flexShrink: 0 }}>
-                        ⏳ Checking…
-                      </span>
-                    )}
-                    {notChecked && (
-                      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
-                        background: "#f4f5f7", color: "#5e6c84", border: "1px solid #dfe1e6", whiteSpace: "nowrap", flexShrink: 0 }}>
-                        — Not checked
-                      </span>
-                    )}
-                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-                      color: SENTIMENT_COLOR[t.sentiment ?? "neutral"] ?? "#5e6c84", marginLeft: "auto" }}>
-                      {t.sentiment}
-                    </span>
-                  </div>
-                  {t.summary && (
-                    <p style={{ fontSize: 12, color: "#5e6c84", margin: "3px 0 0 18px", lineHeight: 1.5 }}>
-                      {t.summary}
-                    </p>
-                  )}
-                  {isFlagged && v?.reasoning && (
-                    <p style={{ fontSize: 11, color: "#974f0c", margin: "4px 0 0 18px", lineHeight: 1.4, fontStyle: "italic" }}>
-                      {v.reasoning}
-                    </p>
-                  )}
-                  {hasError && v?.error && (
-                    <p style={{ fontSize: 11, color: "#bf2600", margin: "4px 0 0 18px", lineHeight: 1.4, fontStyle: "italic" }}>
-                      {v.error}
-                    </p>
-                  )}
-                  {isFlagged && (
-                    <button
-                      onClick={() => handlePromote(t)}
-                      style={{
-                        marginTop: 6, marginLeft: 18, padding: "4px 12px", borderRadius: 4,
-                        border: "1px solid #ff991f", background: "#fff4e6", color: "#974f0c",
-                        fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                      }}
-                    >
-                      Promote to Updated →
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Action bar */}
-      <div style={{ padding: "12px 20px", borderTop: "1px solid #dfe1e6", background: "white",
-        display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-        <div>
-          {merged && (
-            <button
-              onClick={handleRunMerge}
-              disabled={starting || merging}
-              style={{ padding: "7px 16px", borderRadius: 6, border: "1px solid #dfe1e6",
-                background: "white", color: "#5e6c84", fontSize: 12, cursor: (starting || merging) ? "default" : "pointer",
-                fontFamily: "inherit" }}
-            >
-              {starting ? "Starting…" : merging ? "Re-running…" : "Re-run Merge"}
-            </button>
-          )}
         </div>
-        <button
-          onClick={handleValidate}
-          disabled={validating || discussed.length === 0 || merging}
-          style={{ padding: "8px 22px", borderRadius: 6, border: "none",
-            background: validating || discussed.length === 0 || merging ? "#f4f5f7" : "#0052cc",
-            color: validating || discussed.length === 0 || merging ? "#97a0af" : "white",
-            fontSize: 13, fontWeight: 600,
-            cursor: validating || discussed.length === 0 || merging ? "default" : "pointer",
-            fontFamily: "inherit" }}
-        >
-          {validating ? "Saving…" : merging ? "Merging…" : "Save & Continue →"}
-        </button>
-      </div>
+      )}
+
+      {extracted && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: "#42526e" }}>
+            <strong>Status:</strong> {extracted.extracted_snapshot.status}
+          </div>
+          <div style={{ fontSize: 12, color: "#42526e", marginTop: 4 }}>
+            {extracted.extracted_snapshot.summary}
+          </div>
+          {extracted.extracted_snapshot.tasks.length > 0 && (
+            <ul style={{ fontSize: 12, color: "#5e6c84", marginTop: 6, paddingLeft: 20 }}>
+              {extracted.extracted_snapshot.tasks.map((t, i) => (
+                <li key={i}>
+                  {t.task}
+                  {t.next_step && <> → {t.next_step}</>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <EvidenceTrail entries={extracted.evidence_trail} callsById={callsById} />
+        </div>
+      )}
     </div>
-    </>
   );
 }
+
+// ── Styles ──────────────────────────────────────────────────────────────────
+
+const cardStyle: React.CSSProperties = {
+  padding: 10,
+  marginBottom: 8,
+  border: "1px solid #dfe1e6",
+  borderRadius: 6,
+  background: "white",
+};
+
+const passButton = (done: boolean): React.CSSProperties => ({
+  padding: "5px 12px",
+  borderRadius: 4,
+  border: "none",
+  fontFamily: "inherit",
+  background: done ? "#36b37e" : "#0052cc",
+  color: "white",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+});
+
+const badgeGreen: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  padding: "2px 6px",
+  borderRadius: 3,
+  background: "#e3fcef",
+  color: "#006644",
+  border: "1px solid #abf5d1",
+};
+
+const badgeAmber: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  padding: "2px 6px",
+  borderRadius: 3,
+  background: "#fff4e6",
+  color: "#974f0c",
+  border: "1px solid #ffe0b3",
+};
+
+const badgeRed: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  padding: "2px 6px",
+  borderRadius: 3,
+  background: "#fff1f0",
+  color: "#ae2a19",
+  border: "1px solid #ffbdad",
+};
