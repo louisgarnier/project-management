@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory, LibraryEntry, SystemSettings, EvidenceRef, TaskData, TopicData, OpenQuestionData, DecisionData } from "@/types";
+import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory, LibraryEntry, SystemSettings, EvidenceRef, TaskData, TopicData, OpenQuestionData, DecisionData, Citation, VerifyNewResult, VerifyNotDiscussedResult, ExtractedUpdateResult } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -386,10 +386,10 @@ export const topicsAPI = {
       `/api/calls/${callId}/topics/match-groups`
     ),
 
-  mergePreview: (callId: string) =>
-    proxyFetch<{ status: string }>(`/api/calls/${callId}/topics/merge-preview`, {
-      method: "POST",
-    }),
+  /** @deprecated EPIC-16: removed — use verifyNew + verifyNotDiscussed + extractUpdates instead. Stub kept until Task 12 rewrites ProjectUpdatesStage. */
+  mergePreview: (_callId: string): Promise<never> => {
+    throw new Error("mergePreview removed in EPIC-16 (Task 8). See verifyNew/verifyNotDiscussed/extractUpdates.");
+  },
 
   validateUpdates: (callId: string, topics: import("@/types").TopicData[]) =>
     proxyFetch<{ status: string }>(`/api/calls/${callId}/topics/validate-updates`, {
@@ -397,10 +397,16 @@ export const topicsAPI = {
       body: JSON.stringify(topics),
     }),
 
+  verifyNew: (callId: string) =>
+    proxyFetch<{ status: string }>(`/api/calls/${callId}/topics/verify-new`, { method: "POST" }),
+
   verifyNotDiscussed: (callId: string) =>
     proxyFetch<{ status: string }>(`/api/calls/${callId}/topics/verify-not-discussed`, {
       method: "POST",
     }),
+
+  extractUpdates: (callId: string) =>
+    proxyFetch<{ status: string }>(`/api/calls/${callId}/topics/extract-updates`, { method: "POST" }),
 
   promoteNotDiscussed: (callId: string, topicId: string) =>
     proxyFetch<{ ok: true; created: boolean }>(`/api/calls/${callId}/topics/promote-not-discussed`, {

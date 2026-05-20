@@ -37,6 +37,12 @@ export interface Call {
   verification_cache: Record<string, { discussed: boolean | null; transcript_excerpt: string | null; reasoning: string; error: string | null }> | null;
   verification_status: "idle" | "processing" | "done" | "failed";
   call_topics_prompt_id: string | null;
+  verify_new_status?: RagPassStatus;
+  verify_new_cache?: Record<string, VerifyNewResult> | null;
+  verify_not_discussed_status?: RagPassStatus;
+  verify_not_discussed_cache?: Record<string, VerifyNotDiscussedResult> | null;
+  extract_updates_status?: RagPassStatus;
+  extract_updates_cache?: Record<string, ExtractedUpdateResult> | null;
   created_at: string;
 }
 
@@ -170,6 +176,11 @@ export interface TopicData {
   // Story 15.7 chronology + RAG verification (frozen at project_updates commit)
   chronology_narrative?: string | null;
   rag_verification_note?: string | null;
+
+  // EPIC-16 RAG verification fields
+  citations?: Citation[];
+  evidence_trail?: EvidenceTrailEntry[];
+  needs_manual_review?: boolean;
 
   owner?: TopicOwner | string;
   is_parked?: boolean;
@@ -322,3 +333,82 @@ export interface SystemSettings {
   default_llm: LLMProvider | null;
   default_model: string | null;
 }
+
+// ── EPIC-16 RAG verification types ──────────────────────────────────────────
+
+export interface Citation {
+  call_id: string;
+  lines: string;       // e.g. "145-148"
+  quote: string;       // verbatim
+  for?: string;        // optional tag: "verdict" | "extraction" | etc
+}
+
+export interface EvidenceTrailEntry {
+  call_id: string;
+  citation: Citation;
+  action_label: string;  // "first raised" | "task added" | etc
+}
+
+export type VerifyNewVerdict = "truly_new" | "should_be_merged_with";
+
+export interface VerifyNewResult {
+  verdict: VerifyNewVerdict;
+  matched_topic_id: string | null;
+  matched_topic_name: string | null;
+  extraction_grounded: boolean;
+  ungrounded_items: { type: "task" | "open_question" | "decision"; text: string }[];
+  citations: Citation[];
+  needs_manual_review: boolean;
+  failed_citations?: string[];
+}
+
+export type VerifyNotDiscussedVerdict = "not_discussed" | "actually_discussed";
+
+export interface VerifyNotDiscussedResult {
+  verdict: VerifyNotDiscussedVerdict;
+  citation: Citation | null;
+  needs_manual_review: boolean;
+  failed_citations?: string[];
+}
+
+export interface ExtractedTaskItem {
+  task_id: string | null;
+  task: string;
+  next_step: string;
+  owner: string;
+  status: "open" | "in_progress" | "resolved";
+  primary_citation: Citation;
+  supporting_citations: Citation[];
+}
+
+export interface ExtractedOQ {
+  id: string | null;
+  text: string;
+  owner: string;
+  status: "open" | "in_progress" | "resolved";
+  primary_citation: Citation;
+}
+
+export interface ExtractedDecision {
+  id: string | null;
+  text: string;
+  primary_citation: Citation;
+  supporting_citations: Citation[];
+}
+
+export interface ExtractedSnapshot {
+  summary: string;
+  status: "open" | "in_progress" | "resolved";
+  tasks: ExtractedTaskItem[];
+  open_questions: ExtractedOQ[];
+  decisions: ExtractedDecision[];
+}
+
+export interface ExtractedUpdateResult {
+  extracted_snapshot: ExtractedSnapshot;
+  evidence_trail: EvidenceTrailEntry[];
+  needs_manual_review: boolean;
+  failed_citations?: string[];
+}
+
+export type RagPassStatus = "idle" | "processing" | "done" | "failed";
