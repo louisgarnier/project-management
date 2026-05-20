@@ -129,6 +129,20 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, eff.verify_new_cache, newDecisions]);
 
+  // Inverse map: which pending topic was merged INTO each project topic? Lets
+  // the Merged card surface an "override" affordance to revert the decision.
+  const mergedFromNewSource = useMemo<Map<string, string>>(() => {
+    const m = new Map<string, string>();
+    const cache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
+    for (const p of pending) {
+      const r = cache[p.name];
+      const d = resolveNewDecision(p.name, r);
+      if (d.action === "merge" && d.merge_to_id) m.set(d.merge_to_id, p.name);
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, eff.verify_new_cache, newDecisions]);
+
   const migratedFromNotDiscussed = useMemo<Set<string>>(() => {
     const ids = new Set<string>();
     const cache = (eff.verify_not_discussed_cache ?? {}) as Record<string, VerifyNotDiscussedResult>;
@@ -476,25 +490,49 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             entries={readProgress(eff.extract_updates_cache)}
             active={busy === "③"}
           />
-          {sections.merged.map((t) => (
-            <MergedTopicCard
-              key={t.topic_id}
-              projectTopic={t}
-              callMatches={pending.filter((p) =>
-                groups.some(
-                  (g) =>
-                    (g.project_topic_ids ?? []).includes(t.topic_id ?? "") &&
-                    g.call_topic_names.some(
-                      (n) => n.toLowerCase().trim() === p.name.toLowerCase().trim()
-                    )
-                )
-              )}
-              extracted={(eff.extract_updates_cache ?? {})[t.topic_id ?? ""]}
-              fromNew={migratedFromNew.has(t.topic_id ?? "")}
-              fromNotDiscussed={migratedFromNotDiscussed.has(t.topic_id ?? "")}
-              callsById={callsById}
-            />
-          ))}
+          {sections.merged.map((t) => {
+            const tid = t.topic_id ?? "";
+            const fromNewName = mergedFromNewSource.get(tid);
+            return (
+              <MergedTopicCard
+                key={tid}
+                projectTopic={t}
+                callMatches={pending.filter((p) =>
+                  groups.some(
+                    (g) =>
+                      (g.project_topic_ids ?? []).includes(tid) &&
+                      g.call_topic_names.some(
+                        (n) => n.toLowerCase().trim() === p.name.toLowerCase().trim()
+                      )
+                  )
+                )}
+                extracted={(eff.extract_updates_cache ?? {})[tid]}
+                fromNew={migratedFromNew.has(tid)}
+                fromNotDiscussed={migratedFromNotDiscussed.has(tid)}
+                callsById={callsById}
+                fromNewSourceName={fromNewName}
+                projectTopics={projectTopics}
+                onRevertFromNew={
+                  fromNewName
+                    ? () =>
+                        setNewDecisions((prev) => ({
+                          ...prev,
+                          [fromNewName.toLowerCase().trim()]: { action: "new" },
+                        }))
+                    : undefined
+                }
+                onChangeMergeTarget={
+                  fromNewName
+                    ? (new_id: string) =>
+                        setNewDecisions((prev) => ({
+                          ...prev,
+                          [fromNewName.toLowerCase().trim()]: { action: "merge", merge_to_id: new_id },
+                        }))
+                    : undefined
+                }
+              />
+            );
+          })}
         </section>
       </div>
 
@@ -914,6 +952,10 @@ function MergedTopicCard({
   fromNew,
   fromNotDiscussed,
   callsById,
+  fromNewSourceName,
+  projectTopics,
+  onRevertFromNew,
+  onChangeMergeTarget,
 }: {
   projectTopic: TopicData;
   callMatches: TopicData[];
@@ -921,12 +963,19 @@ function MergedTopicCard({
   fromNew: boolean;
   fromNotDiscussed: boolean;
   callsById: Record<string, Pick<Call, "id" | "title" | "created_at">>;
+  fromNewSourceName?: string;  // the pending topic name that was migrated here
+  projectTopics: TopicData[];  // for the change-target picker
+  onRevertFromNew?: () => void;
+  onChangeMergeTarget?: (new_target_id: string) => void;
 }) {
+  const [showOverride, setShowOverride] = useState(false);
   return (
     <div style={cardStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <strong style={{ fontSize: 13, color: "#172b4d" }}>{projectTopic.name}</strong>
-        {fromNew && <span style={badgeAmber}>moved from New</span>}
+        {fromNew && fromNewSourceName && (
+          <span style={badgeAmber}>moved from New: &quot;{fromNewSourceName}&quot;</span>
+        )}
         {fromNotDiscussed && <span style={badgeAmber}>moved from Not discussed</span>}
         {extracted && !extracted.needs_manual_review && (
           <span style={badgeGreen}>✓ Verified</span>
@@ -935,6 +984,65 @@ function MergedTopicCard({
           <span style={badgeRed}>⚠ needs manual review</span>
         )}
       </div>
+
+      {/* Override controls for topics that migrated here from New */}
+      {fromNew && fromNewSourceName && (onRevertFromNew || onChangeMergeTarget) && (
+        <div style={{ marginTop: 6, fontSize: 11 }}>
+          <button
+            type="button"
+            onClick={() => setShowOverride((v) => !v)}
+            style={{
+              fontSize: 10,
+              color: "#5e6c84",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              textDecoration: "underline",
+              padding: 0,
+            }}
+          >
+            {showOverride ? "▾ hide override" : "▸ change my mind"}
+          </button>
+          {showOverride && (
+            <div style={{ marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              {onRevertFromNew && (
+                <button type="button" onClick={onRevertFromNew} style={decisionButton}>
+                  ↺ Not a duplicate — move back to New
+                </button>
+              )}
+              {onChangeMergeTarget && (
+                <>
+                  <span style={{ fontSize: 10, color: "#5e6c84" }}>or merge with a different topic:</span>
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (e.target.value) onChangeMergeTarget(e.target.value);
+                    }}
+                    style={{
+                      fontSize: 11,
+                      padding: "4px 8px",
+                      border: "1px solid #dfe1e6",
+                      borderRadius: 4,
+                      background: "white",
+                      color: "#172b4d",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    <option value="">— pick another topic —</option>
+                    {projectTopics
+                      .filter((t) => t.topic_id !== projectTopic.topic_id)
+                      .map((t) => (
+                        <option key={t.topic_id} value={t.topic_id ?? ""}>
+                          {t.name}
+                        </option>
+                      ))}
+                  </select>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Side-by-side: previous (project topic latest snapshot) | this call (call topics merged into this group) */}
       {!extracted && (
