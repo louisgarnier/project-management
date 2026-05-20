@@ -63,13 +63,18 @@ frontend/
         ├── ArtifactSelector.tsx   → per-type row: Generate via Claude / Manual / Skip toggle buttons; exports ArtifactMode type (EPIC-5 / Story 5.4)
         ├── ArtifactCard.tsx       → status badge, editable textarea, spinner during generation, Mark Done button, inline StatusBadge (EPIC-5 / Story 5.4)
         ├── ArtifactsStage.tsx     → three-phase orchestrator (select → generating → reviewing); SSE via ReadableStream + line buffer; AbortController cleanup; skips to reviewing if artifacts exist (EPIC-5 / Story 5.4)
-        └── ProvenancePill.tsx     → compact pill showing origin call of a follow-up/decision item (EPIC-10 / Story 10.9)
+        ├── ProvenancePill.tsx     → compact pill showing origin call of a follow-up/decision item (EPIC-10 / Story 10.9)
+        ├── EvidenceTrail.tsx      → Chronological citation strip (grouped by call, with verbatim quote + action label per entry). Props: entries: EvidenceTrailEntry[], callsById: Record<string, Pick<Call, 'id'|'title'|'created_at'>> (EPIC-16)
+        └── TopicCitationBadge.tsx → Clickable anchor-linked tag. Props: callId, callShortName, citationIndex. Scrolls to #cit-<callId>-<index> on click (EPIC-16)
 
 backend/prompts/
 ├── call_topics.py                 → CALL_TOPICS_DEFAULT_PROMPT (ROLE/RUBRIC/ANCHORS/FEW-SHOT/PROCESS blocks) + OLD_DEFAULT_PROMPT_STRING snapshot (EPIC-11 / Story 11.1–11.2)
 ├── project_topics.py              → PROJECT_TOPICS_DEFAULT_PROMPT constant (EPIC-11 / Story 11.2)
 ├── merge_verification.py          → MERGE_VERIFICATION_DEFAULT_PROMPT constant (EPIC-11 / Story 11.2)
 ├── not_discussed_check.py         → NOT_DISCUSSED_DEFAULT_PROMPT constant (EPIC-11 / Story 11.2)
+├── verify_new_topic.py            → Pass ① prompt body. Forensic-analyst persona + citation contract + JSON schema for {verdict, matched_topic_id, extraction_grounded, ungrounded_items, citations} (EPIC-16)
+├── verify_not_discussed.py        → Pass ② prompt body. Lean version for single-transcript check. JSON: {verdict, citation|null} (EPIC-16)
+├── extract_topic_updates.py       → Pass ③ prompt body. Full re-extraction with {extracted_snapshot, evidence_trail} output, strict citation per field (EPIC-16)
 └── artifacts.py                   → DEFAULT_ARTIFACT_PROMPTS dict bundling all artifact-type default prompts (EPIC-11 / Story 11.2)
 
 backend/scripts/
@@ -77,8 +82,10 @@ backend/scripts/
 
 backend/services/
 ├── llm_service.py                 → generate_artifact(prompt_used, transcript, llm, *, model=None) + call_llm_raw(llm, *, model=None) → str; dispatches to Groq / Claude / OpenAI / DeepSeek / OpenRouter (5th provider via AsyncOpenAI + openrouter.ai/api/v1); model required for openrouter; 3-retry backoff (EPIC-6, EPIC-11 / Story 11.3)
-├── topics_service.py              → topic extraction + aggregation + merge pipeline; uses topic_lineage for per-topic evidence blocks in merge prompts (EPIC-7/9/10)
-└── topic_lineage.py               → walks merged_into_topic_id backwards to assemble ancestor-aware per-topic history. Exports get_topic_lineage, get_lineage_topic_updates, get_lineage_match_groups, build_lineage_evidence_block. Single source of truth for M:N merge history — consumed by merge prompts today and by the future evidence API (EPIC-10 / Story 10.1)
+├── topics_service.py              → topic extraction + aggregation + merge pipeline; uses topic_lineage for per-topic evidence blocks in merge prompts; extended with RAG cache fields and _resolve_workflow_llm_for_category helper (EPIC-7/9/10, EPIC-16)
+├── topic_lineage.py               → walks merged_into_topic_id backwards to assemble ancestor-aware per-topic history. Exports get_topic_lineage, get_lineage_topic_updates, get_lineage_match_groups, build_lineage_evidence_block. Single source of truth for M:N merge history — consumed by merge prompts today and by the future evidence API (EPIC-10 / Story 10.1)
+├── topic_verification.py          → EPIC-16 RAG passes orchestration. Exports: run_verify_new, run_verify_not_discussed, run_extract_topic_updates. Each: builds prompt from transcripts + topic anchor, calls LLM via _call_llm shim, post-verifies citations via verify_citations, retries once on failure, sets needs_manual_review=True on second failure (EPIC-16)
+└── citation_verify.py             → EPIC-16 verbatim-quote post-verifier. Functions: verify_citations(citations, transcripts_by_call) → (ok, failures); find_quote_lines(quote, body) → "X-Y"|None (EPIC-16)
 
 frontend/src/constants/
 └── models.ts                      → MODEL_RECOMMENDATIONS per ArtifactCategory (curated model slugs for each category) + PROVIDER_LABELS mapping provider keys to display strings including OpenRouter ⭐ (EPIC-11 / Story 11.4)

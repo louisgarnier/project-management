@@ -1,5 +1,44 @@
 # Build Log — Call Tracker
 
+### 2026-05-20 — EPIC-16: Project Updates RAG Rework (in progress / pending manual validation)
+
+**Goal:** Replace auto-LLM merge in `project_updates` with 3 user-driven, citation-grounded verification passes against raw transcripts.
+
+**Backend:**
+- Migration 030: 6 new cols on `calls` (verify_new/verify_not_discussed/extract_updates × status/cache) + 3 cols on `topic_updates` (citations, evidence_trail, needs_manual_review) + soft-deprecate 3 old workflow library entries.
+- `backend/prompts/{verify_new_topic,verify_not_discussed,extract_topic_updates}.py` — 3 new workflow prompt bodies (strict citation contract, transcripts as single ground truth).
+- `backend/library/seed.py` — register 3 new system seeded_by_default entries; soft-deprecate `project_topics`, `merge_verification`, `not_discussed_check` (is_system=false, seeded_by_default=false).
+- `backend/services/citation_verify.py` — `verify_citations` (verbatim-quote check) + `find_quote_lines` (post-hoc line-range computation).
+- `backend/services/topic_verification.py` — orchestration for 3 passes: `run_verify_new`, `run_verify_not_discussed`, `run_extract_topic_updates`. Each has citation post-verify + 1 retry + `needs_manual_review` flag on second failure.
+- `backend/services/topics_service.py` — added `_resolve_workflow_llm_for_category` helper (artifact_types → projects → system_settings → openrouter); extended `TopicIn`/`TopicUpdate` Pydantic models with `citations`, `evidence_trail`, `needs_manual_review`; `_persist_topic_update` + `save_topics` write the 3 new fields; `validate_project_updates` consumes `extract_updates_cache`; `rollback_to_stage` clears RAG caches when rolling past project_updates.
+- DELETED: `run_merge_preview`, `_verify_merged_topics`, `verify_not_discussed_topics` (old), `run_verification_background`, `/merge-preview` endpoint, BackgroundTask trigger from `save_match_groups`.
+- 3 new endpoints on `backend/routers/topics.py`: POST `/verify-new`, POST `/verify-not-discussed` (replaces old at same path), POST `/extract-updates`. All fire BackgroundTask + write to `calls.{*_cache, *_status}`.
+
+**Frontend:**
+- `frontend/src/types/index.ts` — `Citation`, `EvidenceTrailEntry`, `VerifyNewResult`, `VerifyNotDiscussedResult`, `ExtractedSnapshot`, `ExtractedUpdateResult`, `RagPassStatus`; `Call` interface extended with 6 cache/status fields; `TopicData` extended with citations/evidence_trail/needs_manual_review.
+- `frontend/src/api/client.ts` — `verifyNew`, `verifyNotDiscussed`, `extractUpdates` methods; `mergePreview` replaced by deprecated stub (throws).
+- `frontend/src/components/EvidenceTrail.tsx` — chronological citation strip (grouped by call, with verbatim quote + action label per entry).
+- `frontend/src/components/TopicCitationBadge.tsx` — clickable `→ Call X cit-Y` tag that scroll-anchors to the trail.
+- `frontend/src/components/ProjectUpdatesStage.tsx` — FULL REWRITE. 3-section sequenced-buttons layout (① Verify new → ② Verify not discussed → ③ Extract updates). No auto-trigger of any LLM on mount. Polling for each pass status field after click. Sections show side-by-side previous/this-call for merged topics until extraction runs. Topics migrate between sections based on ①/② verdicts. Save & Continue disabled until all 3 ✓ done.
+- `frontend/src/components/TopicsTimeline.tsx` — ⚠️ icon on cells where `needs_manual_review=true`.
+- `backend/services/topics_service.py::list_topics_timeline` — SELECT + return `needs_manual_review` per cell.
+
+**Commits (12):** `08e3e88`, `78940f4`, `1431832`, `d076eebd`, `3b5d57e`, `d208b39`, `4849414`, `590529a`, `caf86ad`, `9f27021`, `fdcd52a`, `7a08785`.
+
+**Tests:** 14 new + 3 obsolete deleted = 261 backend passed total (was 247 pre-EPIC-16); frontend tsc clean, eslint clean.
+
+**Migration #030:** must be applied manually via Supabase Dashboard before backend restart.
+
+**Manual smoke pending:** see `docs/project/config/2026-05-20-epic-16-manual-tests.md` (scenarios A, B, C + rollback).
+
+**Known follow-ups:**
+- `run_merge_background` left in topics_service.py as dead code (referenced now-deleted functions; no callers). Safe to delete in a follow-up.
+- `TopicEvidenceDrawer.tsx` doesn't exist anymore (deleted EPIC-15 Story 15.3); evidence_trail rendering is wired into `MergedTopicCard` instead.
+- `mergePreview` stub remains in client.ts as a defensive guard; can be removed once all callers are gone.
+- Per-project artifact_types backfill (Tier-1 prompts for new categories) hasn't been done. Existing projects need a one-shot `seed_defaults` re-run OR migration to insert the 3 new categories into their artifact_types row. Without this, the resolution chain falls back to project default_llm.
+
+---
+
 ## Open follow-ups (Phase 3 candidates)
 
 - **2026-05-19 — pre-existing merge-prompt bug** (`backend/services/topics_service.py:1071-1080`, `1133-1142`): `call_excerpts_parts` builder in 1:1 and M:N merge paths still iterates `m.get("follow_up_items")` (always empty under EPIC-15 new shape) and renders `m.get("decisions")` as `f"  - {d}"` where `d` is now a dict — produces literal `{'id': ..., 'text': '...'}` strings in the merge prompt, degrading merge quality silently. Pre-existing — predates Story 15.5. Fix during Story 15.7 alongside the chronology+RAG plumbing rewrite.
