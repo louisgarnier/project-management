@@ -89,14 +89,20 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     // Backend lowercases call_topic_names on save (save_match_groups), but
     // pending.name keeps original case. Normalise both sides to compare.
     const norm = (s: string) => s.toLowerCase().trim();
-    const matchedNames = new Set(
-      groups.flatMap((g) => g.call_topic_names.map(norm))
+
+    // A match_group with empty project_topic_ids = a "Mark as new" decision.
+    // A match_group with non-empty project_topic_ids = a "Link" or "Merge" decision.
+    const newGroupCallNames = new Set(
+      groups
+        .filter((g) => (g.project_topic_ids?.length ?? 0) === 0)
+        .flatMap((g) => g.call_topic_names.map(norm))
     );
     const matchedProjectIds = new Set(groups.flatMap((g) => g.project_topic_ids));
 
-    // New topics from this call = pending topics not in any match group
-    // BUT exclude those that ① decided should be merged (they live in section 3 now)
-    const newCandidates = pending.filter((p) => !matchedNames.has(norm(p.name)));
+    // "New" section = pending topics that the user explicitly marked as New
+    // in matching (i.e. their name is in a group with no project_topic_ids).
+    // Then exclude those that ① later decided should be merged (they live in section 3).
+    const newCandidates = pending.filter((p) => newGroupCallNames.has(norm(p.name)));
     const newTopics = newCandidates.filter((p) => {
       const r = (call.verify_new_cache ?? {})[p.name];
       return !(r && r.verdict === "should_be_merged_with");
