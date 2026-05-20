@@ -112,3 +112,43 @@ def test_run_verify_not_discussed_found(monkeypatch):
     assert out["verdict"] == "actually_discussed"
     assert out["citation"]["quote"] == "the perf test passed"
     assert out["needs_manual_review"] is False
+
+
+def test_run_extract_topic_updates_returns_snapshot_and_trail(monkeypatch):
+    """Pass ③ returns extracted_snapshot + evidence_trail with verified citations."""
+    transcripts = {
+        "call-1": "Hassan mentioned MC Mac issue first.",
+        "call-2": "Test the boost flag next.",
+    }
+    topic_anchor = {"name": "MC Mac memory issue", "key_terms": ["MC Mac"]}
+    llm_result = {
+        "extracted_snapshot": {
+            "summary": "MC Mac memory issue under investigation.",
+            "status": "in_progress",
+            "tasks": [
+                {"task_id": None, "task": "Test boost flag", "next_step": "",
+                 "owner": "", "status": "open",
+                 "primary_citation": {"call_id": "call-2", "lines": "1-1",
+                                       "quote": "Test the boost flag next"},
+                 "supporting_citations": []}
+            ],
+            "open_questions": [],
+            "decisions": [],
+        },
+        "evidence_trail": [
+            {"call_id": "call-1",
+             "citation": {"call_id": "call-1", "lines": "1-1",
+                          "quote": "MC Mac issue first"},
+             "action_label": "first raised"},
+            {"call_id": "call-2",
+             "citation": {"call_id": "call-2", "lines": "1-1",
+                          "quote": "Test the boost flag next"},
+             "action_label": "task added"},
+        ],
+    }
+    monkeypatch.setattr(tv, "_call_llm", _llm_returns(llm_result))
+
+    out = asyncio.run(tv.run_extract_topic_updates(topic_anchor, transcripts, llm="claude", model=None))
+    assert out["needs_manual_review"] is False
+    assert len(out["extracted_snapshot"]["tasks"]) == 1
+    assert len(out["evidence_trail"]) == 2

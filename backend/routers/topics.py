@@ -803,3 +803,87 @@ async def verify_not_discussed(call_id: str, background_tasks: BackgroundTasks):
     ).eq("id", call_id).execute()
     background_tasks.add_task(_run_verify_not_discussed_background, call_id)
     return {"status": "processing"}
+
+
+# --------------------------------------------------------------------------- #
+# EPIC-16 — Pass ③ /extract-updates
+# --------------------------------------------------------------------------- #
+
+
+from backend.services.topic_verification import run_extract_topic_updates as _run_extract
+
+
+async def _run_extract_updates_background(call_id: str) -> None:
+    """Pass ③ — full re-extraction for every merged topic (incl. ones migrated by Pass ① + ②)."""
+    import asyncio
+    from backend.services.topics_service import _resolve_workflow_llm_for_category
+    db = get_client()
+    try:
+        call_row = db.table("calls").select(
+            "project_id, verify_new_cache, verify_not_discussed_cache"
+        ).eq("id", call_id).execute().data
+        if not call_row:
+            return
+        project_id = call_row[0]["project_id"]
+
+        # Collect merged topic anchors from three sources:
+        # 1. project topics already in match_groups
+        groups = db.table("topic_match_groups").select("project_topic_ids").eq("call_id", call_id).execute().data
+        matched_ids = list({pid for g in groups for pid in (g.get("project_topic_ids") or [])})
+        # 2. project topics moved by Pass ② (verdict=actually_discussed)
+        nd_cache = call_row[0].get("verify_not_discussed_cache") or {}
+        moved_from_nd = [tid for tid, r in nd_cache.items() if (r or {}).get("verdict") == "actually_discussed"]
+        matched_ids = list(set(matched_ids + moved_from_nd))
+        # 3. project topics that Pass ① decided a "new" candidate should be merged into
+        vn_cache = call_row[0].get("verify_new_cache") or {}
+        moved_from_new = [
+            (r or {}).get("matched_topic_id")
+            for r in vn_cache.values()
+            if (r or {}).get("verdict") == "should_be_merged_with" and (r or {}).get("matched_topic_id")
+        ]
+        matched_ids = list({*matched_ids, *moved_from_new})
+
+        anchors = (
+            db.table("topics")
+            .select("id, name, key_terms")
+            .in_("id", matched_ids)
+            .execute()
+            .data
+        ) if matched_ids else []
+
+        # Load all transcripts in this project (chronological)
+        calls = (
+            db.table("calls").select("id, transcript")
+            .eq("project_id", project_id).order("created_at").execute().data
+        )
+        transcripts = {c["id"]: (c.get("transcript") or "") for c in calls if c.get("transcript")}
+
+        llm, model = _resolve_workflow_llm_for_category(project_id, "extract_topic_updates", db)
+
+        results = await asyncio.gather(*[
+            _run_extract(
+                {"name": t["name"], "key_terms": t.get("key_terms") or []},
+                transcripts, llm=llm, model=model,
+            )
+            for t in anchors
+        ])
+        cache = {t["id"]: r for t, r in zip(anchors, results)}
+        db.table("calls").update(
+            {"extract_updates_cache": cache, "extract_updates_status": "done"}
+        ).eq("id", call_id).execute()
+        logger.info(f"✅ [extract_updates] done for call {call_id} ({len(results)} topics)")
+    except Exception as e:
+        logger.exception(f"❌ [extract_updates] failed for call {call_id}: {e}")
+        db.table("calls").update({"extract_updates_status": "failed"}).eq("id", call_id).execute()
+
+
+@router.post("/calls/{call_id}/topics/extract-updates")
+async def extract_updates(call_id: str, background_tasks: BackgroundTasks):
+    """EPIC-16 Pass ③ — full re-extraction of merged topics from raw transcripts with chronological evidence_trail."""
+    logger.info(f"📥 [extract_updates] requested for call {call_id}")
+    db = get_client()
+    db.table("calls").update(
+        {"extract_updates_status": "processing", "extract_updates_cache": None}
+    ).eq("id", call_id).execute()
+    background_tasks.add_task(_run_extract_updates_background, call_id)
+    return {"status": "processing"}

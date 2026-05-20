@@ -5,6 +5,7 @@ import logging
 
 from backend.prompts.verify_new_topic import VERIFY_NEW_TOPIC_PROMPT
 from backend.prompts.verify_not_discussed import VERIFY_NOT_DISCUSSED_PROMPT
+from backend.prompts.extract_topic_updates import EXTRACT_TOPIC_UPDATES_PROMPT
 from backend.services.citation_verify import verify_citations, find_quote_lines
 
 logger = logging.getLogger("calltracker.topic_verification")
@@ -129,6 +130,79 @@ async def run_verify_not_discussed(
         prompt = (
             f"{prompt}\n\nPREVIOUS ATTEMPT FAILED citation verification:\n"
             f"{json.dumps(failures, indent=2)}\nRedo with a verbatim quote."
+        )
+
+    return {**result, "needs_manual_review": True, "failed_citations": failures}
+
+
+def _build_extract_updates_prompt(topic_anchor: dict, transcripts: dict[str, str]) -> str:
+    transcripts_block = "\n\n".join(
+        f"--- CALL {cid} ---\n{body}" for cid, body in transcripts.items()
+    )
+    anchor = json.dumps({"name": topic_anchor.get("name"), "key_terms": topic_anchor.get("key_terms", [])}, indent=2)
+    return (
+        f"{EXTRACT_TOPIC_UPDATES_PROMPT}\n\n"
+        f"TOPIC ANCHOR:\n{anchor}\n\n"
+        f"TRANSCRIPTS (chronological):\n{transcripts_block}"
+    )
+
+
+def _collect_citations(snapshot: dict, trail: list[dict]) -> list[dict]:
+    """Flatten every citation referenced from the snapshot + trail for post-verify."""
+    out: list[dict] = []
+    for task in snapshot.get("tasks", []) or []:
+        if task.get("primary_citation"):
+            out.append(task["primary_citation"])
+        for c in task.get("supporting_citations") or []:
+            out.append(c)
+    for oq in snapshot.get("open_questions", []) or []:
+        if oq.get("primary_citation"):
+            out.append(oq["primary_citation"])
+    for d in snapshot.get("decisions", []) or []:
+        if d.get("primary_citation"):
+            out.append(d["primary_citation"])
+        for c in d.get("supporting_citations") or []:
+            out.append(c)
+    for e in trail or []:
+        if e.get("citation"):
+            out.append(e["citation"])
+    return out
+
+
+async def run_extract_topic_updates(
+    topic_anchor: dict, transcripts: dict[str, str], *, llm: str, model: str | None
+) -> dict:
+    """Pass ③ — full re-extraction of a topic from raw transcripts.
+
+    Returns the LLM output augmented with `needs_manual_review=True` if any
+    citation in the snapshot or evidence_trail couldn't be verified after one retry.
+    """
+    prompt = _build_extract_updates_prompt(topic_anchor, transcripts)
+    result: dict = {}
+    failures: list[str] = []
+
+    for attempt in (1, 2):
+        result = await _call_llm(prompt, llm, model=model)
+        if not isinstance(result, dict):
+            logger.warning("⚠️ [extract_updates] LLM returned non-dict on attempt %d", attempt)
+            failures = ["LLM returned non-dict"]
+            continue
+        snapshot = result.get("extracted_snapshot") or {}
+        trail = result.get("evidence_trail") or []
+        all_cits = _collect_citations(snapshot, trail)
+        for c in all_cits:
+            if not c.get("lines"):
+                body = transcripts.get(c.get("call_id"), "")
+                computed = find_quote_lines(c.get("quote", ""), body)
+                if computed:
+                    c["lines"] = computed
+        ok, failures = verify_citations(all_cits, transcripts)
+        if ok:
+            return {**result, "needs_manual_review": False}
+        logger.warning("⚠️ [extract_updates] citation verify failed on attempt %d: %s", attempt, failures)
+        prompt = (
+            f"{prompt}\n\nPREVIOUS ATTEMPT FAILED citation verification:\n"
+            f"{json.dumps(failures, indent=2)}\nRedo with verbatim quotes."
         )
 
     return {**result, "needs_manual_review": True, "failed_citations": failures}
