@@ -685,11 +685,13 @@ async def _run_verify_new_background(call_id: str) -> None:
         transcripts = {c["id"]: (c.get("transcript") or "") for c in calls if c.get("transcript")}
         await plog.log(f"Loaded {len(transcripts)} transcript(s)")
 
+        # key_terms lives on topic_updates, not the parent topics table. For anchor
+        # purposes the name alone is enough — key_terms is bonus context for the LLM.
         project_topics_rows = (
-            db.table("topics").select("id, name, key_terms")
+            db.table("topics").select("id, name")
             .eq("project_id", project_id).eq("archived", False).execute().data
         )
-        project_topics = [{"topic_id": t["id"], "name": t["name"], "key_terms": t.get("key_terms") or []} for t in project_topics_rows]
+        project_topics = [{"topic_id": t["id"], "name": t["name"], "key_terms": []} for t in project_topics_rows]
         await plog.log(f"Loaded {len(project_topics)} existing project topic(s) as anchors")
 
         llm, model = _resolve_workflow_llm_for_category(project_id, "verify_new_topic", db)
@@ -851,8 +853,10 @@ async def _run_extract_updates_background(call_id: str) -> None:
         matched_ids = list({*matched_ids, *moved_from_new})
         await plog.log(f"Collected {len(matched_ids)} merged topic anchor(s) (incl. migrations from ① and ②)")
 
+        # key_terms lives on topic_updates, not parent topics. The Pass ③ prompt
+        # uses name as anchor; key_terms is optional context (LLM works without it).
         anchors = (
-            db.table("topics").select("id, name, key_terms")
+            db.table("topics").select("id, name")
             .in_("id", matched_ids).execute().data
         ) if matched_ids else []
 
