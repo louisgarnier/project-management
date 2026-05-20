@@ -609,6 +609,70 @@ function NewTopicCard({
         )}
       </div>
 
+      {/* Sanity flag — LLM verdict contradicts lexical pre-check */}
+      {result?.sanity_flag === "llm_recommends_merge_but_no_overlap" && (
+        <div style={{ marginTop: 8, padding: 8, background: "#fff1f0", border: "1px solid #ffbdad", borderRadius: 4, fontSize: 11, color: "#ae2a19" }}>
+          ⚠ <strong>Sanity flag:</strong> LLM recommends merge with &quot;{result.matched_topic_name}&quot; but the lexical pre-check
+          found ZERO key_terms overlap AND ZERO mentions in past transcripts. Likely a false merge suggestion — review carefully.
+        </div>
+      )}
+      {result?.sanity_flag === "llm_says_new_but_strong_overlap_exists" && (
+        <div style={{ marginTop: 8, padding: 8, background: "#fff1f0", border: "1px solid #ffbdad", borderRadius: 4, fontSize: 11, color: "#ae2a19" }}>
+          ⚠ <strong>Sanity flag:</strong> LLM says truly new, but the lexical pre-check shows strong key_terms overlap with an existing topic.
+          Possible missed merge — review the comparison below.
+        </div>
+      )}
+
+      {/* Lexical pre-check breakdown */}
+      {result?.lexical_precheck && (
+        <details style={{ marginTop: 8, fontSize: 11 }}>
+          <summary style={{ cursor: "pointer", color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", fontSize: 10 }}>
+            Layer 1 — Lexical pre-check (mechanical, no LLM)
+          </summary>
+          <div style={{ marginTop: 4, paddingLeft: 12, color: "#42526e" }}>
+            <div>
+              Candidate key_terms: {result.lexical_precheck.candidate_terms.join(", ") || "(none)"}
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <strong>Overlap with existing topics</strong> (top 3):
+              {result.lexical_precheck.topic_overlaps.length === 0 ? (
+                <span> (no existing topics have key_terms)</span>
+              ) : (
+                <ul style={{ marginTop: 2, paddingLeft: 16 }}>
+                  {result.lexical_precheck.topic_overlaps.slice(0, 3).map((o) => (
+                    <li key={o.topic_id} style={{ color: o.jaccard >= 0.5 ? "#974f0c" : o.jaccard > 0 ? "#42526e" : "#97a0af" }}>
+                      <strong>{o.name}</strong>: jaccard {o.jaccard}
+                      {o.shared_terms.length > 0 && ` — shared: ${o.shared_terms.join(", ")}`}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <strong>Mentions in past transcripts</strong>:
+              <ul style={{ marginTop: 2, paddingLeft: 16 }}>
+                {Object.entries(result.lexical_precheck.transcript_hits).map(([cid, h]) => (
+                  <li key={cid} style={{ color: h.total > 0 ? "#42526e" : "#97a0af" }}>
+                    {cid.slice(0, 8)}…: <strong>{h.total}</strong> total
+                    {h.total > 0 && (
+                      <>
+                        {" "}({Object.entries(h.by_term)
+                          .filter(([, n]) => n > 0)
+                          .map(([t, n]) => `${t}: ${n}`)
+                          .join(", ")})
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div style={{ marginTop: 4, fontWeight: 600 }}>
+              Lexical hint: <span style={{ color: "#0052cc" }}>{result.lexical_precheck.verdict_hint}</span>
+            </div>
+          </div>
+        </details>
+      )}
+
       {/* Candidate tasks */}
       {topic.tasks && topic.tasks.length > 0 && (
         <div style={{ marginTop: 6 }}>

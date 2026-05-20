@@ -353,6 +353,22 @@ export interface EvidenceTrailEntry {
 
 export type VerifyNewVerdict = "truly_new" | "should_be_merged_with";
 
+export interface LexicalPrecheck {
+  candidate_terms: string[];
+  topic_overlaps: {
+    topic_id: string;
+    name: string;
+    jaccard: number;
+    shared_terms: string[];
+  }[];
+  transcript_hits: Record<string, { total: number; by_term: Record<string, number> }>;
+  verdict_hint: string;
+}
+
+export type SanityFlag =
+  | "llm_recommends_merge_but_no_overlap"
+  | "llm_says_new_but_strong_overlap_exists";
+
 export interface VerifyNewResult {
   verdict: VerifyNewVerdict;
   matched_topic_id: string | null;
@@ -362,6 +378,8 @@ export interface VerifyNewResult {
   citations: Citation[];
   needs_manual_review: boolean;
   failed_citations?: string[];
+  lexical_precheck?: LexicalPrecheck;
+  sanity_flag?: SanityFlag;
 }
 
 export type VerifyNotDiscussedVerdict = "not_discussed" | "actually_discussed";

@@ -677,15 +677,20 @@ async def _run_verify_new_background(call_id: str) -> None:
         new_candidates = [t for t in pending if t["name"].lower().strip() in new_group_names]
         await plog.log(f"Found {len(new_candidates)} new-topic candidate(s) to verify")
 
-        await plog.log("Loading transcripts from all calls in the project…")
+        await plog.log("Loading past transcripts (calls before this one)…")
         calls = (
             db.table("calls").select("id, transcript, title")
             .eq("project_id", project_id).order("created_at").execute().data
         )
-        transcripts = {c["id"]: (c.get("transcript") or "") for c in calls if c.get("transcript")}
-        # Map call UUID → human-readable label (Call 1, Call 2, ...) for log messages.
+        # Pass ① compares the candidate against PAST calls only. The current call's
+        # transcript is what produced the candidate — it doesn't help answer
+        # "was this raised before?". Exclude it.
+        past_calls = [c for c in calls if c["id"] != call_id]
+        transcripts = {c["id"]: (c.get("transcript") or "") for c in past_calls if c.get("transcript")}
+        # Map call UUID → human-readable label for log messages.
         call_label = {c["id"]: f"Call {i+1}" for i, c in enumerate(calls)}
-        await plog.log(f"Loaded {len(transcripts)} transcript(s)")
+        past_labels = ", ".join(call_label[c["id"]] for c in past_calls)
+        await plog.log(f"Loaded {len(transcripts)} past transcript(s) — {past_labels or '(none — first call of project)'}")
 
         # For duplicate detection, the LLM needs more than just the topic name
         # — it needs key_terms + summary + a quick view of tasks so it can tell
@@ -713,8 +718,27 @@ async def _run_verify_new_background(call_id: str) -> None:
         await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(new_candidates)} topic(s) in parallel — this can take 30-60s")
 
         async def _one(c):
-            await plog.log(f"  → Topic \"{c['name']}\": calling LLM…")
-            r = await _run_verify_new(c, project_topics, transcripts, llm=llm, model=model, log_fn=plog.log)
+            # ── Layer 1: lexical pre-check (deterministic) ──
+            from backend.services.topic_verification import lexical_precheck
+            pre = lexical_precheck(c, project_topics, transcripts)
+            # Log the pre-check breakdown
+            top_overlap = pre["topic_overlaps"][0] if pre["topic_overlaps"] else None
+            await plog.log(f"  → Topic \"{c['name']}\": Layer 1 (lexical pre-check):")
+            if top_overlap and top_overlap["jaccard"] > 0:
+                await plog.log(f"      best key_terms overlap: \"{top_overlap['name']}\" (jaccard={top_overlap['jaccard']}, shared: {', '.join(top_overlap['shared_terms']) or 'none'})")
+            else:
+                await plog.log("      no key_terms overlap with any existing project topic")
+            total_hits = sum(h["total"] for h in pre["transcript_hits"].values())
+            per_call_summary = ", ".join(
+                f"{call_label.get(cid, cid[:8])}: {h['total']}"
+                for cid, h in pre["transcript_hits"].items()
+            )
+            await plog.log(f"      candidate key_terms found in past transcripts: {total_hits} total ({per_call_summary or 'none'})")
+            await plog.log(f"      → lexical hint: {pre['verdict_hint']}")
+
+            # ── Layer 2: LLM judgment (with pre-check as hint) ──
+            await plog.log(f"  → Topic \"{c['name']}\": Layer 2 (LLM judgment) — calling LLM with pre-check + transcripts + existing topics…")
+            r = await _run_verify_new(c, project_topics, transcripts, llm=llm, model=model, log_fn=plog.log, precheck=pre)
             verdict = (r or {}).get("verdict", "?")
             need_review = (r or {}).get("needs_manual_review")
             n_cits = len((r or {}).get("citations") or [])
@@ -747,6 +771,12 @@ async def _run_verify_new_background(call_id: str) -> None:
             elif verdict == "should_be_merged_with":
                 tname = (r or {}).get("matched_topic_name") or "?"
                 await plog.log(f"  ↻ Topic \"{c['name']}\": read {n_trans} past transcript(s) → matches existing topic \"{tname}\" (suggesting merge)")
+                sanity = (r or {}).get("sanity_flag")
+                if sanity == "llm_recommends_merge_but_no_overlap":
+                    await plog.log(f"      ⚠ SANITY FLAG: lexical pre-check found 0 key_terms overlap with \"{tname}\" AND 0 mentions in past transcripts. LLM recommendation likely WRONG — review carefully.")
+            # Also surface sanity flag for truly_new
+            if (r or {}).get("sanity_flag") == "llm_says_new_but_strong_overlap_exists":
+                await plog.log(f"      ⚠ SANITY FLAG: LLM said new, but lexical pre-check shows strong key_terms overlap with an existing topic — possible missed merge.")
             else:
                 await plog.log(f"  ✓ Topic \"{c['name']}\": {verdict}")
             return r

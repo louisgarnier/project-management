@@ -4,6 +4,7 @@ import asyncio
 import datetime as _dt
 import json
 import logging
+import re as _re
 
 from backend.prompts.verify_new_topic import VERIFY_NEW_TOPIC_PROMPT
 from backend.prompts.verify_not_discussed import VERIFY_NOT_DISCUSSED_PROMPT
@@ -87,8 +88,137 @@ class ProgressLogger:
         self._flush_sync()
 
 
+# ── Lexical pre-check (deterministic, mechanical) ─────────────────────────────
+
+
+def _jaccard(a: list[str], b: list[str]) -> float:
+    """Jaccard similarity of two string lists (case-insensitive whitespace-trimmed)."""
+    set_a = {(s or "").lower().strip() for s in a if (s or "").strip()}
+    set_b = {(s or "").lower().strip() for s in b if (s or "").strip()}
+    if not set_a or not set_b:
+        return 0.0
+    inter = set_a & set_b
+    union = set_a | set_b
+    return len(inter) / len(union) if union else 0.0
+
+
+def _count_term_occurrences(text: str, terms: list[str]) -> dict[str, int]:
+    """Whole-word case-insensitive count of each term in text."""
+    if not text or not terms:
+        return {}
+    text_lower = text.lower()
+    out: dict[str, int] = {}
+    for term in terms:
+        clean = (term or "").lower().strip()
+        if not clean:
+            continue
+        try:
+            pattern = r"\b" + _re.escape(clean) + r"\b"
+            out[term] = len(_re.findall(pattern, text_lower))
+        except _re.error:
+            out[term] = 0
+    return out
+
+
+def lexical_precheck(
+    candidate: dict,
+    project_topics: list[dict],
+    transcripts: dict[str, str],
+) -> dict:
+    """Mechanical pre-check: where do the candidate's key_terms appear?
+
+    Independent signal from the LLM judgment. Catches LLM hallucination by
+    surfacing the actual term overlap with existing topics + count of mentions
+    in past transcripts.
+
+    Returns:
+        {
+            "candidate_terms": [...],
+            "topic_overlaps": [{"topic_id", "name", "jaccard", "shared_terms"}, ...sorted desc],
+            "transcript_hits": {call_id: {"total": int, "by_term": {term: count}}},
+            "verdict_hint": "likely_new" | "likely_merge_with:<topic_id>" | "uncertain",
+        }
+    """
+    candidate_terms = list(candidate.get("key_terms") or [])
+
+    topic_overlaps = []
+    for t in project_topics:
+        topic_terms = list(t.get("key_terms") or [])
+        if not topic_terms:
+            continue
+        jacc = _jaccard(candidate_terms, topic_terms)
+        shared = sorted(
+            {(s or "").lower().strip() for s in candidate_terms}
+            & {(s or "").lower().strip() for s in topic_terms}
+        )
+        topic_overlaps.append({
+            "topic_id": t.get("topic_id"),
+            "name": t.get("name"),
+            "jaccard": round(jacc, 3),
+            "shared_terms": shared,
+        })
+    topic_overlaps.sort(key=lambda x: -x["jaccard"])
+
+    transcript_hits: dict[str, dict] = {}
+    for cid, body in transcripts.items():
+        by_term = _count_term_occurrences(body or "", candidate_terms)
+        transcript_hits[cid] = {"total": sum(by_term.values()), "by_term": by_term}
+
+    # Heuristic verdict hint (used as hint to LLM + for sanity check)
+    max_overlap = topic_overlaps[0] if topic_overlaps else None
+    total_hits = sum(h["total"] for h in transcript_hits.values())
+    if max_overlap and max_overlap["jaccard"] >= 0.5:
+        verdict_hint = f"likely_merge_with:{max_overlap['topic_id']}"
+    elif total_hits == 0 and (not max_overlap or max_overlap["jaccard"] == 0.0):
+        verdict_hint = "likely_new"
+    else:
+        verdict_hint = "uncertain"
+
+    return {
+        "candidate_terms": candidate_terms,
+        "topic_overlaps": topic_overlaps,
+        "transcript_hits": transcript_hits,
+        "verdict_hint": verdict_hint,
+    }
+
+
+def sanity_check_llm_vs_lexical(llm_result: dict, precheck: dict) -> str | None:
+    """Compare LLM verdict to lexical hint. Returns a flag string if they disagree.
+
+    Returns:
+        None — no contradiction
+        "llm_recommends_merge_but_no_overlap" — LLM said merge but lexical found 0 overlap with target
+        "llm_says_new_but_strong_overlap_exists" — LLM said new but lexical shows strong jaccard with an existing topic
+    """
+    verdict = (llm_result or {}).get("verdict")
+    matched_id = (llm_result or {}).get("matched_topic_id")
+    overlaps = (precheck or {}).get("topic_overlaps") or []
+    hits = (precheck or {}).get("transcript_hits") or {}
+
+    if verdict == "should_be_merged_with" and matched_id:
+        target_overlap = next(
+            (o for o in overlaps if o["topic_id"] == matched_id), None
+        )
+        total_hits = sum(h["total"] for h in hits.values())
+        if (
+            (target_overlap is None or target_overlap["jaccard"] == 0.0)
+            and total_hits == 0
+        ):
+            return "llm_recommends_merge_but_no_overlap"
+
+    if verdict == "truly_new":
+        for o in overlaps:
+            if o["jaccard"] >= 0.5:
+                return "llm_says_new_but_strong_overlap_exists"
+
+    return None
+
+
 def _build_verify_new_prompt(
-    candidate: dict, project_topics: list[dict], transcripts: dict[str, str]
+    candidate: dict,
+    project_topics: list[dict],
+    transcripts: dict[str, str],
+    precheck: dict | None = None,
 ) -> str:
     transcripts_block = "\n\n".join(
         f"--- CALL {cid} ---\n{body}" for cid, body in transcripts.items()
@@ -117,11 +247,21 @@ def _build_verify_new_prompt(
         "open_questions": candidate.get("open_questions", []),
         "decisions": candidate.get("decisions", []),
     }, indent=2)
+    precheck_block = ""
+    if precheck:
+        precheck_block = (
+            "\n\nLEXICAL PRE-CHECK (deterministic, fyi — your own analysis should be primary):\n"
+            f"{json.dumps(precheck, indent=2)}\n"
+            "Use this only as a hint. The candidate was extracted from the CURRENT call; "
+            "the transcripts below are PAST calls only. Decide based on whether the topic "
+            "was actually discussed before."
+        )
     return (
         f"{VERIFY_NEW_TOPIC_PROMPT}\n\n"
-        f"CANDIDATE NEW TOPIC (full data — what the user proposes as new):\n{candidate_block}\n\n"
-        f"EXISTING PROJECT TOPICS (name + key_terms + summary + brief task list for each — use these to check for duplicates):\n{project_topics_block}\n\n"
-        f"TRANSCRIPTS:\n{transcripts_block}"
+        f"CANDIDATE NEW TOPIC (full data — what the user proposes as new in the current call):\n{candidate_block}\n\n"
+        f"EXISTING PROJECT TOPICS (name + key_terms + summary + brief task list — use to check for duplicates):\n{project_topics_block}\n\n"
+        f"PAST TRANSCRIPTS (calls N-1, ..., 1 — NOT the current call N):\n{transcripts_block}"
+        f"{precheck_block}"
     )
 
 
@@ -133,6 +273,7 @@ async def run_verify_new(
     llm: str,
     model: str | None,
     log_fn=None,
+    precheck: dict | None = None,
 ) -> dict:
     """Run Pass ① for one candidate new topic.
 
@@ -140,6 +281,7 @@ async def run_verify_new(
     if citation verification failed both on the first attempt and on one retry.
 
     log_fn (optional): async callable(str) → emits step-by-step progress lines.
+    precheck (optional): lexical pre-check result to include in the prompt + compute sanity flag.
     """
     name = candidate.get("name", "?")
 
@@ -147,7 +289,7 @@ async def run_verify_new(
         if log_fn:
             await log_fn(msg)
 
-    prompt = _build_verify_new_prompt(candidate, project_topics, transcripts)
+    prompt = _build_verify_new_prompt(candidate, project_topics, transcripts, precheck=precheck)
     result: dict = {}
     failures: list[str] = []
 
@@ -170,7 +312,14 @@ async def run_verify_new(
         ok, failures = verify_citations(cits, transcripts)
         if ok:
             await _log(f"      [{name}] all {len(cits)} quote(s) found in the transcripts ✓")
-            return {**result, "needs_manual_review": False}
+            final = {**result, "needs_manual_review": False}
+            if precheck is not None:
+                final["lexical_precheck"] = precheck
+                flag = sanity_check_llm_vs_lexical(final, precheck)
+                if flag:
+                    final["sanity_flag"] = flag
+                    await _log(f"      [{name}] ⚠ sanity flag: {flag} — LLM verdict disagrees with lexical pre-check")
+            return final
         logger.warning("⚠️ [verify_new] citation verify failed on attempt %d: %s", attempt, failures)
         await _log(f"      [{name}] attempt {attempt}: {len(failures)} of {len(cits)} quote(s) NOT found in the transcripts — retrying")
         prompt = (
@@ -178,11 +327,17 @@ async def run_verify_new(
             f"{json.dumps(failures, indent=2)}\nRedo with verbatim quotes copy-pasted from transcripts."
         )
 
-    return {
+    final = {
         **result,
         "needs_manual_review": True,
         "failed_citations": failures,
     }
+    if precheck is not None:
+        final["lexical_precheck"] = precheck
+        flag = sanity_check_llm_vs_lexical(final, precheck)
+        if flag:
+            final["sanity_flag"] = flag
+    return final
 
 
 def _build_verify_not_discussed_prompt(topic: dict, transcript: str, call_id: str) -> str:
