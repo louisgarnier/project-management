@@ -210,13 +210,27 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
   const triggerPass = async (which: "①" | "②" | "③") => {
     setBusy(which);
     setError(null);
+    // Optimistic clear: don't wait for the first 3s poll tick — the old cache
+    // (and its stale progress log + topic results) should disappear immediately.
+    // Backend will overwrite cache + status when its background task runs.
+    setLive((prev) => {
+      if (which === "①") return { ...prev, verify_new_cache: null, verify_new_status: "processing" };
+      if (which === "②") return { ...prev, verify_not_discussed_cache: null, verify_not_discussed_status: "processing" };
+      return { ...prev, extract_updates_cache: null, extract_updates_status: "processing" };
+    });
+    // Also reset user decisions linked to this pass — otherwise stale decisions
+    // pin topics in the wrong section even after re-verify.
+    if (which === "①") setNewDecisions({});
+    if (which === "②") setNdDecisions({});
     try {
       if (which === "①") await topicsAPI.verifyNew(call.id);
       else if (which === "②") await topicsAPI.verifyNotDiscussed(call.id);
       else await topicsAPI.extractUpdates(call.id);
 
       if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = setInterval(async () => {
+      // First poll fires after 1s (not 3s) so the progress log appears
+      // promptly. Subsequent polls keep the 3s cadence.
+      const doPoll = async () => {
         try {
           const fresh = await callsAPI.getCall(call.id);
           // Always refresh the live overlay so the ProgressLog panel updates
@@ -251,7 +265,11 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
         } catch (e) {
           logger.error("[ProjectUpdatesStage] poll failed", { data: e });
         }
-      }, 3000);
+      };
+      // Kick off first poll after 1s (then 3s cadence) so the progress log
+      // appears promptly without waiting 3s for the first backend write.
+      setTimeout(doPoll, 1000);
+      pollRef.current = setInterval(doPoll, 3000);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to trigger pass");
       setBusy(null);
