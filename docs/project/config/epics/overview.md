@@ -1,56 +1,29 @@
 # Epic Overview — Call Tracker
-> Generated from `docs/project/requirements/5-EPICS.md`
-> Stories map to vertical slices in `docs/plans/2026-04-09-call-tracker.md`
 
-| ID | Epic | Status | Stories |
+One-line index of all epics. Full plans / designs / story files for each are in `../archive/<epic-folder>/`.
+
+| ID | Epic | Status | Archive folder |
 |---|---|---|---|
-| EPIC-1 | Foundation & Logging | [x] Done | 3 |
-| EPIC-2 | Projects | [x] Done | 3 |
-| EPIC-3 | Kanban Board & Calls | [x] Done | 2 |
-| EPIC-4 | Transcript Stage | [x] Done | 8 |
-| EPIC-5 | Artifacts Stage | [ ] Next | 5 |
-| EPIC-6 | Topics Stage | [ ] | 2 |
-| EPIC-7 | Two-Step Topic Extraction + New Stages | [ ] | 6 |
-| EPIC-8 | Topics Timeline Grid | [ ] | 2 |
-| EPIC-9 | M:N Topic Merge + Not-Discussed Verification | [x] Done | 7 |
-| EPIC-10 | Topic Lineage + Full-Stage Traceability + Prompt Quality | [x] Done | 9 |
-| EPIC-11 | Call Topics Extraction Overhaul (rubric + OpenRouter) | [x] Done | 6 |
-| EPIC-12 | Artifacts Overhaul (library + templates + system seed) | [x] Done | 6 |
-| EPIC-15 | Call Topics Rebuild — Phase 1 (call_topics) | [x] code-complete | 3 (15.1–15.3) |
-| EPIC-15 | Call Topics Rebuild — Phase 2 (artifacts compatibility + xlsx tracker) | [ ] Active | 4 (15.5–15.8) |
-| EPIC-15 | Call Topics Rebuild — Phase 3 (matching UI polish + real-fixture + rollback non-reg) | [ ] Deferred | 1 (15.4) + new |
-
----
-
-## Dependency Order
-
-```
-EPIC-1 (Foundation + Logging)
-  └─ EPIC-2 (Projects)
-       └─ EPIC-3 (Kanban + Calls)
-            └─ EPIC-4 (Transcript Stage)
-                 └─ EPIC-5 (Artifacts Stage)
-                      └─ EPIC-6 (Topics Stage)
-                           └─ EPIC-7 (Topic Dashboard)
-                                └─ EPIC-8 (Testing + Deployment)
-                                     └─ EPIC-9 (M:N Merge + Verification)
-                                          └─ EPIC-10 (Lineage + Prompt Traceability)
-```
-
-**Rule:** No epic starts until all stories in the previous epic are `[x] Done`.
-**Rule:** No feature story starts until Story 1.2 (Logging Foundation) is `[x] Done`.
+| EPIC-1 | Foundation & Logging | [x] Done | `archive/epic-01-foundation/` |
+| EPIC-2 | Projects | [x] Done | `archive/epic-02-projects/` |
+| EPIC-3 | Kanban Board & Calls | [x] Done | `archive/epic-03-kanban/` |
+| EPIC-4 | Transcript Stage | [x] Done | `archive/epic-04-transcription/` |
+| EPIC-5 | Artifacts Stage | [x] Done | `archive/epic-05-artifacts/` |
+| EPIC-6 | Topics Stage | [x] Done | `archive/epic-06-topics/` |
+| EPIC-7 | Two-Step Topic Extraction + New Stages | [x] Done | `archive/epic-07-topics-refactor/` |
+| EPIC-8 | Topics Timeline Grid | [x] Done | `archive/epic-08-topics-timeline/` |
+| EPIC-9 | M:N Topic Merge + Not-Discussed Verification | [x] Done | `archive/epic-09-mn-merge/` |
+| EPIC-10 | Topic Lineage + Full-Stage Traceability + Prompt Quality | [x] Done | `archive/epic-10-lineage/` |
+| EPIC-11 | Call Topics Extraction Overhaul (rubric + OpenRouter) | [x] Done | `archive/epic-11-call-topics-extraction/` |
+| EPIC-12 | Artifacts Overhaul (library + templates + system seed) | [x] Done | `archive/epic-12-artifacts-overhaul/` |
+| EPIC-15 | Call Topics Rebuild — Phase 1 + Story 15.5 (open_questions + decisions) | [x] Done | `archive/epic-15-call-topics-rebuild/` |
+| EPIC-15 | Call Topics Rebuild — Phase 2 (chronology + xlsx tracker + project tracker tab) | ✗ **DROPPED 2026-05-20** | `archive/epic-15-phase-2-DROPPED/` |
 
 ---
 
 ## 🚦 Status
 
-```
-Working on : EPIC-15 Phase 2 — Artifacts compatibility + xlsx tracker (branch epic-15-phase-2-artifacts)
-Blocked by : —
-Next up    : Story 15.5 (call_topics extension: open_questions + decisions + migration 027 + 3-section UI)
-Deferred   : Story 15.4 → Phase 3 (matching UI read-only + real-fixture + rollback non-reg test).
-             Reason: Call 1 has no matching phase, and tests need a working end-to-end pipeline (Phase 2's job).
-```
+No active epic. Branch `epic-15-phase-2-artifacts` was rolled back to `8169f21` (end of Story 15.5) on 2026-05-20; Phase 2 work discarded.
 
 ---
 
