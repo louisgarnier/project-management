@@ -137,6 +137,9 @@ function Cell({ cell, hasSources, sourceNames, isFirstRaisedCell, history, calls
       verticalAlign: "top", padding: "10px 12px" }}>
       <div style={cellStyle} onClick={() => canExpand && setExpanded((v) => !v)} title={tooltip}>
         <span style={badgeStyle}>{badgeLabel}</span>
+        {cell.needs_manual_review && (
+          <span title="Needs manual review" style={{ marginLeft: 5, fontSize: 12, cursor: "default" }}>⚠️</span>
+        )}
 
         {cell.summary && (
           <div style={{

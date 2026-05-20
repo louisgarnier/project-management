@@ -253,6 +253,8 @@ export interface TimelineCell {
   key_terms?: string[];
   evidence?: EvidenceRef[];
   tasks?: TaskData[];
+  // EPIC-16 fields
+  needs_manual_review?: boolean;
 }
 
 export interface TimelineTopic {

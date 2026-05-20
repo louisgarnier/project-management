@@ -2078,7 +2078,8 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
             .select(
                 "topic_id, call_id, summary, status, sentiment, importance, "
                 "transcript_excerpt, evidence, key_terms, tasks, "
-                "open_questions, decisions, chronology_narrative, rag_verification_note"
+                "open_questions, decisions, chronology_narrative, rag_verification_note, "
+                "needs_manual_review"
             )
             .in_("topic_id", topic_ids)
             .in_("call_id", call_ids)
@@ -2150,6 +2151,7 @@ def list_topics_timeline(project_id: str, db=None) -> dict:
                     "decisions": u.get("decisions") or [],
                     "chronology_narrative": u.get("chronology_narrative"),
                     "rag_verification_note": u.get("rag_verification_note"),
+                    "needs_manual_review": u.get("needs_manual_review") or False,
                     # Legacy keys kept as empty defaults for frontend compat
                     "follow_up_items": [],
                     "owner": "Us",
