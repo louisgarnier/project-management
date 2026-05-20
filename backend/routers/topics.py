@@ -692,7 +692,7 @@ async def _run_verify_new_background(call_id: str) -> None:
             .eq("project_id", project_id).eq("archived", False).execute().data
         )
         project_topics = [{"topic_id": t["id"], "name": t["name"], "key_terms": []} for t in project_topics_rows]
-        await plog.log(f"Loaded {len(project_topics)} existing project topic(s) as anchors")
+        await plog.log(f"Loaded {len(project_topics)} existing project topic(s) — these are the candidates the LLM will compare against (to detect duplicates)")
 
         llm, model = _resolve_workflow_llm_for_category(project_id, "verify_new_topic", db)
         await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(new_candidates)} topic(s) in parallel — this can take 30-60s")
@@ -713,14 +713,14 @@ async def _run_verify_new_background(call_id: str) -> None:
                 await plog.log(f"  ⚠ Topic \"{c['name']}\": needs manual review — citations couldn't be matched verbatim: {summary}")
             elif verdict == "truly_new":
                 ung = (r or {}).get("ungrounded_items") or []
-                msg = f"  ✓ Topic \"{c['name']}\": scanned {n_trans} transcript(s) against {n_topics} existing topic(s) → confirmed NEW ({n_cits} citation(s))"
+                msg = f"  ✓ Topic \"{c['name']}\": read {n_trans} past transcript(s), compared against {n_topics} existing topic(s) → confirmed NEW ({n_cits} citation(s))"
                 if ung:
                     items = ", ".join((u.get("text") or "?")[:60] for u in ung[:3])
                     msg += f"  ⚠ but {len(ung)} extracted item(s) not grounded in transcript: {items}"
                 await plog.log(msg)
             elif verdict == "should_be_merged_with":
                 tname = (r or {}).get("matched_topic_name") or "?"
-                await plog.log(f"  ↻ Topic \"{c['name']}\": scanned {n_trans} transcript(s) → matches existing topic \"{tname}\" (moving to Merged section)")
+                await plog.log(f"  ↻ Topic \"{c['name']}\": read {n_trans} past transcript(s) → matches existing topic \"{tname}\" (suggesting merge)")
             else:
                 await plog.log(f"  ✓ Topic \"{c['name']}\": {verdict}")
             return r
