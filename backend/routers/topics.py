@@ -707,7 +707,7 @@ async def _run_verify_new_background(call_id: str) -> None:
                 "summary": (t.get("summary") or "")[:200],
                 "task_briefs": tasks_summary,
             })
-        await plog.log(f"Loaded {len(project_topics)} existing project topic(s) (with key_terms + summary + task briefs) — these are the candidates the LLM will compare against (to detect duplicates)")
+        await plog.log(f"Loaded {len(project_topics)} reference topic(s) from previous calls (NOT verified — just used as comparison list: 'is the new candidate a duplicate of any of these existing topics?'). Each ref includes key_terms + summary + task briefs.")
 
         llm, model = _resolve_workflow_llm_for_category(project_id, "verify_new_topic", db)
         await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(new_candidates)} topic(s) in parallel — this can take 30-60s")

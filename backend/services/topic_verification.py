@@ -152,7 +152,7 @@ async def run_verify_new(
     failures: list[str] = []
 
     for attempt in (1, 2):
-        await _log(f"      [{name}] attempt {attempt}: asking LLM to compare against {len(project_topics)} existing topic(s) using {len(transcripts)} past transcript(s)")
+        await _log(f"      [{name}] attempt {attempt}: asking LLM to check if this candidate is a duplicate of any of the {len(project_topics)} existing project topic(s) (referencing {len(transcripts)} past transcript(s))")
         result = await _call_llm(prompt, llm, model=model)
         if not isinstance(result, dict):
             logger.warning("⚠️ [verify_new] LLM returned non-dict on attempt %d", attempt)
