@@ -992,12 +992,12 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                   Pick destination topic
                 </div>
                 {topics.map((t, idx) => {
-                  if (idx === menu.ti) return null;  // can't move to own topic
+                  if (idx === menu.ti) return null;
                   return (
                     <button
                       key={t.id ?? t.topic_id ?? idx}
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         const sourceTopic = topics[menu.ti];
                         const taskToMove = (sourceTopic.tasks ?? [])[menu.rowIdx];
                         if (!taskToMove) {
@@ -1005,13 +1005,51 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                           setTaskMoveSubmenuOpen(false);
                           return;
                         }
-                        // Remove from source, append to destination.
-                        const newSourceTasks = (sourceTopic.tasks ?? []).filter(
-                          (_, i) => i !== menu.rowIdx,
-                        );
-                        const newDestTasks = [...(t.tasks ?? []), taskToMove];
-                        updateTasks(menu.ti, newSourceTasks);
-                        updateTasks(idx, newDestTasks);
+                        // ATOMIC: build the full next state in one pass so we
+                        // don't lose the source-filter when the dest-append
+                        // setState reads stale `topics`. Single setTopics +
+                        // single persistExtractionCache call.
+                        const nextTopics = topics.map((tt, i) => {
+                          if (i === menu.ti) {
+                            return {
+                              ...tt,
+                              tasks: (tt.tasks ?? []).filter(
+                                (_, j) => j !== menu.rowIdx,
+                              ),
+                            };
+                          }
+                          if (i === idx) {
+                            return {
+                              ...tt,
+                              tasks: [...(tt.tasks ?? []), taskToMove],
+                            };
+                          }
+                          return tt;
+                        });
+                        setTopics(nextTopics);
+                        // Persist via the appropriate path. At call_topics
+                        // stage neither topic has a DB id → extraction_cache.
+                        const sourceId = sourceTopic.id ?? sourceTopic.topic_id;
+                        const destId = t.id ?? t.topic_id;
+                        if (!sourceId && !destId) {
+                          await persistExtractionCache(nextTopics);
+                        } else {
+                          // Later-stage path: two PATCHes (one per topic).
+                          try {
+                            if (sourceId) {
+                              await topicsAPI.patch(sourceId, {
+                                tasks: nextTopics[menu.ti].tasks,
+                              });
+                            }
+                            if (destId) {
+                              await topicsAPI.patch(destId, {
+                                tasks: nextTopics[idx].tasks,
+                              });
+                            }
+                          } catch (e) {
+                            logger.error("[CallTopicsStage] move task failed", { data: e });
+                          }
+                        }
                         setMenu(null);
                         setTaskMoveSubmenuOpen(false);
                       }}
