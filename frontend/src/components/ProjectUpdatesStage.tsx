@@ -712,6 +712,13 @@ function NewTopicCard({
   const isNewSelected = decision.action === "new";
   const isMergeSelected = decision.action === "merge";
 
+  // Local DRAFT state while user is editing the merge picker. While draft is
+  // active (not null), checkboxes update local state ONLY — the parent
+  // decision (and section migration) doesn't move until user clicks Apply.
+  const [draftIds, setDraftIds] = useState<string[] | null>(null);
+  const pickerOpen = draftIds !== null;
+  const displayedIds = draftIds ?? decision.merge_to_ids;
+
   // The "primary" target for comparison display = first picked, fallback to LLM suggestion.
   const mergeTargetId = decision.merge_to_ids[0] ?? result?.matched_topic_id ?? null;
   const mergeTarget = mergeTargetId
@@ -977,24 +984,25 @@ function NewTopicCard({
           <button
             type="button"
             onClick={() => {
+              // Open picker in DRAFT mode. Don't commit to parent state yet.
               const initial =
                 decision.merge_to_ids.length > 0
                   ? decision.merge_to_ids
                   : result?.matched_topic_id
                     ? [result.matched_topic_id]
                     : [];
-              onDecisionChange({ action: "merge", merge_to_ids: initial });
+              setDraftIds(initial);
             }}
-            style={isMergeSelected ? decisionButtonSelected : decisionButton}
+            style={isMergeSelected || pickerOpen ? decisionButtonSelected : decisionButton}
           >
             ↻ Merge with…
-            {result?.matched_topic_name && decision.merge_to_ids.length === 0 && (
+            {result?.matched_topic_name && displayedIds.length === 0 && (
               <span style={{ fontSize: 9, color: "#5e6c84", fontWeight: 400, marginLeft: 4 }}>
                 ({result.matched_topic_name})
               </span>
             )}
           </button>
-          {isMergeSelected && (
+          {pickerOpen && (
             <div
               style={{
                 width: "100%",
@@ -1028,7 +1036,7 @@ function NewTopicCard({
                 ) : (
                   projectTopics.map((t) => {
                     const id = t.topic_id ?? "";
-                    const checked = decision.merge_to_ids.includes(id);
+                    const checked = displayedIds.includes(id);
                     return (
                       <label
                         key={id}
@@ -1049,17 +1057,12 @@ function NewTopicCard({
                           type="checkbox"
                           checked={checked}
                           onChange={(e) => {
-                            if (e.target.checked) {
-                              onDecisionChange({
-                                action: "merge",
-                                merge_to_ids: [...decision.merge_to_ids, id],
-                              });
-                            } else {
-                              onDecisionChange({
-                                action: "merge",
-                                merge_to_ids: decision.merge_to_ids.filter((x) => x !== id),
-                              });
-                            }
+                            // Toggle LOCAL draft only — does not commit.
+                            const current = draftIds ?? decision.merge_to_ids;
+                            const next = e.target.checked
+                              ? [...current, id]
+                              : current.filter((x) => x !== id);
+                            setDraftIds(next);
                           }}
                           style={{ cursor: "pointer" }}
                         />
@@ -1074,7 +1077,7 @@ function NewTopicCard({
                   })
                 )}
               </div>
-              {decision.merge_to_ids.length >= 2 && (
+              {displayedIds.length >= 2 && (
                 <div
                   style={{
                     padding: "6px 10px",
@@ -1085,10 +1088,10 @@ function NewTopicCard({
                     fontStyle: "italic",
                   }}
                 >
-                  M:N merge — a new topic will be created absorbing all {decision.merge_to_ids.length} sources (they get archived).
+                  M:N merge — a new topic will be created absorbing all {displayedIds.length} sources (they get archived).
                 </div>
               )}
-              {decision.merge_to_ids.length === 1 && (
+              {displayedIds.length === 1 && (
                 <div
                   style={{
                     padding: "6px 10px",
@@ -1098,9 +1101,61 @@ function NewTopicCard({
                     borderTop: "1px solid #b3d4ff",
                   }}
                 >
-                  1:1 merge — candidate&apos;s tasks will be added to &quot;{topicNameById(decision.merge_to_ids[0])}&quot;.
+                  1:1 merge — candidate&apos;s tasks will be added to &quot;{topicNameById(displayedIds[0])}&quot;.
                 </div>
               )}
+
+              {/* Apply / Cancel — commit or discard the draft */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  padding: "6px 10px",
+                  borderTop: "1px solid #ebecf0",
+                  background: "white",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setDraftIds(null)}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 10px",
+                    borderRadius: 4,
+                    border: "1px solid #c1c7d0",
+                    background: "white",
+                    color: "#42526e",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={displayedIds.length === 0}
+                  onClick={() => {
+                    onDecisionChange({ action: "merge", merge_to_ids: displayedIds });
+                    setDraftIds(null);
+                  }}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 12px",
+                    borderRadius: 4,
+                    border: "none",
+                    background: displayedIds.length === 0 ? "#f4f5f7" : "#0052cc",
+                    color: displayedIds.length === 0 ? "#97a0af" : "white",
+                    cursor: displayedIds.length === 0 ? "default" : "pointer",
+                    fontFamily: "inherit",
+                    fontWeight: 600,
+                  }}
+                >
+                  {displayedIds.length >= 2
+                    ? `Apply M:N merge (${displayedIds.length} sources)`
+                    : "Apply merge"}
+                </button>
+              </div>
             </div>
           )}
         </div>
