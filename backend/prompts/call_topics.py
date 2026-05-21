@@ -133,7 +133,14 @@ Example — "We need to check if EDS+ supports the new memory schema" becomes:
       "task": "short — 2-6 words (use 'Track [topic]' for tracking tasks)",
       "next_step": "one sentence — what specifically happens next. OPTIONAL — empty string allowed when no specific next step is known yet (e.g. tracking tasks).",
       "status": "open" | "in_progress" | "resolved",
-      "owner": "Name from the transcript, or empty string if unsure"
+      "owner": "Name from the transcript, or empty string if unsure",
+      "citations": [
+        {
+          "speaker": "Name from the transcript",
+          "quote": "verbatim line(s) from the transcript that anchor THIS task — do not paraphrase",
+          "lines": "N-M"
+        }
+      ]
     }
   ],
   "open_questions": [
@@ -162,6 +169,7 @@ Example — "We need to check if EDS+ supports the new memory schema" becomes:
 - task.status (required, one of open/in_progress/resolved)
 - task.next_step (OPTIONAL — empty string allowed)
 - task.owner (OPTIONAL — empty string allowed)
+- task.citations (required, >=1 entry per task — each {speaker, quote, lines}). The quote MUST be verbatim from the transcript and specifically anchor the task's commitment. Generic context quotes do not count.
 - open_question.text (required) / .status (required)
 - open_question.owner (OPTIONAL — empty string allowed)
 - decision.text (required, non-empty)

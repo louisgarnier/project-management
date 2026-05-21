@@ -54,7 +54,16 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   const [polling, setPolling] = useState(
     () => call.extraction_status === "processing"
   );
-  const [menu, setMenu] = useState<{ ti: number; x: number; y: number } | null>(null);
+  // menu.kind:
+  //   "topic" — right-clicked on a topic name row → topic-level options
+  //   "task"  — right-clicked on a task row → task-level options (move/delete)
+  const [menu, setMenu] = useState<
+    | { kind: "topic"; ti: number; x: number; y: number }
+    | { kind: "task"; ti: number; rowIdx: number; x: number; y: number }
+    | null
+  >(null);
+  const [taskMoveSubmenuOpen, setTaskMoveSubmenuOpen] = useState(false);
+  const [taskCitationPopover, setTaskCitationPopover] = useState<{ ti: number; rowIdx: number; x: number; y: number } | null>(null);
 
   // ── Load library prompts ──
   useEffect(() => {
@@ -604,6 +613,16 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                       <tr
                         key={`${topic.id ?? topic.topic_id ?? ti}-${task?.task_id ?? `empty-${ri}`}`}
                         style={{ borderBottom }}
+                        onContextMenu={
+                          task
+                            ? (e) => {
+                                const t = e.target as HTMLElement;
+                                if (t.closest("[data-topic-name-cell]")) return;
+                                e.preventDefault();
+                                setMenu({ kind: "task", ti, rowIdx: ri, x: e.clientX, y: e.clientY });
+                              }
+                            : undefined
+                        }
                       >
                         {/* Topic name + importance — only first row */}
                         <td style={TABLE_TD_STYLE}>
@@ -613,7 +632,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                               onPatchTopic={(p) => patchTopic(ti, p)}
                               onContextMenu={(e) => {
                                 e.preventDefault();
-                                setMenu({ ti, x: e.clientX, y: e.clientY });
+                                setMenu({ kind: "topic", ti, x: e.clientX, y: e.clientY });
                               }}
                             />
                           )}
@@ -631,22 +650,50 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                         {/* Task / Next step / Owner / Status — per task */}
                         <td style={TABLE_TD_STYLE}>
                           {task && (
-                            <input
-                              key={task.task_id}
-                              type="text"
-                              defaultValue={task.task}
-                              placeholder="Describe task…"
-                              onBlur={(e) => {
-                                if (e.target.value !== task.task)
-                                  updateTasks(
-                                    ti,
-                                    tasks.map((t, i) =>
-                                      i === ri ? { ...t, task: e.target.value } : t,
-                                    ),
-                                  );
-                              }}
-                              style={INLINE_INPUT_STYLE}
-                            />
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <input
+                                key={task.task_id}
+                                type="text"
+                                defaultValue={task.task}
+                                placeholder="Describe task…"
+                                onBlur={(e) => {
+                                  if (e.target.value !== task.task)
+                                    updateTasks(
+                                      ti,
+                                      tasks.map((t, i) =>
+                                        i === ri ? { ...t, task: e.target.value } : t,
+                                      ),
+                                    );
+                                }}
+                                style={{ ...INLINE_INPUT_STYLE, flex: 1 }}
+                              />
+                              {(task.citations?.length ?? 0) > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) =>
+                                    setTaskCitationPopover({
+                                      ti,
+                                      rowIdx: ri,
+                                      x: e.clientX,
+                                      y: e.clientY,
+                                    })
+                                  }
+                                  title={`${task.citations!.length} citation(s) anchoring this task`}
+                                  style={{
+                                    fontSize: 10,
+                                    color: "#0052cc",
+                                    background: "#deebff",
+                                    border: "1px solid #b3d4ff",
+                                    borderRadius: 3,
+                                    padding: "1px 5px",
+                                    cursor: "pointer",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  📎 {task.citations!.length}
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td style={TABLE_TD_STYLE}>
@@ -779,9 +826,11 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
       {/* ── Right-click context menu ── */}
       {menu && (
         <>
-          {/* Backdrop — closes menu on outside click */}
           <div
-            onClick={() => setMenu(null)}
+            onClick={() => {
+              setMenu(null);
+              setTaskMoveSubmenuOpen(false);
+            }}
             style={{ position: "fixed", inset: 0, zIndex: 99 }}
           />
           <div
@@ -795,37 +844,199 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
               borderRadius: 4,
               boxShadow: "0 4px 12px rgba(9,30,66,.15)",
               padding: 4,
-              minWidth: 180,
+              minWidth: 200,
             }}
           >
-            <button
-              type="button"
-              onClick={() => {
-                const topic = topics[menu.ti];
-                updateTasks(menu.ti, [
-                  ...(topic.tasks ?? []),
-                  { task_id: crypto.randomUUID(), task: "", next_step: "", status: "open", owner: "" },
-                ]);
-                setMenu(null);
-              }}
-              style={menuItem}
-            >
-              + Add task
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const ti = menu.ti;
-                setMenu(null);
-                deleteTopic(ti);
-              }}
-              style={{ ...menuItem, color: "#bf2600" }}
-            >
-              🗑 Delete topic
-            </button>
+            {menu.kind === "topic" && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const topic = topics[menu.ti];
+                    updateTasks(menu.ti, [
+                      ...(topic.tasks ?? []),
+                      { task_id: crypto.randomUUID(), task: "", next_step: "", status: "open", owner: "" },
+                    ]);
+                    setMenu(null);
+                  }}
+                  style={menuItem}
+                >
+                  + Add task to this topic
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTopics((prev) => [
+                      ...prev,
+                      {
+                        name: "New topic",
+                        importance: "medium",
+                        key_terms: [],
+                        tasks: [],
+                        open_questions: [],
+                        decisions: [],
+                        evidence: [],
+                        status: "open",
+                        sentiment: "neutral",
+                      } as unknown as TopicData,
+                    ]);
+                    setMenu(null);
+                  }}
+                  style={menuItem}
+                >
+                  + Add new topic
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ti = menu.ti;
+                    setMenu(null);
+                    deleteTopic(ti);
+                  }}
+                  style={{ ...menuItem, color: "#bf2600" }}
+                >
+                  🗑 Delete topic
+                </button>
+              </>
+            )}
+
+            {menu.kind === "task" && !taskMoveSubmenuOpen && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setTaskMoveSubmenuOpen(true)}
+                  style={menuItem}
+                >
+                  ↪ Move task to topic…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const t = topics[menu.ti];
+                    updateTasks(
+                      menu.ti,
+                      (t.tasks ?? []).filter((_, i) => i !== menu.rowIdx),
+                    );
+                    setMenu(null);
+                  }}
+                  style={{ ...menuItem, color: "#bf2600" }}
+                >
+                  🗑 Delete task
+                </button>
+              </>
+            )}
+
+            {menu.kind === "task" && taskMoveSubmenuOpen && (
+              <>
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: "#5e6c84",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    padding: "4px 10px",
+                  }}
+                >
+                  Pick destination topic
+                </div>
+                {topics.map((t, idx) => {
+                  if (idx === menu.ti) return null;  // can't move to own topic
+                  return (
+                    <button
+                      key={t.id ?? t.topic_id ?? idx}
+                      type="button"
+                      onClick={() => {
+                        const sourceTopic = topics[menu.ti];
+                        const taskToMove = (sourceTopic.tasks ?? [])[menu.rowIdx];
+                        if (!taskToMove) {
+                          setMenu(null);
+                          setTaskMoveSubmenuOpen(false);
+                          return;
+                        }
+                        // Remove from source, append to destination.
+                        const newSourceTasks = (sourceTopic.tasks ?? []).filter(
+                          (_, i) => i !== menu.rowIdx,
+                        );
+                        const newDestTasks = [...(t.tasks ?? []), taskToMove];
+                        updateTasks(menu.ti, newSourceTasks);
+                        updateTasks(idx, newDestTasks);
+                        setMenu(null);
+                        setTaskMoveSubmenuOpen(false);
+                      }}
+                      style={menuItem}
+                    >
+                      → {t.name}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setTaskMoveSubmenuOpen(false)}
+                  style={{ ...menuItem, color: "#5e6c84", fontSize: 10 }}
+                >
+                  ← back
+                </button>
+              </>
+            )}
           </div>
         </>
       )}
+
+      {/* ── Citation popover ── */}
+      {taskCitationPopover && (() => {
+        const t = topics[taskCitationPopover.ti];
+        const task = (t.tasks ?? [])[taskCitationPopover.rowIdx];
+        if (!task) return null;
+        const cits = task.citations ?? [];
+        return (
+          <>
+            <div
+              onClick={() => setTaskCitationPopover(null)}
+              style={{ position: "fixed", inset: 0, zIndex: 99 }}
+            />
+            <div
+              style={{
+                position: "fixed",
+                top: taskCitationPopover.y,
+                left: taskCitationPopover.x,
+                zIndex: 100,
+                background: "white",
+                border: "1px solid #c1c7d0",
+                borderRadius: 4,
+                boxShadow: "0 4px 12px rgba(9,30,66,.15)",
+                padding: "8px 10px",
+                maxWidth: 480,
+                fontSize: 11,
+              }}
+            >
+              <div style={{ fontSize: 9, color: "#5e6c84", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
+                Citations anchoring this task ({cits.length})
+              </div>
+              {cits.length === 0 ? (
+                <div style={{ color: "#97a0af" }}>(no citations)</div>
+              ) : (
+                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                  {cits.map((c, i) => (
+                    <li key={i} style={{ marginBottom: 6 }}>
+                      {c.speaker && (
+                        <span style={{ fontWeight: 600, color: "#172b4d" }}>{c.speaker}:</span>
+                      )}{" "}
+                      <span style={{ fontStyle: "italic", color: "#42526e" }}>
+                        &quot;{c.quote}&quot;
+                      </span>
+                      {c.lines && (
+                        <span style={{ color: "#97a0af", marginLeft: 4, fontSize: 10 }}>
+                          (lines {c.lines})
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }
@@ -984,6 +1195,7 @@ function TopicNameCell({
   const importance = topic.importance ?? "medium";
   return (
     <div
+      data-topic-name-cell
       onContextMenu={onContextMenu}
       style={{ display: "flex", flexDirection: "column", gap: 4 }}
     >

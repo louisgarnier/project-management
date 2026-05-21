@@ -250,6 +250,17 @@ def _validate_topic(t: dict) -> tuple[bool, str]:
             return False, f"tasks[{i}].status must be in {sorted(_STATUS_VALUES)}, got {task.get('status')!r}"
         if "owner" in task and not isinstance(task.get("owner"), str):
             return False, f"tasks[{i}].owner must be a string"
+        # task.citations — OPTIONAL for backward compat; if present, must be a
+        # list of {speaker, quote, lines} dicts.
+        cits = task.get("citations")
+        if cits is not None:
+            if not isinstance(cits, list):
+                return False, f"tasks[{i}].citations must be a list"
+            for j, c in enumerate(cits):
+                if not isinstance(c, dict):
+                    return False, f"tasks[{i}].citations[{j}] is not a dict"
+                if not (c.get("quote") or "").strip():
+                    return False, f"tasks[{i}].citations[{j}].quote is empty"
 
     open_questions = t.get("open_questions") or []
     if not isinstance(open_questions, list):

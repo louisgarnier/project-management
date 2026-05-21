@@ -129,14 +129,21 @@ export interface DecisionData {
   added_in_call_id?: string | null;
 }
 
+export interface TaskCitation {
+  speaker?: string;
+  quote: string;
+  lines?: string;
+}
+
 export interface TaskData {
   task_id: string;
   task: string;
   next_step: string;
   status: TopicStatus;                // "open" | "in_progress" | "resolved"
   owner: string;                      // empty string allowed
-  added_in_call_id?: string | null;   // Story 15.5
-  closed_in_call_id?: string | null;  // Story 15.7 (pre-installed; nullable until then)
+  added_in_call_id?: string | null;
+  closed_in_call_id?: string | null;
+  citations?: TaskCitation[];         // verbatim quotes that anchor this task
 }
 
 /** One topic as returned by extract or dashboard endpoints */
