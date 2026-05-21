@@ -407,19 +407,27 @@ def _status_rollup(tasks: list[dict]) -> str:
 
 
 def _aggregate_per_task_to_topic_level(topic: dict) -> dict:
-    """Return a dict with topic-level {key_terms, open_questions, decisions}
+    """Return a dict with topic-level {key_terms, open_questions, decisions, evidence}
     populated by union from per-task fields (v4) UNIONed with any existing
     topic-level values (v3 back-compat). Dedupes:
       - key_terms by lower().strip()
       - open_questions by id
       - decisions by id
+      - evidence by (speaker, quote) signature; per-task task.citations
+        ({speaker, quote, lines}) get mapped to evidence shape
+        ({speaker, quote, citation}) where citation = "lines N-M" if lines set.
     """
     key_terms: list[str] = list(topic.get("key_terms") or [])
     open_questions: list[dict] = list(topic.get("open_questions") or [])
     decisions: list[dict] = list(topic.get("decisions") or [])
+    evidence: list[dict] = list(topic.get("evidence") or [])
     seen_kt = {k.lower().strip() for k in key_terms if isinstance(k, str)}
     seen_oq_ids = {oq.get("id") for oq in open_questions if isinstance(oq, dict)}
     seen_dec_ids = {d.get("id") for d in decisions if isinstance(d, dict)}
+    seen_ev = {
+        ((e.get("speaker") or "").strip(), (e.get("quote") or "").strip())
+        for e in evidence if isinstance(e, dict)
+    }
     for task in (topic.get("tasks") or []):
         if not isinstance(task, dict):
             continue
@@ -435,10 +443,23 @@ def _aggregate_per_task_to_topic_level(topic: dict) -> dict:
             if isinstance(d, dict) and d.get("id") not in seen_dec_ids:
                 decisions.append(d)
                 seen_dec_ids.add(d.get("id"))
+        for c in (task.get("citations") or []):
+            if not isinstance(c, dict):
+                continue
+            sig = ((c.get("speaker") or "").strip(), (c.get("quote") or "").strip())
+            if not sig[1] or sig in seen_ev:
+                continue
+            evidence.append({
+                "speaker": c.get("speaker") or "",
+                "quote": c.get("quote") or "",
+                "citation": f"lines {c['lines']}" if c.get("lines") else "",
+            })
+            seen_ev.add(sig)
     return {
         "key_terms": key_terms,
         "open_questions": open_questions,
         "decisions": decisions,
+        "evidence": evidence,
     }
 
 
@@ -484,7 +505,7 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
         "call_id": call_id,
         "summary": topic.get("summary") or "",
         "importance": topic.get("importance", "medium"),
-        "evidence": topic.get("evidence", []),
+        "evidence": agg["evidence"],
         "key_terms": agg["key_terms"],
         "tasks": tasks,
         "open_questions": agg["open_questions"],
