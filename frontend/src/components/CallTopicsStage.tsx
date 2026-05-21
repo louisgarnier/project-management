@@ -647,52 +647,63 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                             />
                           )}
                         </td>
-                        {/* Task / Next step / Owner / Status — per task */}
+                        {/* Task + per-task extras (v4: key_terms, OQ, decisions, citations) */}
                         <td style={TABLE_TD_STYLE}>
                           {task && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              <input
-                                key={task.task_id}
-                                type="text"
-                                defaultValue={task.task}
-                                placeholder="Describe task…"
-                                onBlur={(e) => {
-                                  if (e.target.value !== task.task)
-                                    updateTasks(
-                                      ti,
-                                      tasks.map((t, i) =>
-                                        i === ri ? { ...t, task: e.target.value } : t,
-                                      ),
-                                    );
-                                }}
-                                style={{ ...INLINE_INPUT_STYLE, flex: 1 }}
-                              />
-                              {(task.citations?.length ?? 0) > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={(e) =>
-                                    setTaskCitationPopover({
-                                      ti,
-                                      rowIdx: ri,
-                                      x: e.clientX,
-                                      y: e.clientY,
-                                    })
-                                  }
-                                  title={`${task.citations!.length} citation(s) anchoring this task`}
-                                  style={{
-                                    fontSize: 10,
-                                    color: "#0052cc",
-                                    background: "#deebff",
-                                    border: "1px solid #b3d4ff",
-                                    borderRadius: 3,
-                                    padding: "1px 5px",
-                                    cursor: "pointer",
-                                    flexShrink: 0,
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <input
+                                  key={task.task_id}
+                                  type="text"
+                                  defaultValue={task.task}
+                                  placeholder="Describe task…"
+                                  onBlur={(e) => {
+                                    if (e.target.value !== task.task)
+                                      updateTasks(
+                                        ti,
+                                        tasks.map((t, i) =>
+                                          i === ri ? { ...t, task: e.target.value } : t,
+                                        ),
+                                      );
                                   }}
-                                >
-                                  📎 {task.citations!.length}
-                                </button>
-                              )}
+                                  style={{ ...INLINE_INPUT_STYLE, flex: 1 }}
+                                />
+                                {(task.citations?.length ?? 0) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) =>
+                                      setTaskCitationPopover({
+                                        ti,
+                                        rowIdx: ri,
+                                        x: e.clientX,
+                                        y: e.clientY,
+                                      })
+                                    }
+                                    title={`${task.citations!.length} citation(s) anchoring this task`}
+                                    style={{
+                                      fontSize: 10,
+                                      color: "#0052cc",
+                                      background: "#deebff",
+                                      border: "1px solid #b3d4ff",
+                                      borderRadius: 3,
+                                      padding: "1px 5px",
+                                      cursor: "pointer",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    📎 {task.citations!.length}
+                                  </button>
+                                )}
+                              </div>
+                              <PerTaskExtras
+                                task={task}
+                                onChange={(updated) =>
+                                  updateTasks(
+                                    ti,
+                                    tasks.map((t, i) => (i === ri ? updated : t)),
+                                  )
+                                }
+                              />
                             </div>
                           )}
                         </td>
@@ -1377,6 +1388,87 @@ function DecisionsCell({
       <button type="button" onClick={add} style={ADD_CELL_BUTTON_STYLE}>
         + add decision
       </button>
+    </div>
+  );
+}
+
+
+/** PerTaskExtras — compact v4 per-task editor for key_terms, open_questions, decisions.
+ *  Collapsible. Click "▾ details" to expand. */
+function PerTaskExtras({
+  task,
+  onChange,
+}: {
+  task: TaskData;
+  onChange: (updated: TaskData) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const keyTerms = task.key_terms ?? [];
+  const oqs = task.open_questions ?? [];
+  const decs = task.decisions ?? [];
+  const totalExtras = keyTerms.length + oqs.length + decs.length;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        style={{
+          background: "none",
+          border: "none",
+          color: "#5e6c84",
+          fontSize: 10,
+          textAlign: "left",
+          cursor: "pointer",
+          padding: "2px 0",
+          alignSelf: "flex-start",
+        }}
+        title="Show per-task details"
+      >
+        {expanded ? "▾" : "▸"} per-task: {keyTerms.length} key_terms · {oqs.length} OQ · {decs.length} dec
+        {totalExtras === 0 && expanded && <span style={{ color: "#97a0af" }}> (add below)</span>}
+      </button>
+      {expanded && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            paddingLeft: 8,
+            borderLeft: "2px solid #ebecf0",
+            marginLeft: 4,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 9, color: "#5e6c84", fontWeight: 700, textTransform: "uppercase", marginBottom: 2 }}>
+              Key terms
+            </div>
+            <KeyTermChips
+              terms={keyTerms}
+              editable
+              onChange={(next) => onChange({ ...task, key_terms: next })}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: "#5e6c84", fontWeight: 700, textTransform: "uppercase", marginBottom: 2 }}>
+              Open questions
+            </div>
+            <OpenQuestionsCell
+              oqs={oqs}
+              onUpdate={(next) => onChange({ ...task, open_questions: next })}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: "#5e6c84", fontWeight: 700, textTransform: "uppercase", marginBottom: 2 }}>
+              Decisions
+            </div>
+            <DecisionsCell
+              decisions={decs}
+              onUpdate={(next) => onChange({ ...task, decisions: next })}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
