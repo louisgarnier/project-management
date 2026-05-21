@@ -108,6 +108,34 @@ def _norm_terms(terms: list[str]) -> set[str]:
     return {(s or "").lower().strip() for s in (terms or []) if (s or "").strip()}
 
 
+def effective_token_set(topic_or_candidate: dict) -> set[str]:
+    """Build the effective token bag for lexical matching.
+
+    Combines:
+      - key_terms (multi-word strings get tokenised into words)
+      - topic name (tokenised)
+    Removes stopwords, lowercases, requires len > 2.
+
+    Solves the paraphrase problem: "stress testing" (key_term) vs "stress test"
+    (different key_term) now overlap on the tokens {stress, testing} vs
+    {stress, test} respectively — at least "stress" is shared.
+    """
+    tokens: set[str] = set()
+    sources: list[str] = []
+    # key_terms (may be multi-word)
+    for kt in (topic_or_candidate.get("key_terms") or []):
+        if kt:
+            sources.append(str(kt))
+    # name (always single phrase, may be multi-word)
+    if topic_or_candidate.get("name"):
+        sources.append(str(topic_or_candidate["name"]))
+    for src in sources:
+        for word in _re.findall(r"\b[a-z][a-z0-9_-]+\b", src.lower()):
+            if len(word) > 2 and word not in _STOPWORDS:
+                tokens.add(word)
+    return tokens
+
+
 def _count_term_occurrences(text: str, terms: list[str]) -> dict[str, int]:
     """Whole-word case-insensitive count of each term in text."""
     if not text or not terms:
@@ -127,32 +155,36 @@ def _count_term_occurrences(text: str, terms: list[str]) -> dict[str, int]:
 
 
 def compute_idf(project_topics: list[dict]) -> dict[str, float]:
-    """Inverse document frequency for each key_term across project topics.
+    """IDF computed over EFFECTIVE TOKEN SETS (key_terms + name tokenised).
 
-    Common terms (appear in many topics) get low IDF; rare terms get high IDF.
+    Common tokens (appear in many topics) get low IDF; rare tokens high IDF.
     Formula: IDF(t) = log((N + 1) / (df + 1)) + 1
-    Smoothing avoids divide-by-zero and ensures all observed terms are > 0.
     """
     N = max(len(project_topics), 1)
     df: dict[str, int] = {}
     for t in project_topics:
-        for term in _norm_terms(t.get("key_terms")):
-            df[term] = df.get(term, 0) + 1
-    return {term: _math.log((N + 1) / (count + 1)) + 1.0 for term, count in df.items()}
+        for tok in effective_token_set(t):
+            df[tok] = df.get(tok, 0) + 1
+    return {tok: _math.log((N + 1) / (count + 1)) + 1.0 for tok, count in df.items()}
 
 
-def weighted_jaccard(a_terms: list[str], b_terms: list[str], idf: dict[str, float]) -> float:
-    """IDF-weighted Jaccard. Score = sum(IDF of shared) / sum(IDF of union).
-    Terms not in idf default to 1.0 (treated as moderately rare)."""
-    set_a = _norm_terms(a_terms)
-    set_b = _norm_terms(b_terms)
-    inter = set_a & set_b
-    union = set_a | set_b
+def weighted_jaccard_tokens(a_tokens: set[str], b_tokens: set[str], idf: dict[str, float]) -> float:
+    """IDF-weighted Jaccard on pre-computed token sets."""
+    inter = a_tokens & b_tokens
+    union = a_tokens | b_tokens
     if not union:
         return 0.0
     inter_w = sum(idf.get(t, 1.0) for t in inter)
     union_w = sum(idf.get(t, 1.0) for t in union)
     return inter_w / union_w if union_w > 0 else 0.0
+
+
+def weighted_jaccard(a_terms: list[str], b_terms: list[str], idf: dict[str, float]) -> float:
+    """Legacy entry point: takes raw term lists, builds effective token sets, then scores.
+    Kept for tests + external callers."""
+    set_a = effective_token_set({"key_terms": a_terms})
+    set_b = effective_token_set({"key_terms": b_terms})
+    return weighted_jaccard_tokens(set_a, set_b, idf)
 
 
 def extract_task_subjects(tasks: list[dict]) -> set[str]:
@@ -178,28 +210,28 @@ def score_existing_topic(
       0.3 × task-subject Jaccard
       0.2 × normalised mention count of candidate's RARE key_terms in transcripts
     """
-    cand_terms = list(candidate.get("key_terms") or [])
-    exist_terms = list(existing.get("key_terms") or [])
+    cand_tokens = effective_token_set(candidate)
+    exist_tokens = effective_token_set(existing)
 
-    score_a = weighted_jaccard(cand_terms, exist_terms, idf)
+    score_a = weighted_jaccard_tokens(cand_tokens, exist_tokens, idf)
 
     cand_subj = extract_task_subjects(candidate.get("tasks") or [])
     exist_subj = extract_task_subjects(existing.get("tasks") or [])
     union_subj = cand_subj | exist_subj
     score_b = (len(cand_subj & exist_subj) / len(union_subj)) if union_subj else 0.0
 
-    rare_terms = [t for t in cand_terms if idf.get((t or "").lower().strip(), 1.0) >= rare_idf_threshold]
+    rare_tokens = [t for t in cand_tokens if idf.get(t, 1.0) >= rare_idf_threshold]
     total_mentions = 0
     for body in transcripts.values():
         if not body:
             continue
-        total_mentions += sum(_count_term_occurrences(body, rare_terms).values())
+        total_mentions += sum(_count_term_occurrences(body, rare_tokens).values())
     score_c = min(total_mentions, 10) / 10.0
 
     combined = 0.5 * score_a + 0.3 * score_b + 0.2 * score_c
 
     rare_shared = sorted(
-        t for t in (_norm_terms(cand_terms) & _norm_terms(exist_terms))
+        t for t in (cand_tokens & exist_tokens)
         if idf.get(t, 1.0) >= rare_idf_threshold
     )
     return {
@@ -278,18 +310,15 @@ def lexical_precheck(
 
 
 def check_citation_rarity(
-    citations: list[dict], candidate_key_terms: list[str], idf: dict[str, float],
+    citations: list[dict], candidate: dict, idf: dict[str, float],
     *, rare_idf_threshold: float = 1.0,
 ) -> list[str]:
-    """Each verdict citation's quote must contain at least one RARE candidate key_term.
-    Generic shared terms (Snowflake, AWS, common platforms) are filtered out by IDF."""
-    rare = {
-        (t or "").lower().strip()
-        for t in (candidate_key_terms or [])
-        if idf.get((t or "").lower().strip(), 1.0) >= rare_idf_threshold
-    }
+    """Each verdict citation's quote must contain at least one RARE token
+    from the candidate's effective token set (key_terms + name tokens).
+    Generic platform terms (low IDF) get filtered out."""
+    cand_tokens = effective_token_set(candidate)
+    rare = {t for t in cand_tokens if idf.get(t, 1.0) >= rare_idf_threshold}
     if not rare:
-        # Candidate has no rare terms — can't meaningfully gate. Skip check.
         return []
     failures: list[str] = []
     for i, c in enumerate(citations):
@@ -298,7 +327,7 @@ def check_citation_rarity(
         quote = (c.get("quote") or "").lower()
         if not any(rt in quote for rt in rare):
             failures.append(
-                f"citation #{i}: quote contains no rare candidate key_term — only generic platform terms, evidence too weak"
+                f"citation #{i}: quote contains no rare candidate term — evidence too weak (only generic shared terms)"
             )
     return failures
 
@@ -506,7 +535,7 @@ async def run_verify_new(
                 # (b) Citation rarity check (each verdict citation must contain a rare candidate term)
                 if not final.get("needs_manual_review") and precheck:
                     idf = precheck.get("_idf_for_rarity_check") or {}
-                    rarity_fails = check_citation_rarity(verdict_cits, candidate.get("key_terms") or [], idf)
+                    rarity_fails = check_citation_rarity(verdict_cits, candidate, idf)
                     if rarity_fails:
                         final["needs_manual_review"] = True
                         final["sanity_flag"] = "citations_lack_rare_terms"

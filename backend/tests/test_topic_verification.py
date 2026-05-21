@@ -95,16 +95,35 @@ def test_lexical_precheck_returns_mechanical_verdict_when_zero_qualify():
 def test_check_citation_rarity_rejects_generic_only_quotes():
     """A citation that only quotes a generic platform term (high-df, low-IDF) should fail rarity."""
     from backend.services.topic_verification import check_citation_rarity
-    idf = {"snowflake": 0.2, "fons-alpha": 2.5, "environments": 2.0}
-    candidate_terms = ["snowflake", "environments"]
+    idf = {"snowflake": 0.2, "environments": 2.0, "fons-alpha": 2.5}
+    candidate = {"name": "Snowflake setup", "key_terms": ["snowflake", "environments"]}
     # Citation only quotes the generic word "snowflake" — no rare term → fail
     cits = [{"call_id": "c1", "quote": "we use snowflake", "for": "verdict"}]
-    fails = check_citation_rarity(cits, candidate_terms, idf)
+    fails = check_citation_rarity(cits, candidate, idf)
     assert len(fails) == 1
     # Citation quoting a rare term passes
     cits2 = [{"call_id": "c1", "quote": "set up environments for staging", "for": "verdict"}]
-    fails2 = check_citation_rarity(cits2, candidate_terms, idf)
+    fails2 = check_citation_rarity(cits2, candidate, idf)
     assert fails2 == []
+
+
+def test_effective_token_set_catches_paraphrase():
+    """The paraphrase 'stress testing' (key_term) vs 'stress test' (different key_term)
+    should now share the token 'stress' via tokenisation. Name tokens are also pooled."""
+    from backend.services.topic_verification import (
+        effective_token_set, compute_idf, weighted_jaccard_tokens
+    )
+    candidate = {"name": "Stress Testing Framework", "key_terms": ["stress testing", "scenario analysis"]}
+    existing = {"name": "Stress testing PA readiness", "key_terms": ["stress test", "PA readiness"]}
+    cand_tokens = effective_token_set(candidate)
+    exist_tokens = effective_token_set(existing)
+    # Both should contain "stress" and "testing" at minimum (from names)
+    assert "stress" in cand_tokens and "stress" in exist_tokens
+    assert "testing" in cand_tokens and "testing" in exist_tokens
+    # Score should be > 0 even though the original key_term strings don't match exactly
+    idf = compute_idf([candidate, existing, {"key_terms": ["unrelated"]}])
+    score = weighted_jaccard_tokens(cand_tokens, exist_tokens, idf)
+    assert score > 0.2  # decent signal after tokenisation
 
 
 def test_check_reasoning_references_tasks_flags_vague_reasoning():
