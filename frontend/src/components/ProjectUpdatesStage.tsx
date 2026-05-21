@@ -13,6 +13,7 @@ import type {
 } from "@/types";
 import EvidenceTrail from "./EvidenceTrail";
 import ProgressLog, { type ProgressEntry } from "./ProgressLog";
+import ConfidenceGauge from "./ConfidenceGauge";
 
 // Reserved key inside the *_cache JSONB columns where the backend writes its
 // step-by-step progress log. See backend/services/topic_verification.py::ProgressLogger.
@@ -673,6 +674,8 @@ function NewTopicCard({
         )}
       </div>
 
+      <ConfidenceGauge result={result} />
+
       {/* Sanity flags */}
       {result?.sanity_flag === "llm_recommends_merge_but_no_overlap" && (
         <div style={{ marginTop: 8, padding: 8, background: "#fff1f0", border: "1px solid #ffbdad", borderRadius: 4, fontSize: 11, color: "#ae2a19" }}>
@@ -1155,6 +1158,7 @@ function MergedTopicCard({
                     via Pass ①
                   </span>
                 </div>
+                <ConfidenceGauge result={fromNewResult} />
                 {fromNewPending.summary && (
                   <div style={{ color: "#5e6c84" }}>{fromNewPending.summary}</div>
                 )}
