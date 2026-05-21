@@ -324,10 +324,11 @@ def check_citation_rarity(
     for i, c in enumerate(citations):
         if (c.get("for") or "verdict") != "verdict":
             continue
-        quote = (c.get("quote") or "").lower()
-        if not any(rt in quote for rt in rare):
+        quote = (c.get("quote") or "")
+        if not any(rt in quote.lower() for rt in rare):
+            preview = quote if len(quote) <= 240 else quote[:240] + "…"
             failures.append(
-                f"citation #{i}: quote contains no rare candidate term — evidence too weak (only generic shared terms)"
+                f"citation #{i}: quote contains no rare candidate term — evidence too weak (only generic shared terms) — \"{preview}\""
             )
     return failures
 

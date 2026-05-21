@@ -902,10 +902,22 @@ function NewTopicCard({
           </button>
           <button
             type="button"
-            onClick={() => onDecisionChange({ action: "merge", merge_to_id: decision.merge_to_id ?? null })}
+            onClick={() =>
+              onDecisionChange({
+                action: "merge",
+                // Pre-populate with the LLM's suggested target when present —
+                // saves a manual picker click on the common "accept LLM merge" case.
+                merge_to_id: decision.merge_to_id ?? result?.matched_topic_id ?? null,
+              })
+            }
             style={isMergeSelected ? decisionButtonSelected : decisionButton}
           >
             ↻ Merge with…
+            {result?.matched_topic_name && !decision.merge_to_id && (
+              <span style={{ fontSize: 9, color: "#5e6c84", fontWeight: 400, marginLeft: 4 }}>
+                ({result.matched_topic_name})
+              </span>
+            )}
           </button>
           {isMergeSelected && (
             <select

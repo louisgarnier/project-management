@@ -26,8 +26,9 @@ def verify_citations(citations: list[dict], transcripts_by_call: dict[str, str])
             failed.append(f"citation #{i}: empty quote")
             continue
         if quote not in body:
+            preview = quote if len(quote) <= 240 else quote[:240] + "…"
             failed.append(
-                f"citation #{i}: quote not found verbatim in call {call_id} transcript"
+                f"citation #{i}: this quote was not found verbatim in the cited transcript — \"{preview}\""
             )
     return (len(failed) == 0, failed)
 
