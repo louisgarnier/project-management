@@ -4,6 +4,7 @@ import asyncio
 import datetime as _dt
 import json
 import logging
+import math as _math
 import re as _re
 
 from backend.prompts.verify_new_topic import VERIFY_NEW_TOPIC_PROMPT
@@ -88,18 +89,23 @@ class ProgressLogger:
         self._flush_sync()
 
 
-# ── Lexical pre-check (deterministic, mechanical) ─────────────────────────────
+# ── Layer 1 — Mechanical pre-filter with IDF-weighted scoring ─────────────────
 
 
-def _jaccard(a: list[str], b: list[str]) -> float:
-    """Jaccard similarity of two string lists (case-insensitive whitespace-trimmed)."""
-    set_a = {(s or "").lower().strip() for s in a if (s or "").strip()}
-    set_b = {(s or "").lower().strip() for s in b if (s or "").strip()}
-    if not set_a or not set_b:
-        return 0.0
-    inter = set_a & set_b
-    union = set_a | set_b
-    return len(inter) / len(union) if union else 0.0
+_STOPWORDS = {
+    "the", "a", "an", "to", "and", "or", "for", "with", "of", "in", "on", "at",
+    "by", "from", "this", "that", "is", "are", "was", "were", "be", "been",
+    "have", "has", "had", "do", "does", "did", "will", "would", "should",
+    "could", "can", "may", "might", "must", "shall", "their", "our", "us",
+    "we", "they", "he", "she", "it", "you", "your", "my", "as", "if",
+    "when", "where", "what", "who", "how", "why", "all", "any", "some", "no",
+    "not", "more", "less", "very", "just", "also", "than", "then", "but",
+    "into", "out", "off", "over", "under", "again", "further", "once",
+}
+
+
+def _norm_terms(terms: list[str]) -> set[str]:
+    return {(s or "").lower().strip() for s in (terms or []) if (s or "").strip()}
 
 
 def _count_term_occurrences(text: str, terms: list[str]) -> dict[str, int]:
@@ -120,95 +126,234 @@ def _count_term_occurrences(text: str, terms: list[str]) -> dict[str, int]:
     return out
 
 
+def compute_idf(project_topics: list[dict]) -> dict[str, float]:
+    """Inverse document frequency for each key_term across project topics.
+
+    Common terms (appear in many topics) get low IDF; rare terms get high IDF.
+    Formula: IDF(t) = log((N + 1) / (df + 1)) + 1
+    Smoothing avoids divide-by-zero and ensures all observed terms are > 0.
+    """
+    N = max(len(project_topics), 1)
+    df: dict[str, int] = {}
+    for t in project_topics:
+        for term in _norm_terms(t.get("key_terms")):
+            df[term] = df.get(term, 0) + 1
+    return {term: _math.log((N + 1) / (count + 1)) + 1.0 for term, count in df.items()}
+
+
+def weighted_jaccard(a_terms: list[str], b_terms: list[str], idf: dict[str, float]) -> float:
+    """IDF-weighted Jaccard. Score = sum(IDF of shared) / sum(IDF of union).
+    Terms not in idf default to 1.0 (treated as moderately rare)."""
+    set_a = _norm_terms(a_terms)
+    set_b = _norm_terms(b_terms)
+    inter = set_a & set_b
+    union = set_a | set_b
+    if not union:
+        return 0.0
+    inter_w = sum(idf.get(t, 1.0) for t in inter)
+    union_w = sum(idf.get(t, 1.0) for t in union)
+    return inter_w / union_w if union_w > 0 else 0.0
+
+
+def extract_task_subjects(tasks: list[dict]) -> set[str]:
+    """Extract subject tokens from a list of tasks (lowercased, stopword-filtered)."""
+    tokens: set[str] = set()
+    for t in tasks or []:
+        for field in ("task", "next_step"):
+            text = (t.get(field) or "").lower()
+            for word in _re.findall(r"\b[a-z][a-z0-9_-]+\b", text):
+                if len(word) > 2 and word not in _STOPWORDS:
+                    tokens.add(word)
+    return tokens
+
+
+def score_existing_topic(
+    candidate: dict, existing: dict, transcripts: dict[str, str], idf: dict[str, float],
+    *, rare_idf_threshold: float = 1.0,
+) -> dict:
+    """Combined 0.0-1.0 mechanical match score for one existing topic.
+
+    Composition:
+      0.5 × IDF-weighted Jaccard on key_terms
+      0.3 × task-subject Jaccard
+      0.2 × normalised mention count of candidate's RARE key_terms in transcripts
+    """
+    cand_terms = list(candidate.get("key_terms") or [])
+    exist_terms = list(existing.get("key_terms") or [])
+
+    score_a = weighted_jaccard(cand_terms, exist_terms, idf)
+
+    cand_subj = extract_task_subjects(candidate.get("tasks") or [])
+    exist_subj = extract_task_subjects(existing.get("tasks") or [])
+    union_subj = cand_subj | exist_subj
+    score_b = (len(cand_subj & exist_subj) / len(union_subj)) if union_subj else 0.0
+
+    rare_terms = [t for t in cand_terms if idf.get((t or "").lower().strip(), 1.0) >= rare_idf_threshold]
+    total_mentions = 0
+    for body in transcripts.values():
+        if not body:
+            continue
+        total_mentions += sum(_count_term_occurrences(body, rare_terms).values())
+    score_c = min(total_mentions, 10) / 10.0
+
+    combined = 0.5 * score_a + 0.3 * score_b + 0.2 * score_c
+
+    rare_shared = sorted(
+        t for t in (_norm_terms(cand_terms) & _norm_terms(exist_terms))
+        if idf.get(t, 1.0) >= rare_idf_threshold
+    )
+    return {
+        "topic_id": existing.get("topic_id"),
+        "name": existing.get("name"),
+        "score_idf_jaccard": round(score_a, 3),
+        "score_task_subject": round(score_b, 3),
+        "score_transcript_mentions": round(score_c, 3),
+        "combined_score": round(combined, 3),
+        "shared_terms_rare": rare_shared,
+        "rare_term_total_mentions": total_mentions,
+    }
+
+
 def lexical_precheck(
     candidate: dict,
     project_topics: list[dict],
     transcripts: dict[str, str],
+    *,
+    top_k: int = 3,
+    threshold: float = 0.15,
 ) -> dict:
-    """Mechanical pre-check: where do the candidate's key_terms appear?
+    """Layer 1 — mechanical scoring + pre-filter.
 
-    Independent signal from the LLM judgment. Catches LLM hallucination by
-    surfacing the actual term overlap with existing topics + count of mentions
-    in past transcripts.
-
-    Returns:
-        {
-            "candidate_terms": [...],
-            "topic_overlaps": [{"topic_id", "name", "jaccard", "shared_terms"}, ...sorted desc],
-            "transcript_hits": {call_id: {"total": int, "by_term": {term: count}}},
-            "verdict_hint": "likely_new" | "likely_merge_with:<topic_id>" | "uncertain",
-        }
+    Returns enriched result containing:
+      - candidate_terms
+      - idf summary (top 10 rare terms)
+      - scored_topics (sorted desc by combined_score, each annotated with qualified=bool)
+      - qualified_topic_ids (top_k with score >= threshold)
+      - transcript_hits (kept for back-compat with the old UI panel)
+      - verdict_hint: "mechanical_truly_new" | "needs_llm_eval" | "high_confidence_match"
     """
     candidate_terms = list(candidate.get("key_terms") or [])
+    idf = compute_idf(project_topics)
 
-    topic_overlaps = []
-    for t in project_topics:
-        topic_terms = list(t.get("key_terms") or [])
-        if not topic_terms:
-            continue
-        jacc = _jaccard(candidate_terms, topic_terms)
-        shared = sorted(
-            {(s or "").lower().strip() for s in candidate_terms}
-            & {(s or "").lower().strip() for s in topic_terms}
-        )
-        topic_overlaps.append({
-            "topic_id": t.get("topic_id"),
-            "name": t.get("name"),
-            "jaccard": round(jacc, 3),
-            "shared_terms": shared,
-        })
-    topic_overlaps.sort(key=lambda x: -x["jaccard"])
+    scored = [score_existing_topic(candidate, t, transcripts, idf) for t in project_topics]
+    scored.sort(key=lambda s: -s["combined_score"])
 
+    qualified_ids: set[str] = set()
+    for s in scored[:top_k]:
+        if s["combined_score"] >= threshold:
+            qualified_ids.add(s["topic_id"])
+    for s in scored:
+        s["qualified"] = s["topic_id"] in qualified_ids
+
+    # Back-compat transcript hits (used by older UI elements)
     transcript_hits: dict[str, dict] = {}
     for cid, body in transcripts.items():
         by_term = _count_term_occurrences(body or "", candidate_terms)
         transcript_hits[cid] = {"total": sum(by_term.values()), "by_term": by_term}
 
-    # Heuristic verdict hint (used as hint to LLM + for sanity check)
-    max_overlap = topic_overlaps[0] if topic_overlaps else None
-    total_hits = sum(h["total"] for h in transcript_hits.values())
-    if max_overlap and max_overlap["jaccard"] >= 0.5:
-        verdict_hint = f"likely_merge_with:{max_overlap['topic_id']}"
-    elif total_hits == 0 and (not max_overlap or max_overlap["jaccard"] == 0.0):
-        verdict_hint = "likely_new"
+    if not qualified_ids:
+        verdict_hint = "mechanical_truly_new"
+    elif scored and scored[0]["combined_score"] >= 0.5:
+        verdict_hint = "high_confidence_match"
     else:
-        verdict_hint = "uncertain"
+        verdict_hint = "needs_llm_eval"
+
+    idf_top = sorted(idf.items(), key=lambda kv: -kv[1])[:10]
 
     return {
         "candidate_terms": candidate_terms,
-        "topic_overlaps": topic_overlaps,
+        "idf_top_terms": [{"term": t, "idf": round(v, 3)} for t, v in idf_top],
+        "scored_topics": scored,
+        "qualified_topic_ids": sorted(qualified_ids),
+        "threshold": threshold,
+        "top_k": top_k,
         "transcript_hits": transcript_hits,
         "verdict_hint": verdict_hint,
+        # IDF is needed by post-LLM rarity check; cached here as a flat list.
+        "_idf_for_rarity_check": idf,
     }
 
 
-def sanity_check_llm_vs_lexical(llm_result: dict, precheck: dict) -> str | None:
-    """Compare LLM verdict to lexical hint. Returns a flag string if they disagree.
+# ── Post-LLM mechanical checks (defense-in-depth) ─────────────────────────────
 
-    Returns:
-        None — no contradiction
-        "llm_recommends_merge_but_no_overlap" — LLM said merge but lexical found 0 overlap with target
-        "llm_says_new_but_strong_overlap_exists" — LLM said new but lexical shows strong jaccard with an existing topic
+
+def check_citation_rarity(
+    citations: list[dict], candidate_key_terms: list[str], idf: dict[str, float],
+    *, rare_idf_threshold: float = 1.0,
+) -> list[str]:
+    """Each verdict citation's quote must contain at least one RARE candidate key_term.
+    Generic shared terms (Snowflake, AWS, common platforms) are filtered out by IDF."""
+    rare = {
+        (t or "").lower().strip()
+        for t in (candidate_key_terms or [])
+        if idf.get((t or "").lower().strip(), 1.0) >= rare_idf_threshold
+    }
+    if not rare:
+        # Candidate has no rare terms — can't meaningfully gate. Skip check.
+        return []
+    failures: list[str] = []
+    for i, c in enumerate(citations):
+        if (c.get("for") or "verdict") != "verdict":
+            continue
+        quote = (c.get("quote") or "").lower()
+        if not any(rt in quote for rt in rare):
+            failures.append(
+                f"citation #{i}: quote contains no rare candidate key_term — only generic platform terms, evidence too weak"
+            )
+    return failures
+
+
+def check_reasoning_references_tasks(
+    reasoning: str, candidate_tasks: list[dict], target_tasks: list[dict],
+) -> list[str]:
+    """merge_reasoning must reference at least one specific task from candidate AND target.
+    Wishy-washy reasoning ('both are about X') gets caught here."""
+    failures: list[str] = []
+    reasoning_lower = (reasoning or "").lower()
+    if not reasoning_lower.strip():
+        return ["merge_reasoning is empty"]
+
+    def task_significant_words(tasks: list[dict]) -> set[str]:
+        out: set[str] = set()
+        for t in tasks or []:
+            for field in ("task", "next_step"):
+                text = (t.get(field) or "").lower()
+                for w in _re.findall(r"\b[a-z][a-z0-9_-]{3,}\b", text):
+                    if w not in _STOPWORDS:
+                        out.add(w)
+        return out
+
+    cand_words = task_significant_words(candidate_tasks)
+    target_words = task_significant_words(target_tasks)
+    has_cand_ref = any(w in reasoning_lower for w in cand_words) if cand_words else True
+    has_target_ref = any(w in reasoning_lower for w in target_words) if target_words else True
+    if not has_cand_ref:
+        failures.append("merge_reasoning doesn't reference any specific candidate task")
+    if not has_target_ref:
+        failures.append("merge_reasoning doesn't reference any specific target task")
+    return failures
+
+
+def sanity_check_llm_vs_lexical(llm_result: dict, precheck: dict) -> str | None:
+    """Compare LLM verdict to mechanical scoring. Flag string if they disagree.
+
+    Now operates on the scored_topics list from the new lexical_precheck.
     """
     verdict = (llm_result or {}).get("verdict")
     matched_id = (llm_result or {}).get("matched_topic_id")
-    overlaps = (precheck or {}).get("topic_overlaps") or []
+    scored = (precheck or {}).get("scored_topics") or []
     hits = (precheck or {}).get("transcript_hits") or {}
 
     if verdict == "should_be_merged_with" and matched_id:
-        target_overlap = next(
-            (o for o in overlaps if o["topic_id"] == matched_id), None
-        )
+        target = next((s for s in scored if s.get("topic_id") == matched_id), None)
         total_hits = sum(h["total"] for h in hits.values())
-        if (
-            (target_overlap is None or target_overlap["jaccard"] == 0.0)
-            and total_hits == 0
-        ):
+        if (target is None or target.get("combined_score", 0) < 0.05) and total_hits == 0:
             return "llm_recommends_merge_but_no_overlap"
 
     if verdict == "truly_new":
-        for o in overlaps:
-            if o["jaccard"] >= 0.5:
+        # If any topic has very high combined score, LLM may have missed a merge
+        for s in scored:
+            if s.get("combined_score", 0) >= 0.5:
                 return "llm_says_new_but_strong_overlap_exists"
 
     return None
@@ -340,42 +485,61 @@ async def run_verify_new(
             await _log(f"      [{name}] all {len(cits)} quote(s) found in the transcripts ✓")
             final = {**result, "needs_manual_review": False}
 
-            # ── Post-LLM validation (defense-in-depth) ──
-            # If verdict is merge, require ≥2 verdict-tagged citations.
-            # A single citation is too weak — the LLM commonly cites one
-            # tangentially-related quote to justify a wrong merge.
+            # ── Post-LLM mechanical defense-in-depth ──
+            # Order of checks (any fail → downgrade to needs_manual_review):
+            #   (a) ≥2 verdict-tagged citations for merge
+            #   (b) Each verdict citation contains a RARE candidate key_term
+            #   (c) merge_reasoning references both a candidate and a target task
+            #   (d) Sanity-check LLM verdict against mechanical scoring
             if final.get("verdict") == "should_be_merged_with":
                 verdict_cits = [c for c in cits if (c.get("for") or "verdict") == "verdict"]
+
+                # (a) ≥2 citations
                 if len(verdict_cits) < 2:
                     final["needs_manual_review"] = True
                     final["sanity_flag"] = "insufficient_verdict_citations"
                     final.setdefault("failed_citations", []).append(
                         f"merge verdict requires ≥2 verdict citations, got {len(verdict_cits)}"
                     )
-                    await _log(f"      [{name}] ⚠ merge verdict has only {len(verdict_cits)} verdict citation(s) (need ≥2) — downgrading to needs_manual_review")
-                else:
-                    # Check shared terms aren't only platform names
-                    shared_terms_for_target = []
-                    if precheck:
-                        target_overlap = next(
-                            (o for o in (precheck.get("topic_overlaps") or [])
-                             if o.get("topic_id") == final.get("matched_topic_id")),
-                            None,
-                        )
-                        if target_overlap:
-                            shared_terms_for_target = target_overlap.get("shared_terms") or []
-                    if shared_terms_for_target and all(_looks_like_platform_term(t) for t in shared_terms_for_target):
-                        final["needs_manual_review"] = True
-                        final["sanity_flag"] = "platform_terms_only_overlap"
-                        await _log(f"      [{name}] ⚠ shared terms with target are platform/vendor names only ({', '.join(shared_terms_for_target)}) — downgrading to needs_manual_review")
+                    await _log(f"      [{name}] ⚠ merge has {len(verdict_cits)} verdict citation(s) (need ≥2) — downgrading")
 
+                # (b) Citation rarity check (each verdict citation must contain a rare candidate term)
+                if not final.get("needs_manual_review") and precheck:
+                    idf = precheck.get("_idf_for_rarity_check") or {}
+                    rarity_fails = check_citation_rarity(verdict_cits, candidate.get("key_terms") or [], idf)
+                    if rarity_fails:
+                        final["needs_manual_review"] = True
+                        final["sanity_flag"] = "citations_lack_rare_terms"
+                        final.setdefault("failed_citations", []).extend(rarity_fails)
+                        await _log(f"      [{name}] ⚠ citation rarity check failed: {len(rarity_fails)} citation(s) quote only generic terms — downgrading")
+
+                # (c) Reasoning must reference both sides' tasks (no wishy-washy "both are about X")
+                if not final.get("needs_manual_review") and precheck:
+                    target_id = final.get("matched_topic_id")
+                    target = next((p for p in project_topics if p.get("topic_id") == target_id), None)
+                    if target:
+                        reasoning_fails = check_reasoning_references_tasks(
+                            final.get("merge_reasoning") or "",
+                            candidate.get("tasks") or [],
+                            target.get("tasks") or [],
+                        )
+                        if reasoning_fails:
+                            final["needs_manual_review"] = True
+                            final["sanity_flag"] = "reasoning_lacks_task_anchors"
+                            final.setdefault("failed_citations", []).extend(reasoning_fails)
+                            await _log(f"      [{name}] ⚠ merge_reasoning is too vague (doesn't name specific tasks): {'; '.join(reasoning_fails)} — downgrading")
+
+            # (d) Sanity flag — LLM vs mechanical scoring (only set if no earlier flag)
             if precheck is not None:
-                final["lexical_precheck"] = precheck
+                # Strip the cached _idf_for_rarity_check from the persisted precheck
+                # so it doesn't bloat the cache JSONB unnecessarily.
+                precheck_persisted = {k: v for k, v in precheck.items() if not k.startswith("_")}
+                final["lexical_precheck"] = precheck_persisted
                 if not final.get("sanity_flag"):
                     flag = sanity_check_llm_vs_lexical(final, precheck)
                     if flag:
                         final["sanity_flag"] = flag
-                        await _log(f"      [{name}] ⚠ sanity flag: {flag} — LLM verdict disagrees with lexical pre-check")
+                        await _log(f"      [{name}] ⚠ sanity flag: {flag} — LLM verdict disagrees with mechanical scoring")
             return final
         logger.warning("⚠️ [verify_new] citation verify failed on attempt %d: %s", attempt, failures)
         await _log(f"      [{name}] attempt {attempt}: {len(failures)} of {len(cits)} quote(s) NOT found in the transcripts — retrying")
@@ -390,7 +554,7 @@ async def run_verify_new(
         "failed_citations": failures,
     }
     if precheck is not None:
-        final["lexical_precheck"] = precheck
+        final["lexical_precheck"] = {k: v for k, v in precheck.items() if not k.startswith("_")}
         flag = sanity_check_llm_vs_lexical(final, precheck)
         if flag:
             final["sanity_flag"] = flag

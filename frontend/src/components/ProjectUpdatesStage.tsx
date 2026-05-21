@@ -728,47 +728,44 @@ function NewTopicCard({
       {result?.lexical_precheck && (
         <details style={{ marginTop: 8, fontSize: 11 }}>
           <summary style={{ cursor: "pointer", color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", fontSize: 10 }}>
-            Layer 1 — Lexical pre-check (mechanical, no LLM)
+            Layer 1 — Mechanical pre-filter (IDF-weighted, no LLM)
+            {result.lexical_precheck.qualified_topic_ids && (
+              <span style={{ color: "#0052cc", marginLeft: 6 }}>
+                · {result.lexical_precheck.qualified_topic_ids.length} qualified
+              </span>
+            )}
           </summary>
           <div style={{ marginTop: 4, paddingLeft: 12, color: "#42526e" }}>
             <div>
               Candidate key_terms: {result.lexical_precheck.candidate_terms.join(", ") || "(none)"}
             </div>
             <div style={{ marginTop: 4 }}>
-              <strong>Overlap with existing topics</strong> (top 3):
-              {result.lexical_precheck.topic_overlaps.length === 0 ? (
-                <span> (no existing topics have key_terms)</span>
+              <strong>Mechanical scoring</strong> (threshold={result.lexical_precheck.threshold ?? "?"}, top_k={result.lexical_precheck.top_k ?? "?"}):
+              {!result.lexical_precheck.scored_topics || result.lexical_precheck.scored_topics.length === 0 ? (
+                <span> (no existing topics)</span>
               ) : (
                 <ul style={{ marginTop: 2, paddingLeft: 16 }}>
-                  {result.lexical_precheck.topic_overlaps.slice(0, 3).map((o) => (
-                    <li key={o.topic_id} style={{ color: o.jaccard >= 0.5 ? "#974f0c" : o.jaccard > 0 ? "#42526e" : "#97a0af" }}>
-                      <strong>{o.name}</strong>: jaccard {o.jaccard}
-                      {o.shared_terms.length > 0 && ` — shared: ${o.shared_terms.join(", ")}`}
+                  {result.lexical_precheck.scored_topics.slice(0, 5).map((s) => (
+                    <li key={s.topic_id} style={{ color: s.qualified ? "#172b4d" : "#97a0af", marginBottom: 2 }}>
+                      <span style={{ color: s.qualified ? "#36b37e" : "#bfc5ce", fontWeight: 600 }}>
+                        {s.qualified ? "✓" : "✗"}
+                      </span>{" "}
+                      <strong>{s.name}</strong> · combined={s.combined_score}{" "}
+                      <span style={{ color: "#97a0af" }}>
+                        (IDF-Jac={s.score_idf_jaccard}, task-subj={s.score_task_subject}, mentions={s.score_transcript_mentions})
+                      </span>
+                      {s.shared_terms_rare.length > 0 && (
+                        <span style={{ color: "#974f0c", marginLeft: 4 }}>
+                          rare-shared: {s.shared_terms_rare.join(", ")}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
               )}
             </div>
-            <div style={{ marginTop: 4 }}>
-              <strong>Mentions in past transcripts</strong>:
-              <ul style={{ marginTop: 2, paddingLeft: 16 }}>
-                {Object.entries(result.lexical_precheck.transcript_hits).map(([cid, h]) => (
-                  <li key={cid} style={{ color: h.total > 0 ? "#42526e" : "#97a0af" }}>
-                    {cid.slice(0, 8)}…: <strong>{h.total}</strong> total
-                    {h.total > 0 && (
-                      <>
-                        {" "}({Object.entries(h.by_term)
-                          .filter(([, n]) => n > 0)
-                          .map(([t, n]) => `${t}: ${n}`)
-                          .join(", ")})
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
             <div style={{ marginTop: 4, fontWeight: 600 }}>
-              Lexical hint: <span style={{ color: "#0052cc" }}>{result.lexical_precheck.verdict_hint}</span>
+              Verdict hint: <span style={{ color: "#0052cc" }}>{result.lexical_precheck.verdict_hint}</span>
             </div>
           </div>
         </details>
@@ -1211,37 +1208,32 @@ function MergedTopicCard({
                     {fromNewResult.lexical_precheck && (
                       <details style={{ fontSize: 11, marginBottom: 2 }}>
                         <summary style={{ cursor: "pointer", color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", fontSize: 9 }}>
-                          Layer 1 — Lexical pre-check (mechanical, no LLM)
+                          Layer 1 — Mechanical pre-filter (IDF-weighted, no LLM)
                         </summary>
                         <div style={{ marginTop: 4, paddingLeft: 12, color: "#42526e" }}>
                           <div>Candidate key_terms: {fromNewResult.lexical_precheck.candidate_terms.join(", ") || "(none)"}</div>
                           <div style={{ marginTop: 4 }}>
-                            <strong>Overlap with existing topics</strong> (top 3):
-                            {fromNewResult.lexical_precheck.topic_overlaps.length === 0 ? (
-                              <span> (no existing topics have key_terms)</span>
+                            <strong>Mechanical scoring</strong> (threshold={fromNewResult.lexical_precheck.threshold ?? "?"}, top_k={fromNewResult.lexical_precheck.top_k ?? "?"}):
+                            {!fromNewResult.lexical_precheck.scored_topics || fromNewResult.lexical_precheck.scored_topics.length === 0 ? (
+                              <span> (no existing topics)</span>
                             ) : (
                               <ul style={{ marginTop: 2, paddingLeft: 16 }}>
-                                {fromNewResult.lexical_precheck.topic_overlaps.slice(0, 3).map((o) => (
-                                  <li key={o.topic_id} style={{ color: o.jaccard >= 0.5 ? "#974f0c" : o.jaccard > 0 ? "#42526e" : "#97a0af" }}>
-                                    <strong>{o.name}</strong>: jaccard {o.jaccard}
-                                    {o.shared_terms.length > 0 && ` — shared: ${o.shared_terms.join(", ")}`}
+                                {fromNewResult.lexical_precheck.scored_topics.slice(0, 5).map((s) => (
+                                  <li key={s.topic_id} style={{ color: s.qualified ? "#172b4d" : "#97a0af" }}>
+                                    <span style={{ color: s.qualified ? "#36b37e" : "#bfc5ce", fontWeight: 600 }}>
+                                      {s.qualified ? "✓" : "✗"}
+                                    </span>{" "}
+                                    <strong>{s.name}</strong> · combined={s.combined_score}
+                                    {s.shared_terms_rare.length > 0 && (
+                                      <span style={{ color: "#974f0c", marginLeft: 4 }}>rare: {s.shared_terms_rare.join(", ")}</span>
+                                    )}
                                   </li>
                                 ))}
                               </ul>
                             )}
                           </div>
-                          <div style={{ marginTop: 4 }}>
-                            <strong>Mentions in past transcripts</strong>:
-                            <ul style={{ marginTop: 2, paddingLeft: 16 }}>
-                              {Object.entries(fromNewResult.lexical_precheck.transcript_hits).map(([cid, h]) => (
-                                <li key={cid} style={{ color: h.total > 0 ? "#42526e" : "#97a0af" }}>
-                                  {cid.slice(0, 8)}…: <strong>{h.total}</strong> total
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
                           <div style={{ marginTop: 4, fontWeight: 600 }}>
-                            Lexical hint: <span style={{ color: "#0052cc" }}>{fromNewResult.lexical_precheck.verdict_hint}</span>
+                            Verdict hint: <span style={{ color: "#0052cc" }}>{fromNewResult.lexical_precheck.verdict_hint}</span>
                           </div>
                         </div>
                       </details>

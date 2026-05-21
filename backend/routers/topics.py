@@ -715,27 +715,43 @@ async def _run_verify_new_background(call_id: str) -> None:
         await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(new_candidates)} topic(s) in parallel — this can take 30-60s")
 
         async def _one(c):
-            # ── Layer 1: lexical pre-check (deterministic) ──
+            # ── Layer 1: mechanical pre-filter (IDF-weighted scoring) ──
             from backend.services.topic_verification import lexical_precheck
             pre = lexical_precheck(c, project_topics, transcripts)
-            # Log the pre-check breakdown
-            top_overlap = pre["topic_overlaps"][0] if pre["topic_overlaps"] else None
-            await plog.log(f"  → Topic \"{c['name']}\": Layer 1 (lexical pre-check):")
-            if top_overlap and top_overlap["jaccard"] > 0:
-                await plog.log(f"      best key_terms overlap: \"{top_overlap['name']}\" (jaccard={top_overlap['jaccard']}, shared: {', '.join(top_overlap['shared_terms']) or 'none'})")
-            else:
-                await plog.log("      no key_terms overlap with any existing project topic")
-            total_hits = sum(h["total"] for h in pre["transcript_hits"].values())
-            per_call_summary = ", ".join(
-                f"{call_label.get(cid, cid[:8])}: {h['total']}"
-                for cid, h in pre["transcript_hits"].items()
-            )
-            await plog.log(f"      candidate key_terms found in past transcripts: {total_hits} total ({per_call_summary or 'none'})")
-            await plog.log(f"      → lexical hint: {pre['verdict_hint']}")
+            scored = pre.get("scored_topics") or []
+            qualified_ids = set(pre.get("qualified_topic_ids") or [])
+            qualified_topics = [t for t in project_topics if t.get("topic_id") in qualified_ids]
 
-            # ── Layer 2: LLM judgment (with pre-check as hint) ──
-            await plog.log(f"  → Topic \"{c['name']}\": Layer 2 (LLM judgment) — calling LLM with pre-check + transcripts + existing topics…")
-            r = await _run_verify_new(c, project_topics, transcripts, llm=llm, model=model, log_fn=plog.log, precheck=pre)
+            await plog.log(f"  → Topic \"{c['name']}\": Layer 1 (mechanical pre-filter, IDF-weighted):")
+            for s in scored[:5]:
+                tag = "✓ qualified" if s.get("qualified") else "✗ rejected"
+                breakdown = f"IDF-Jaccard={s['score_idf_jaccard']}, task-subj={s['score_task_subject']}, mentions={s['score_transcript_mentions']}"
+                rare = (", rare-shared: " + ", ".join(s["shared_terms_rare"])) if s.get("shared_terms_rare") else ""
+                await plog.log(f"      {tag} | \"{s['name']}\" → combined={s['combined_score']} ({breakdown}{rare})")
+            await plog.log(f"      threshold={pre['threshold']}, top_k={pre['top_k']} → {len(qualified_ids)} qualified candidate(s)")
+            await plog.log(f"      mechanical verdict hint: {pre['verdict_hint']}")
+
+            # ── Step 3: pre-filter outcome ──
+            if not qualified_topics:
+                await plog.log(f"  ✓ Topic \"{c['name']}\": no existing topic qualified mechanically → verdict=truly_new (no LLM call needed)")
+                return {
+                    "verdict": "truly_new",
+                    "final_verdict": "truly_new",
+                    "matched_topic_id": None,
+                    "matched_topic_name": None,
+                    "extraction_grounded": True,
+                    "ungrounded_items": [],
+                    "citations": [],
+                    "evaluations": [],
+                    "merge_reasoning": "No existing project topic scored above the mechanical merge threshold — confirmed new without LLM evaluation.",
+                    "needs_manual_review": False,
+                    "lexical_precheck": {k: v for k, v in pre.items() if not k.startswith("_")},
+                    "mechanical_skip": True,
+                }
+
+            # ── Layer 2: LLM judgment (only on qualified candidates) ──
+            await plog.log(f"  → Topic \"{c['name']}\": Layer 2 (LLM judgment) — sending top {len(qualified_topics)} qualified candidate(s) to LLM…")
+            r = await _run_verify_new(c, qualified_topics, transcripts, llm=llm, model=model, log_fn=plog.log, precheck=pre)
             verdict = (r or {}).get("verdict", "?")
             need_review = (r or {}).get("needs_manual_review")
             n_cits = len((r or {}).get("citations") or [])

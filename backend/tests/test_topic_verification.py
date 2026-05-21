@@ -60,6 +60,68 @@ def test_run_verify_new_retries_then_flags_manual_review(monkeypatch):
     assert mock_llm.call_count == 2  # 1 initial + 1 retry
 
 
+def test_idf_weighted_jaccard_downweights_common_terms():
+    """A term shared across most project topics has low IDF; rare shared terms dominate."""
+    from backend.services.topic_verification import compute_idf, weighted_jaccard
+    project_topics = [
+        {"key_terms": ["snowflake", "schema"]},
+        {"key_terms": ["snowflake", "auth"]},
+        {"key_terms": ["snowflake", "ARM"]},
+        {"key_terms": ["snowflake", "fons-alpha"]},
+        {"key_terms": ["snowflake"]},
+    ]
+    idf = compute_idf(project_topics)
+    # "snowflake" appears in all 5 → low IDF; "ARM" appears in 1 → high IDF
+    assert idf["snowflake"] < idf["arm"]
+    # Two topics sharing ONLY "snowflake" → weighted Jaccard should be modest, not 1.0
+    score = weighted_jaccard(["snowflake", "environments"], ["snowflake", "ARM", "schema"], idf)
+    assert 0 < score < 0.5
+
+
+def test_lexical_precheck_returns_mechanical_verdict_when_zero_qualify():
+    """If no existing topic scores above threshold, verdict_hint='mechanical_truly_new'
+    and qualified_topic_ids is empty (LLM should be skipped)."""
+    from backend.services.topic_verification import lexical_precheck
+    candidate = {"name": "Brand new thing", "key_terms": ["fresh", "unique"], "tasks": []}
+    project_topics = [
+        {"topic_id": "t1", "name": "Old topic", "key_terms": ["unrelated"], "tasks": []},
+    ]
+    transcripts = {"call-1": "talking about completely unrelated stuff"}
+    out = lexical_precheck(candidate, project_topics, transcripts)
+    assert out["qualified_topic_ids"] == []
+    assert out["verdict_hint"] == "mechanical_truly_new"
+
+
+def test_check_citation_rarity_rejects_generic_only_quotes():
+    """A citation that only quotes a generic platform term (high-df, low-IDF) should fail rarity."""
+    from backend.services.topic_verification import check_citation_rarity
+    idf = {"snowflake": 0.2, "fons-alpha": 2.5, "environments": 2.0}
+    candidate_terms = ["snowflake", "environments"]
+    # Citation only quotes the generic word "snowflake" — no rare term → fail
+    cits = [{"call_id": "c1", "quote": "we use snowflake", "for": "verdict"}]
+    fails = check_citation_rarity(cits, candidate_terms, idf)
+    assert len(fails) == 1
+    # Citation quoting a rare term passes
+    cits2 = [{"call_id": "c1", "quote": "set up environments for staging", "for": "verdict"}]
+    fails2 = check_citation_rarity(cits2, candidate_terms, idf)
+    assert fails2 == []
+
+
+def test_check_reasoning_references_tasks_flags_vague_reasoning():
+    """merge_reasoning must reference specific task content from both sides."""
+    from backend.services.topic_verification import check_reasoning_references_tasks
+    cand = [{"task": "schedule architect meeting", "next_step": ""}]
+    target = [{"task": "design aggregation schema", "next_step": ""}]
+    # Vague reasoning — references neither task
+    vague = "Both topics are related to Snowflake work."
+    fails = check_reasoning_references_tasks(vague, cand, target)
+    assert len(fails) >= 1
+    # Concrete reasoning — references both
+    concrete = "candidate's 'schedule architect meeting' fits the target's 'design aggregation schema' work stream"
+    fails2 = check_reasoning_references_tasks(concrete, cand, target)
+    assert fails2 == []
+
+
 def test_resolve_workflow_llm_uses_project_default():
     """Post-EPIC-16: resolver reads ONLY projects.default_llm/default_model.
     artifact_types overrides are intentionally ignored — project is the single source of truth."""

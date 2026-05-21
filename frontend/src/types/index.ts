@@ -355,12 +355,21 @@ export type VerifyNewVerdict = "truly_new" | "should_be_merged_with";
 
 export interface LexicalPrecheck {
   candidate_terms: string[];
-  topic_overlaps: {
+  idf_top_terms?: { term: string; idf: number }[];
+  scored_topics?: {
     topic_id: string;
     name: string;
-    jaccard: number;
-    shared_terms: string[];
+    score_idf_jaccard: number;
+    score_task_subject: number;
+    score_transcript_mentions: number;
+    combined_score: number;
+    shared_terms_rare: string[];
+    rare_term_total_mentions: number;
+    qualified: boolean;
   }[];
+  qualified_topic_ids?: string[];
+  threshold?: number;
+  top_k?: number;
   transcript_hits: Record<string, { total: number; by_term: Record<string, number> }>;
   verdict_hint: string;
 }
@@ -369,7 +378,9 @@ export type SanityFlag =
   | "llm_recommends_merge_but_no_overlap"
   | "llm_says_new_but_strong_overlap_exists"
   | "insufficient_verdict_citations"
-  | "platform_terms_only_overlap";
+  | "platform_terms_only_overlap"
+  | "citations_lack_rare_terms"
+  | "reasoning_lacks_task_anchors";
 
 export interface PerTopicEvaluation {
   topic_id: string;
