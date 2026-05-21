@@ -995,82 +995,111 @@ function NewTopicCard({
             )}
           </button>
           {isMergeSelected && (
-            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-              {decision.merge_to_ids.map((id) => (
-                <span
-                  key={id}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 11,
-                    padding: "2px 6px 2px 8px",
-                    borderRadius: 12,
-                    background: "#deebff",
-                    color: "#0052cc",
-                    border: "1px solid #b3d4ff",
-                  }}
-                >
-                  {topicNameById(id)}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onDecisionChange({
-                        action: "merge",
-                        merge_to_ids: decision.merge_to_ids.filter((x) => x !== id),
-                      })
-                    }
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#0052cc",
-                      cursor: "pointer",
-                      padding: 0,
-                      fontSize: 12,
-                      lineHeight: 1,
-                    }}
-                    title="Remove this target"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-              <select
-                value=""
-                onChange={(e) => {
-                  const newId = e.target.value;
-                  if (newId && !decision.merge_to_ids.includes(newId)) {
-                    onDecisionChange({
-                      action: "merge",
-                      merge_to_ids: [...decision.merge_to_ids, newId],
-                    });
-                  }
-                }}
+            <div
+              style={{
+                width: "100%",
+                marginTop: 6,
+                border: "1px solid #dfe1e6",
+                borderRadius: 4,
+                background: "#fafbfc",
+              }}
+            >
+              <div
                 style={{
-                  fontSize: 11,
-                  padding: "4px 8px",
-                  border: "1px solid #dfe1e6",
-                  borderRadius: 4,
-                  background: "white",
-                  color: "#172b4d",
-                  fontFamily: "inherit",
+                  padding: "6px 10px",
+                  fontSize: 10,
+                  color: "#5e6c84",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: ".04em",
+                  borderBottom: "1px solid #ebecf0",
                 }}
               >
-                <option value="">
-                  + {decision.merge_to_ids.length === 0 ? "select topic" : "add another target"}…
-                </option>
-                {projectTopics
-                  .filter((t) => !decision.merge_to_ids.includes(t.topic_id ?? ""))
-                  .map((t) => (
-                    <option key={t.topic_id} value={t.topic_id ?? ""}>
-                      {t.name}
-                    </option>
-                  ))}
-              </select>
-              {decision.merge_to_ids.length >= 2 && (
-                <span style={{ fontSize: 10, color: "#974f0c", fontStyle: "italic" }}>
-                  M:N merge — a new topic will be created absorbing all {decision.merge_to_ids.length} sources
+                Select 1 or more topic(s) to merge with{" "}
+                <span style={{ color: "#0052cc", fontWeight: 700 }}>
+                  ({decision.merge_to_ids.length} selected)
                 </span>
+              </div>
+              <div style={{ maxHeight: 220, overflowY: "auto", padding: 4 }}>
+                {projectTopics.length === 0 ? (
+                  <div style={{ padding: 8, fontSize: 11, color: "#97a0af" }}>
+                    No project topics available to merge with.
+                  </div>
+                ) : (
+                  projectTopics.map((t) => {
+                    const id = t.topic_id ?? "";
+                    const checked = decision.merge_to_ids.includes(id);
+                    return (
+                      <label
+                        key={id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "4px 8px",
+                          fontSize: 12,
+                          cursor: "pointer",
+                          color: checked ? "#0052cc" : "#172b4d",
+                          background: checked ? "#deebff" : "transparent",
+                          borderRadius: 3,
+                          marginBottom: 1,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              onDecisionChange({
+                                action: "merge",
+                                merge_to_ids: [...decision.merge_to_ids, id],
+                              });
+                            } else {
+                              onDecisionChange({
+                                action: "merge",
+                                merge_to_ids: decision.merge_to_ids.filter((x) => x !== id),
+                              });
+                            }
+                          }}
+                          style={{ cursor: "pointer" }}
+                        />
+                        <span style={{ fontWeight: checked ? 600 : 400, flex: 1 }}>{t.name}</span>
+                        {t.summary && (
+                          <span style={{ fontSize: 10, color: "#97a0af", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {t.summary}
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+              {decision.merge_to_ids.length >= 2 && (
+                <div
+                  style={{
+                    padding: "6px 10px",
+                    fontSize: 10,
+                    color: "#974f0c",
+                    background: "#fff4e6",
+                    borderTop: "1px solid #ffe0b3",
+                    fontStyle: "italic",
+                  }}
+                >
+                  M:N merge — a new topic will be created absorbing all {decision.merge_to_ids.length} sources (they get archived).
+                </div>
+              )}
+              {decision.merge_to_ids.length === 1 && (
+                <div
+                  style={{
+                    padding: "6px 10px",
+                    fontSize: 10,
+                    color: "#42526e",
+                    background: "#deebff",
+                    borderTop: "1px solid #b3d4ff",
+                  }}
+                >
+                  1:1 merge — candidate&apos;s tasks will be added to &quot;{topicNameById(decision.merge_to_ids[0])}&quot;.
+                </div>
               )}
             </div>
           )}
