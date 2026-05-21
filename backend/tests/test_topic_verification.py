@@ -107,6 +107,27 @@ def test_check_citation_rarity_rejects_generic_only_quotes():
     assert fails2 == []
 
 
+def test_effective_token_set_aggregates_per_task_key_terms():
+    """v4: per-task key_terms feed the parent topic's effective token bag."""
+    from backend.services.topic_verification import effective_token_set
+    # Topic with NO topic-level key_terms but tasks carry them (v4 model)
+    topic = {
+        "name": "Snowflake setup",
+        "key_terms": [],
+        "tasks": [
+            {"task": "access provisioning", "key_terms": ["access", "vpn"]},
+            {"task": "schema migration", "key_terms": ["schema", "migration"]},
+        ],
+    }
+    tokens = effective_token_set(topic)
+    # Tokens should contain name + per-task aggregations
+    assert "snowflake" in tokens
+    assert "access" in tokens
+    assert "vpn" in tokens
+    assert "schema" in tokens
+    assert "migration" in tokens
+
+
 def test_effective_token_set_catches_paraphrase():
     """The paraphrase 'stress testing' (key_term) vs 'stress test' (different key_term)
     should now share the token 'stress' via tokenisation. Name tokens are also pooled."""

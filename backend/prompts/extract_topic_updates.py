@@ -42,6 +42,13 @@ OUTPUT (strict JSON):
         "next_step": "<next action>",
         "owner": "<owner name or empty>",
         "status": "open|in_progress|resolved",
+        "key_terms": ["...anchoring terms for THIS task..."],
+        "open_questions": [
+          {"id": "<uuid or null>", "text": "...", "owner": "...", "status": "...", "primary_citation": {...}}
+        ],
+        "decisions": [
+          {"id": "<uuid or null>", "text": "...", "primary_citation": {...}, "supporting_citations": [...]}
+        ],
         "primary_citation": {...},
         "supporting_citations": [...]
       }
@@ -57,4 +64,8 @@ OUTPUT (strict JSON):
     {"call_id": "...", "citation": {...}, "action_label": "..."}
   ]
 }
+
+NOTE: v4 task-centric model — each task SHOULD carry its own key_terms/OQ/decisions.
+The top-level open_questions/decisions arrays remain for legacy aggregation (you may
+emit them empty if all OQ/decisions are placed under specific tasks).
 """

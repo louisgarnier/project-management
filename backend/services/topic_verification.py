@@ -111,10 +111,9 @@ def _norm_terms(terms: list[str]) -> set[str]:
 def effective_token_set(topic_or_candidate: dict) -> set[str]:
     """Build the effective token bag for lexical matching.
 
-    Combines:
-      - key_terms (multi-word strings get tokenised into words)
-      - topic name (tokenised)
-    Removes stopwords, lowercases, requires len > 2.
+    v4 task-centric: also aggregates per-task key_terms across all tasks of
+    the topic, in addition to topic.key_terms and topic.name. This way the
+    new model and legacy data both feed the same scoring.
 
     Solves the paraphrase problem: "stress testing" (key_term) vs "stress test"
     (different key_term) now overlap on the tokens {stress, testing} vs
@@ -129,6 +128,12 @@ def effective_token_set(topic_or_candidate: dict) -> set[str]:
     # name (always single phrase, may be multi-word)
     if topic_or_candidate.get("name"):
         sources.append(str(topic_or_candidate["name"]))
+    # v4 per-task aggregation — each task's key_terms feed the parent topic's bag
+    for task in (topic_or_candidate.get("tasks") or []):
+        if isinstance(task, dict):
+            for kt in (task.get("key_terms") or []):
+                if kt:
+                    sources.append(str(kt))
     for src in sources:
         for word in _re.findall(r"\b[a-z][a-z0-9_-]+\b", src.lower()):
             if len(word) > 2 and word not in _STOPWORDS:
@@ -412,9 +417,10 @@ def _build_verify_new_prompt(
     transcripts_block = "\n\n".join(
         f"--- CALL {cid} ---\n{body}" for cid, body in transcripts.items()
     )
-    # v2 (task-fit): send FULL tasks/OQ/decisions for each existing topic so
-    # the LLM can test work-continuity (would candidate's items belong on this
-    # topic's task list?) rather than surface similarity.
+    # v3 (task-centric + task-fit): send FULL tasks for each existing topic.
+    # If v4 data is present (tasks carry their own key_terms/OQ/decisions),
+    # the LLM sees per-task context — granular work-continuity test.
+    # Topic-level OQ/decisions still included for legacy v3 data fallback.
     project_topics_block = json.dumps(
         [
             {
@@ -422,7 +428,10 @@ def _build_verify_new_prompt(
                 "name": t.get("name"),
                 "key_terms": t.get("key_terms") or [],
                 "summary": t.get("summary") or "",
+                # tasks may carry per-task key_terms/OQ/decisions/citations (v4) or
+                # just task/next_step/owner/status (v3) — LLM gets whatever is present.
                 "tasks": t.get("tasks") or [],
+                # Legacy topic-level OQ/decisions for v3 data
                 "open_questions": t.get("open_questions") or [],
                 "decisions": t.get("decisions") or [],
             }
