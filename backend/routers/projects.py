@@ -37,9 +37,28 @@ def list_projects():
 def create_project(payload: ProjectCreate):
     client = get_client()
     db_logger.info(f"🗄️ [DB] Creating project: {payload.name}")
-    result = client.table("projects").insert(payload.model_dump()).execute()
+
+    # Apply system_settings defaults so new projects inherit org-level LLM
+    # config (e.g. openrouter/deepseek-v3.2). Without this, projects.default_llm
+    # falls back to the legacy column default 'groq' which has tight TPM caps
+    # that fail on realistic transcript sizes.
+    insert_payload = payload.model_dump()
+    try:
+        settings_row = (
+            client.table("system_settings").select("default_llm, default_model").limit(1).execute().data
+        )
+        if settings_row:
+            s = settings_row[0]
+            if s.get("default_llm"):
+                insert_payload["default_llm"] = s["default_llm"]
+            if s.get("default_model"):
+                insert_payload["default_model"] = s["default_model"]
+    except Exception as e:
+        logger.warning(f"⚠️ [Project] could not read system_settings defaults: {e}")
+
+    result = client.table("projects").insert(insert_payload).execute()
     project = result.data[0]
-    db_logger.info(f"✅ [DB] Created project: {project['id']}")
+    db_logger.info(f"✅ [DB] Created project: {project['id']} (llm={project.get('default_llm')!r}, model={project.get('default_model')!r})")
     seed_defaults(project["id"])
     return project
 
