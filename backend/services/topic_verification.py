@@ -490,6 +490,39 @@ async def run_verify_new(
     for attempt in (1, 2):
         await _log(f"      [{name}] attempt {attempt}: asking LLM (task-fit framing — would candidate's tasks belong on any existing topic's task list?) over {len(project_topics)} existing topic(s), referencing {len(transcripts)} past transcript(s)")
         result = await _call_llm(prompt, llm, model=model)
+        # Recovery: some LLMs (e.g. deepseek) return ONLY the evaluations
+        # array instead of the wrapping dict. Detect that shape and wrap it
+        # — defaults to truly_new with the evaluations preserved.
+        if isinstance(result, list) and result and all(
+            isinstance(e, dict) and "task_fit" in e for e in result
+        ):
+            await _log(f"      [{name}] attempt {attempt}: LLM returned a bare evaluations array — wrapping as truly_new")
+            yes_count = sum(1 for e in result if e.get("task_fit") == "yes")
+            if yes_count == 1:
+                matched = next((e for e in result if e.get("task_fit") == "yes"), {})
+                result = {
+                    "evaluations": result,
+                    "verdict": "should_be_merged_with",
+                    "final_verdict": "should_be_merged_with",
+                    "matched_topic_id": matched.get("topic_id"),
+                    "matched_topic_name": matched.get("topic_name"),
+                    "merge_reasoning": matched.get("reason", ""),
+                    "citations": [],
+                    "extraction_grounded": True,
+                    "ungrounded_items": [],
+                }
+            else:
+                result = {
+                    "evaluations": result,
+                    "verdict": "truly_new",
+                    "final_verdict": "truly_new",
+                    "matched_topic_id": None,
+                    "matched_topic_name": None,
+                    "merge_reasoning": "No existing topic had task_fit=yes." if yes_count == 0 else f"{yes_count} topics had task_fit=yes (ambiguous) — defaulting to truly_new.",
+                    "citations": [],
+                    "extraction_grounded": True,
+                    "ungrounded_items": [],
+                }
         if not isinstance(result, dict):
             logger.warning("⚠️ [verify_new] LLM returned non-dict on attempt %d", attempt)
             await _log(f"      [{name}] attempt {attempt}: LLM response invalid — retrying")
@@ -582,8 +615,21 @@ async def run_verify_new(
             f"{json.dumps(failures, indent=2)}\nRedo with verbatim quotes copy-pasted from transcripts."
         )
 
+    # If both attempts produced a non-dict (e.g. LLM returned a bare list of
+    # evaluations), we can't spread `result` — fall back to a stub verdict.
+    base = result if isinstance(result, dict) else {
+        "verdict": "truly_new",
+        "final_verdict": "truly_new",
+        "matched_topic_id": None,
+        "matched_topic_name": None,
+        "evaluations": result if isinstance(result, list) else [],
+        "citations": [],
+        "extraction_grounded": False,
+        "ungrounded_items": [],
+        "merge_reasoning": "LLM returned a non-dict response on both attempts — defaulting to truly_new pending manual review.",
+    }
     final = {
-        **result,
+        **base,
         "needs_manual_review": True,
         "failed_citations": failures,
     }
