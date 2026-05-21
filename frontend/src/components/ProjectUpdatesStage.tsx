@@ -183,11 +183,14 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       return !(d.action === "merge" && d.merge_to_id);
     });
 
-    // Old project topics NOT in any match group AND not migrated to Merged by ②
+    // Old project topics NOT in any match group AND not migrated to Merged by either pass.
+    // (Pass ① merges a new candidate INTO an existing project topic — that target
+    // belongs in Section 3, not Section 2.)
     const notInCall = projectTopics.filter((t) => {
       const tid = t.topic_id ?? "";
       if (matchedProjectIds.has(tid)) return false;
       if (migratedFromNotDiscussed.has(tid)) return false;
+      if (migratedFromNew.has(tid)) return false;
       return true;
     });
 
