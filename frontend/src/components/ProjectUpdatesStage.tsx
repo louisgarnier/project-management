@@ -571,17 +571,37 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
           {sections.newTopics.map((t) => {
             const r = (eff.verify_new_cache ?? {})[t.name] as VerifyNewResult | undefined;
             const d = resolveNewDecision(t.name, r);
-            // Other call topics visible in Section 1 = all newTopics except self.
-            // Excluding the absorbed ones (already hidden from sections.newTopics anyway).
-            const otherPending = sections.newTopics.filter((p) => p.name !== t.name);
+
+            // Exclude topics/candidates already engaged in OTHER candidates' merges,
+            // so the user can't double-book a target. Self-selections are kept
+            // visible so the user can uncheck them.
+            const cache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
+            const selfKey = t.name.toLowerCase().trim();
+            const usedOldIds = new Set<string>();
+            const usedPendingNames = new Set<string>();
+            for (const p of pending) {
+              if (p.name.toLowerCase().trim() === selfKey) continue;
+              const otherD = resolveNewDecision(p.name, cache[p.name]);
+              if (otherD.action !== "merge") continue;
+              otherD.merge_to_ids.forEach((id) => usedOldIds.add(id));
+              otherD.merge_pending_names.forEach((n) => usedPendingNames.add(n));
+            }
+            const availableProjectTopics = projectTopics.filter(
+              (pt) => !usedOldIds.has(pt.topic_id ?? "")
+            );
+            const availableOtherPending = sections.newTopics.filter(
+              (p) =>
+                p.name !== t.name &&
+                !usedPendingNames.has(p.name.toLowerCase().trim())
+            );
             return (
               <NewTopicCard
                 key={t.name}
                 topic={t}
                 result={r}
                 decision={d}
-                projectTopics={projectTopics}
-                otherPending={otherPending}
+                projectTopics={availableProjectTopics}
+                otherPending={availableOtherPending}
                 onDecisionChange={(next) =>
                   setNewDecisions((prev) => ({ ...prev, [t.name.toLowerCase().trim()]: next }))
                 }
