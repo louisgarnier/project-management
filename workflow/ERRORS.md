@@ -181,6 +181,19 @@ Updated `run_transcription.sh` to auto-create the venv and install deps on first
 
 ---
 
+### ERR-006: new SYSTEM_LIBRARY entry uses obsolete `context_scope: "call"` — startup seed fails + downstream side-effects
+
+**Date:** 2026-05-21
+**Symptom:** Adding a new entry to `backend/library/seed.py::SYSTEM_LIBRARY` with `context_scope: "call"` causes startup warning `artifact_library_context_scope_check` violation, and later POST /api/projects returns 500 if the seed entry was meant to be `seeded_by_default=True`.
+
+**Root cause:** Phase 2 migration (now removed from the repo but still APPLIED to the live DB) replaced the old `context_scope IN ('call', 'project')` CHECK on `artifact_library` with a 4-value enum. Valid values today: `this_call_transcript`, `all_call_transcripts`, (and 2 more — confirm by checking existing entries). Existing rows with `"call"` are grandfathered; new inserts with `"call"` are rejected.
+
+**Fix:** New entries must use one of the Phase 2 enum values. Use `"this_call_transcript"` for call-bounded analysis, `"all_call_transcripts"` for cross-call.
+
+> 🔒 **RULE ERR-006:** When adding new SYSTEM_LIBRARY entries, NEVER use `context_scope: "call"` or `"project"`. Use the Phase 2 enum (`"this_call_transcript"` / `"all_call_transcripts"` / etc.). If unsure, check existing recently-added entries (Pass ①/②/③) for valid values.
+
+---
+
 ## 🔒 Prevention Rules Summary
 | Rule ID | Applies To | Rule |
 |---|---|---|
@@ -189,6 +202,7 @@ Updated `run_transcription.sh` to auto-create the venv and install deps on first
 | ERR-003 | `run_transcription.sh` / any server script | Auto-create venv in launch script; verify server starts on clean checkout before closing story |
 | ERR-004 | Any frontend bucket-move action (promote/demote/reclassify) | Must persist to backend — never rely on React local state alone |
 | ERR-005 | Any "work-in-progress" UI element (spinner, skeleton) | Spinner branch must be the FIRST ternary, taking priority over prop-derived booleans — never nest behind `!extracted` / `!ready` / etc. |
+| ERR-006 | `backend/library/seed.py` new SYSTEM_LIBRARY entries | Use Phase 2 enum for `context_scope` (`this_call_transcript` / `all_call_transcripts` / etc.) — never `"call"` or `"project"` (rejected by DB CHECK). |
 
 ---
 
