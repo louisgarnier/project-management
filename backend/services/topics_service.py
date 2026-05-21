@@ -208,11 +208,22 @@ _STATUS_VALUES = {"open", "in_progress", "resolved"}
 
 
 def _validate_topic(t: dict) -> tuple[bool, str]:
-    """Return (True, '') if t matches the v3 schema, else (False, reason).
+    """Return (True, '') if t matches the v3/v4 schema, else (False, reason).
 
-    v3 (Story 15.5) accepts 3 anchor arrays — tasks / open_questions / decisions.
-    All 3 may be empty individually, but at least ONE must be non-empty.
-    Missing open_questions/decisions keys are treated as empty (back-compat).
+    v3: topic-level key_terms (required, non-empty), evidence (required), tasks (required).
+    v4: tasks own key_terms/OQ/decisions/citations. Topic-level fields may be empty
+        if AT LEAST ONE task has the field. Evidence remains optional at topic level
+        (legacy). Backward-compat: topic-level non-empty fields still accepted.
+
+    Per-task validation:
+      - task.task (required)
+      - task.status (required, in _STATUS_VALUES)
+      - task.next_step (optional, str)
+      - task.owner (optional, str)
+      - task.citations (optional; if present, list of dicts with non-empty quote)
+      - task.key_terms (optional; list[str])
+      - task.open_questions (optional; list of dicts with text + status)
+      - task.decisions (optional; list of dicts with text)
     """
     if not isinstance(t, dict):
         return False, "topic is not a dict"
@@ -222,36 +233,54 @@ def _validate_topic(t: dict) -> tuple[bool, str]:
     importance = t.get("importance")
     if importance not in _IMPORTANCE_VALUES:
         return False, f"importance must be one of {sorted(_IMPORTANCE_VALUES)}, got {importance!r}"
-    key_terms = t.get("key_terms") or []
-    if not isinstance(key_terms, list) or not key_terms:
-        return False, "key_terms must be a non-empty list"
-    evidence = t.get("evidence") or []
-    if not isinstance(evidence, list) or not evidence:
-        return False, "evidence must be a non-empty list"
-    for i, e in enumerate(evidence):
-        if not isinstance(e, dict):
-            return False, f"evidence[{i}] is not a dict"
-        for k in ("speaker", "quote", "citation"):
-            if not (e.get(k) or "").strip():
-                return False, f"evidence[{i}].{k} is empty"
 
     tasks = t.get("tasks") or []
     if not isinstance(tasks, list) or not tasks:
         return False, "tasks must be a non-empty list (manufacture a tracking task if no obvious action)"
+
+    # In v4, key_terms can live on tasks; topic-level may be empty.
+    # In v3, topic-level key_terms required.
+    topic_key_terms = t.get("key_terms") or []
+    task_has_any_key_terms = any(
+        isinstance(task, dict) and (task.get("key_terms") or [])
+        for task in tasks
+    )
+    if not isinstance(topic_key_terms, list):
+        return False, "key_terms must be a list"
+    if not topic_key_terms and not task_has_any_key_terms:
+        return False, "key_terms required at topic level (v3) OR on at least one task (v4)"
+
+    # Evidence: v3 required topic-level evidence. v4 relies on per-task citations.
+    # Accept either: topic.evidence non-empty OR every task has citations.
+    evidence = t.get("evidence") or []
+    if not isinstance(evidence, list):
+        return False, "evidence must be a list"
+    if evidence:
+        for i, e in enumerate(evidence):
+            if not isinstance(e, dict):
+                return False, f"evidence[{i}] is not a dict"
+            for k in ("speaker", "quote", "citation"):
+                if not (e.get(k) or "").strip():
+                    return False, f"evidence[{i}].{k} is empty"
+    else:
+        # No topic-level evidence — require every task has at least one citation (v4).
+        for i, task in enumerate(tasks):
+            cits = (task.get("citations") if isinstance(task, dict) else None) or []
+            if not cits:
+                return False, f"tasks[{i}] has no citations and topic has no evidence (one must be present)"
+
     for i, task in enumerate(tasks):
         if not isinstance(task, dict):
             return False, f"tasks[{i}] is not a dict"
         if not (task.get("task") or "").strip():
             return False, f"tasks[{i}].task is empty"
-        # next_step is OPTIONAL — empty allowed (e.g. tracking tasks).
         if "next_step" in task and not isinstance(task.get("next_step"), str):
             return False, f"tasks[{i}].next_step must be a string"
         if task.get("status") not in _STATUS_VALUES:
             return False, f"tasks[{i}].status must be in {sorted(_STATUS_VALUES)}, got {task.get('status')!r}"
         if "owner" in task and not isinstance(task.get("owner"), str):
             return False, f"tasks[{i}].owner must be a string"
-        # task.citations — OPTIONAL for backward compat; if present, must be a
-        # list of {speaker, quote, lines} dicts.
+        # task.citations — list of {speaker, quote, lines} dicts (optional).
         cits = task.get("citations")
         if cits is not None:
             if not isinstance(cits, list):
@@ -261,6 +290,36 @@ def _validate_topic(t: dict) -> tuple[bool, str]:
                     return False, f"tasks[{i}].citations[{j}] is not a dict"
                 if not (c.get("quote") or "").strip():
                     return False, f"tasks[{i}].citations[{j}].quote is empty"
+        # task.key_terms (v4 per-task) — list of strings, optional.
+        tkt = task.get("key_terms")
+        if tkt is not None:
+            if not isinstance(tkt, list):
+                return False, f"tasks[{i}].key_terms must be a list"
+            for j, k in enumerate(tkt):
+                if not isinstance(k, str):
+                    return False, f"tasks[{i}].key_terms[{j}] must be a string"
+        # task.open_questions (v4 per-task) — list of dicts with text + status.
+        toq = task.get("open_questions")
+        if toq is not None:
+            if not isinstance(toq, list):
+                return False, f"tasks[{i}].open_questions must be a list"
+            for j, oq in enumerate(toq):
+                if not isinstance(oq, dict):
+                    return False, f"tasks[{i}].open_questions[{j}] is not a dict"
+                if not (oq.get("text") or "").strip():
+                    return False, f"tasks[{i}].open_questions[{j}].text is empty"
+                if oq.get("status") not in _STATUS_VALUES:
+                    return False, f"tasks[{i}].open_questions[{j}].status must be in {sorted(_STATUS_VALUES)}"
+        # task.decisions (v4 per-task) — list of dicts with text.
+        tdec = task.get("decisions")
+        if tdec is not None:
+            if not isinstance(tdec, list):
+                return False, f"tasks[{i}].decisions must be a list"
+            for j, d in enumerate(tdec):
+                if not isinstance(d, dict):
+                    return False, f"tasks[{i}].decisions[{j}] is not a dict"
+                if not (d.get("text") or "").strip():
+                    return False, f"tasks[{i}].decisions[{j}].text is empty"
 
     open_questions = t.get("open_questions") or []
     if not isinstance(open_questions, list):
@@ -315,7 +374,17 @@ def _stamp_item_ids(t: dict, call_id: str) -> dict:
         return out
 
     out = dict(t)
-    out["tasks"] = [_ensure(task, "task_id") for task in (t.get("tasks") or [])]
+    # Stamp tasks AND any per-task open_questions / decisions (v4 task-centric).
+    stamped_tasks = []
+    for task in (t.get("tasks") or []):
+        stamped = _ensure(task, "task_id")
+        if "open_questions" in stamped and isinstance(stamped["open_questions"], list):
+            stamped["open_questions"] = [_ensure(oq, "id") for oq in stamped["open_questions"]]
+        if "decisions" in stamped and isinstance(stamped["decisions"], list):
+            stamped["decisions"] = [_ensure(d, "id") for d in stamped["decisions"]]
+        stamped_tasks.append(stamped)
+    out["tasks"] = stamped_tasks
+    # Topic-level OQ + decisions still stamped for back-compat (v3 path).
     out["open_questions"] = [_ensure(oq, "id") for oq in (t.get("open_questions") or [])]
     out["decisions"] = [_ensure(d, "id") for d in (t.get("decisions") or [])]
     return out
@@ -360,20 +429,47 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
     Returns the new row id.
     """
     db = get_client()
+
+    # v4 (task-centric) → aggregate per-task fields into topic-level columns
+    # so legacy reads (frontend old code, Pass ① fallback) still work. Per-task
+    # data lives inside the tasks JSONB field unchanged.
+    tasks = topic.get("tasks", []) or []
+    agg_key_terms = list(topic.get("key_terms") or [])
+    agg_open_questions = list(topic.get("open_questions") or [])
+    agg_decisions = list(topic.get("decisions") or [])
+    seen_kt = set(k.lower().strip() for k in agg_key_terms if isinstance(k, str))
+    seen_oq_ids = set(oq.get("id") for oq in agg_open_questions if isinstance(oq, dict))
+    seen_dec_ids = set(d.get("id") for d in agg_decisions if isinstance(d, dict))
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        for kt in task.get("key_terms") or []:
+            if isinstance(kt, str) and kt.lower().strip() not in seen_kt:
+                agg_key_terms.append(kt)
+                seen_kt.add(kt.lower().strip())
+        for oq in task.get("open_questions") or []:
+            if isinstance(oq, dict) and oq.get("id") not in seen_oq_ids:
+                agg_open_questions.append(oq)
+                seen_oq_ids.add(oq.get("id"))
+        for d in task.get("decisions") or []:
+            if isinstance(d, dict) and d.get("id") not in seen_dec_ids:
+                agg_decisions.append(d)
+                seen_dec_ids.add(d.get("id"))
+
     payload: dict = {
         "topic_id": topic_id,
         "call_id": call_id,
         "summary": topic.get("summary") or "",
         "importance": topic.get("importance", "medium"),
         "evidence": topic.get("evidence", []),
-        "key_terms": topic.get("key_terms", []),
-        "tasks": topic.get("tasks", []),
-        "open_questions": topic.get("open_questions", []),
-        "decisions": topic.get("decisions", []),
+        "key_terms": agg_key_terms,
+        "tasks": tasks,
+        "open_questions": agg_open_questions,
+        "decisions": agg_decisions,
         "citations": topic.get("citations") or [],
         "evidence_trail": topic.get("evidence_trail") or [],
         "needs_manual_review": bool(topic.get("needs_manual_review")),
-        "status": _status_rollup(topic.get("tasks", [])),
+        "status": _status_rollup(tasks),
     }
     if topic.get("transcript_excerpt"):
         payload["transcript_excerpt"] = topic["transcript_excerpt"]

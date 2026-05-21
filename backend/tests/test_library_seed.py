@@ -45,7 +45,8 @@ def test_v2_call_topics_entry_exists_and_is_default():
         f"{[m['name'] for m in matches]}"
     )
     entry = matches[0]
-    assert "v2" in entry["name"].lower() or "v3" in entry["name"].lower() or "evidence-anchored" in entry["name"].lower()
+    name_lower = entry["name"].lower()
+    assert any(tag in name_lower for tag in ("v2", "v3", "v4", "evidence-anchored", "task-centric"))
     assert entry["kind"] == "llm"
     assert entry["llm"] == "openrouter"
     assert entry["model"] == "deepseek/deepseek-v3.2"

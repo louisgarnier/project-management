@@ -16,6 +16,7 @@ from backend.prompts.artifacts import DEFAULT_ARTIFACTS  # existing EPIC-11 cons
 from backend.prompts.call_topics import (
     CALL_TOPICS_V2_PROMPT_BODY,
     CALL_TOPICS_V3_PROMPT_BODY,
+    CALL_TOPICS_V4_PROMPT_BODY,
 )
 from backend.prompts.extract_topic_updates import EXTRACT_TOPIC_UPDATES_PROMPT
 from backend.prompts.merge_verification import MERGE_VERIFICATION_DEFAULT_PROMPT
@@ -35,14 +36,30 @@ def _prompt_for(name: str) -> str | None:
 SYSTEM_LIBRARY: list[dict] = [
     # ── Tier 1: Workflow prompts (always present, editable via /library) ──
     {
+        "name": "Call Topics — v4 (task-centric)",
+        "description": (
+            "Runs at the Call Topics stage. Major refactor of the data model: each task now "
+            "carries its OWN key_terms, open_questions, decisions, and citations. The topic "
+            "is a thin container (name + importance + tasks[]). This aligns extraction with "
+            "the workflow — a task is the discrete commitment with its own supporting context. "
+            "When a task moves between topics, all its anchoring data moves with it. "
+            "Supersedes v3."
+        ),
+        "kind": "llm",
+        "prompt": CALL_TOPICS_V4_PROMPT_BODY,
+        "template_id": None,
+        "llm": "openrouter",
+        "model": "deepseek/deepseek-v3.2",
+        "context_scope": "call",
+        "category": "call_topics",
+        "is_system": True,
+        "seeded_by_default": True,
+    },
+    {
         "name": "Call Topics — v3 (open questions + decisions)",
         "description": (
-            "Runs at the Call Topics stage. Extends v2 with two new arrays per topic: "
-            "open_questions[] (uncertainties to resolve) and decisions[] (explicit agreements). "
-            "DUAL-CLASSIFY rule: investigative tasks (investigate/verify/check/confirm) go into "
-            "BOTH tasks[] and open_questions[]. Decisions[] requires verbatim evidence + explicit "
-            "closure phrasing — guards against hallucinated soft-agreement decisions. "
-            "Rejects topics with all three arrays empty (tasks + open_questions + decisions)."
+            "Topic-level OQ/decisions/key_terms model. Superseded by v4 (task-centric). "
+            "Kept available as a fallback for legacy projects."
         ),
         "kind": "llm",
         "prompt": CALL_TOPICS_V3_PROMPT_BODY,
@@ -52,7 +69,7 @@ SYSTEM_LIBRARY: list[dict] = [
         "context_scope": "call",
         "category": "call_topics",
         "is_system": True,
-        "seeded_by_default": True,
+        "seeded_by_default": False,
     },
     {
         "name": "Call Topics — v2 (synthetic, evidence-anchored)",

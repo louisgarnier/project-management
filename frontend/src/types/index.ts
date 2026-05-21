@@ -144,6 +144,10 @@ export interface TaskData {
   added_in_call_id?: string | null;
   closed_in_call_id?: string | null;
   citations?: TaskCitation[];         // verbatim quotes that anchor this task
+  // v4 task-centric model: each task carries its own context
+  key_terms?: string[];
+  open_questions?: OpenQuestionData[];
+  decisions?: DecisionData[];
 }
 
 /** One topic as returned by extract or dashboard endpoints */
