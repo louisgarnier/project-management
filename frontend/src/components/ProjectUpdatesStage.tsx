@@ -514,6 +514,9 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             const fromNewResult = fromNewName
               ? ((eff.verify_new_cache ?? {})[fromNewName] as VerifyNewResult | undefined)
               : undefined;
+            const fromNewPending = fromNewName
+              ? pending.find((p) => p.name === fromNewName)
+              : undefined;
             return (
               <MergedTopicCard
                 key={tid}
@@ -532,6 +535,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                 fromNotDiscussed={migratedFromNotDiscussed.has(tid)}
                 callsById={callsById}
                 fromNewSourceName={fromNewName}
+                fromNewPending={fromNewPending}
                 fromNewResult={fromNewResult}
                 projectTopics={projectTopics}
                 onRevertFromNew={
@@ -1012,6 +1016,7 @@ function MergedTopicCard({
   fromNotDiscussed,
   callsById,
   fromNewSourceName,
+  fromNewPending,
   fromNewResult,
   projectTopics,
   onRevertFromNew,
@@ -1024,11 +1029,19 @@ function MergedTopicCard({
   fromNotDiscussed: boolean;
   callsById: Record<string, Pick<Call, "id" | "title" | "created_at">>;
   fromNewSourceName?: string;
-  fromNewResult?: VerifyNewResult;  // audit trail from ① for migrated topics
+  fromNewPending?: TopicData;  // the call-topic data that migrated here via ①
+  fromNewResult?: VerifyNewResult;
   projectTopics: TopicData[];
   onRevertFromNew?: () => void;
   onChangeMergeTarget?: (new_target_id: string) => void;
 }) {
+  // The full "this call" list combines (a) topics matched via match_groups and
+  // (b) the topic migrated by Pass ① (if any). Both are equally part of "what
+  // this call contributes to this merge target".
+  const allCallContributions: TopicData[] = [
+    ...callMatches,
+    ...(fromNewPending ? [fromNewPending] : []),
+  ];
   const [showOverride, setShowOverride] = useState(false);
   return (
     <div style={cardStyle}>
@@ -1105,102 +1118,7 @@ function MergedTopicCard({
         </div>
       )}
 
-      {/* Audit trail from Pass ① — preserved on the migrated card so the user can review evidence */}
-      {fromNew && fromNewResult && (
-        <div style={{ marginTop: 8 }}>
-          {fromNewResult.merge_reasoning && (
-            <div style={{ padding: 8, background: "#fafbfc", border: "1px solid #ebecf0", borderRadius: 4, fontSize: 11, color: "#42526e" }}>
-              <strong style={{ color: "#5e6c84", fontSize: 10, textTransform: "uppercase" }}>LLM merge reasoning:</strong>
-              <div style={{ marginTop: 2 }}>{fromNewResult.merge_reasoning}</div>
-            </div>
-          )}
-
-          {fromNewResult.evaluations && fromNewResult.evaluations.length > 0 && (
-            <details style={{ marginTop: 4, fontSize: 11 }}>
-              <summary style={{ cursor: "pointer", color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", fontSize: 10 }}>
-                Task-fit evaluations ({fromNewResult.evaluations.length} existing topic{fromNewResult.evaluations.length === 1 ? "" : "s"} checked)
-              </summary>
-              <ul style={{ marginTop: 4, paddingLeft: 16, color: "#42526e" }}>
-                {fromNewResult.evaluations.map((e) => (
-                  <li key={e.topic_id} style={{ marginBottom: 4 }}>
-                    <span style={{ color: e.task_fit === "yes" ? "#36b37e" : "#97a0af", fontWeight: 600, marginRight: 4 }}>
-                      {e.task_fit === "yes" ? "✓ YES" : "✗ no"}
-                    </span>
-                    <strong>{e.topic_name}</strong>: {e.reason}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-
-          {(fromNewResult.citations ?? []).filter((c) => !c.for || c.for === "verdict").length > 0 && (
-            <details style={{ marginTop: 4, fontSize: 11 }}>
-              <summary style={{ cursor: "pointer", color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", fontSize: 10 }}>
-                Why LLM picked this merge ({(fromNewResult.citations ?? []).filter((c) => !c.for || c.for === "verdict").length} quote{(fromNewResult.citations ?? []).filter((c) => !c.for || c.for === "verdict").length === 1 ? "" : "s"})
-              </summary>
-              <ul style={{ marginTop: 4, paddingLeft: 20, color: "#42526e" }}>
-                {(fromNewResult.citations ?? [])
-                  .filter((c) => !c.for || c.for === "verdict")
-                  .map((c, i) => (
-                    <li key={i} style={{ marginBottom: 4 }}>
-                      <span style={{ fontStyle: "italic" }}>&quot;{c.quote}&quot;</span>
-                      <span style={{ color: "#97a0af", marginLeft: 4 }}>
-                        ({c.call_id?.slice(0, 8) ?? "?"}…, lines {c.lines || "?"})
-                      </span>
-                    </li>
-                  ))}
-              </ul>
-            </details>
-          )}
-
-          {fromNewResult.lexical_precheck && (
-            <details style={{ marginTop: 4, fontSize: 11 }}>
-              <summary style={{ cursor: "pointer", color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", fontSize: 10 }}>
-                Layer 1 — Lexical pre-check (mechanical, no LLM)
-              </summary>
-              <div style={{ marginTop: 4, paddingLeft: 12, color: "#42526e" }}>
-                <div>Candidate key_terms: {fromNewResult.lexical_precheck.candidate_terms.join(", ") || "(none)"}</div>
-                <div style={{ marginTop: 4 }}>
-                  <strong>Overlap with existing topics</strong> (top 3):
-                  {fromNewResult.lexical_precheck.topic_overlaps.length === 0 ? (
-                    <span> (no existing topics have key_terms)</span>
-                  ) : (
-                    <ul style={{ marginTop: 2, paddingLeft: 16 }}>
-                      {fromNewResult.lexical_precheck.topic_overlaps.slice(0, 3).map((o) => (
-                        <li key={o.topic_id} style={{ color: o.jaccard >= 0.5 ? "#974f0c" : o.jaccard > 0 ? "#42526e" : "#97a0af" }}>
-                          <strong>{o.name}</strong>: jaccard {o.jaccard}
-                          {o.shared_terms.length > 0 && ` — shared: ${o.shared_terms.join(", ")}`}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <div style={{ marginTop: 4 }}>
-                  <strong>Mentions in past transcripts</strong>:
-                  <ul style={{ marginTop: 2, paddingLeft: 16 }}>
-                    {Object.entries(fromNewResult.lexical_precheck.transcript_hits).map(([cid, h]) => (
-                      <li key={cid} style={{ color: h.total > 0 ? "#42526e" : "#97a0af" }}>
-                        {cid.slice(0, 8)}…: <strong>{h.total}</strong> total
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div style={{ marginTop: 4, fontWeight: 600 }}>
-                  Lexical hint: <span style={{ color: "#0052cc" }}>{fromNewResult.lexical_precheck.verdict_hint}</span>
-                </div>
-              </div>
-            </details>
-          )}
-
-          {fromNewResult.sanity_flag && (
-            <div style={{ marginTop: 4, padding: 6, background: "#fff1f0", border: "1px solid #ffbdad", borderRadius: 4, fontSize: 11, color: "#ae2a19" }}>
-              ⚠ <strong>Sanity flag:</strong> {fromNewResult.sanity_flag.replaceAll("_", " ")}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Side-by-side: previous (project topic latest snapshot) | this call (call topics merged into this group) */}
+      {/* Side-by-side: PREVIOUS (latest project topic snapshot) | THIS CALL */}
       {!extracted && (
         <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 12 }}>
           <div style={{ flex: 1 }}>
@@ -1211,13 +1129,133 @@ function MergedTopicCard({
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, color: "#5e6c84", fontSize: 10 }}>
-              THIS CALL ({callMatches.length})
+              THIS CALL ({allCallContributions.length})
             </div>
+            {/* Match-group topics first (matched by user in matching step) */}
             {callMatches.map((m, i) => (
-              <div key={i} style={{ color: "#42526e", marginBottom: 4 }}>
+              <div key={`mg-${i}`} style={{ color: "#42526e", marginBottom: 4 }}>
                 <strong>{m.name}</strong>: {m.summary || "(no summary)"}
               </div>
             ))}
+            {/* Pass ① migrated topic — full audit trail inline */}
+            {fromNewPending && (
+              <div style={{ marginBottom: 4 }}>
+                <div style={{ color: "#42526e" }}>
+                  <strong>{fromNewPending.name}</strong>{" "}
+                  <span style={{ fontSize: 10, color: "#974f0c", background: "#fff4e6", padding: "1px 4px", borderRadius: 3, marginLeft: 4 }}>
+                    via Pass ①
+                  </span>
+                </div>
+                {fromNewPending.summary && (
+                  <div style={{ color: "#5e6c84" }}>{fromNewPending.summary}</div>
+                )}
+                {fromNewPending.tasks && fromNewPending.tasks.length > 0 && (
+                  <ul style={{ fontSize: 11, color: "#5e6c84", marginTop: 2, paddingLeft: 16 }}>
+                    {fromNewPending.tasks.map((t, i) => (
+                      <li key={i}>
+                        {t.task}
+                        {t.next_step && <> → {t.next_step}</>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {/* Audit trail panels for the Pass ① migration */}
+                {fromNewResult && (
+                  <div style={{ marginTop: 6 }}>
+                    {fromNewResult.merge_reasoning && (
+                      <div style={{ padding: 6, background: "#fafbfc", border: "1px solid #ebecf0", borderRadius: 4, fontSize: 11, color: "#42526e", marginBottom: 4 }}>
+                        <strong style={{ color: "#5e6c84", fontSize: 9, textTransform: "uppercase" }}>LLM merge reasoning:</strong>
+                        <div style={{ marginTop: 2 }}>{fromNewResult.merge_reasoning}</div>
+                      </div>
+                    )}
+
+                    {fromNewResult.evaluations && fromNewResult.evaluations.length > 0 && (
+                      <details style={{ fontSize: 11, marginBottom: 2 }}>
+                        <summary style={{ cursor: "pointer", color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", fontSize: 9 }}>
+                          Task-fit evaluations ({fromNewResult.evaluations.length} existing topic{fromNewResult.evaluations.length === 1 ? "" : "s"} checked)
+                        </summary>
+                        <ul style={{ marginTop: 4, paddingLeft: 16, color: "#42526e" }}>
+                          {fromNewResult.evaluations.map((e) => (
+                            <li key={e.topic_id} style={{ marginBottom: 4 }}>
+                              <span style={{ color: e.task_fit === "yes" ? "#36b37e" : "#97a0af", fontWeight: 600, marginRight: 4 }}>
+                                {e.task_fit === "yes" ? "✓ YES" : "✗ no"}
+                              </span>
+                              <strong>{e.topic_name}</strong>: {e.reason}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+
+                    {(fromNewResult.citations ?? []).filter((c) => !c.for || c.for === "verdict").length > 0 && (
+                      <details style={{ fontSize: 11, marginBottom: 2 }}>
+                        <summary style={{ cursor: "pointer", color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", fontSize: 9 }}>
+                          Why LLM picked this merge ({(fromNewResult.citations ?? []).filter((c) => !c.for || c.for === "verdict").length} quote{(fromNewResult.citations ?? []).filter((c) => !c.for || c.for === "verdict").length === 1 ? "" : "s"})
+                        </summary>
+                        <ul style={{ marginTop: 4, paddingLeft: 20, color: "#42526e" }}>
+                          {(fromNewResult.citations ?? [])
+                            .filter((c) => !c.for || c.for === "verdict")
+                            .map((c, i) => (
+                              <li key={i} style={{ marginBottom: 4 }}>
+                                <span style={{ fontStyle: "italic" }}>&quot;{c.quote}&quot;</span>
+                                <span style={{ color: "#97a0af", marginLeft: 4 }}>
+                                  ({c.call_id?.slice(0, 8) ?? "?"}…, lines {c.lines || "?"})
+                                </span>
+                              </li>
+                            ))}
+                        </ul>
+                      </details>
+                    )}
+
+                    {fromNewResult.lexical_precheck && (
+                      <details style={{ fontSize: 11, marginBottom: 2 }}>
+                        <summary style={{ cursor: "pointer", color: "#5e6c84", fontWeight: 600, textTransform: "uppercase", fontSize: 9 }}>
+                          Layer 1 — Lexical pre-check (mechanical, no LLM)
+                        </summary>
+                        <div style={{ marginTop: 4, paddingLeft: 12, color: "#42526e" }}>
+                          <div>Candidate key_terms: {fromNewResult.lexical_precheck.candidate_terms.join(", ") || "(none)"}</div>
+                          <div style={{ marginTop: 4 }}>
+                            <strong>Overlap with existing topics</strong> (top 3):
+                            {fromNewResult.lexical_precheck.topic_overlaps.length === 0 ? (
+                              <span> (no existing topics have key_terms)</span>
+                            ) : (
+                              <ul style={{ marginTop: 2, paddingLeft: 16 }}>
+                                {fromNewResult.lexical_precheck.topic_overlaps.slice(0, 3).map((o) => (
+                                  <li key={o.topic_id} style={{ color: o.jaccard >= 0.5 ? "#974f0c" : o.jaccard > 0 ? "#42526e" : "#97a0af" }}>
+                                    <strong>{o.name}</strong>: jaccard {o.jaccard}
+                                    {o.shared_terms.length > 0 && ` — shared: ${o.shared_terms.join(", ")}`}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                          <div style={{ marginTop: 4 }}>
+                            <strong>Mentions in past transcripts</strong>:
+                            <ul style={{ marginTop: 2, paddingLeft: 16 }}>
+                              {Object.entries(fromNewResult.lexical_precheck.transcript_hits).map(([cid, h]) => (
+                                <li key={cid} style={{ color: h.total > 0 ? "#42526e" : "#97a0af" }}>
+                                  {cid.slice(0, 8)}…: <strong>{h.total}</strong> total
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div style={{ marginTop: 4, fontWeight: 600 }}>
+                            Lexical hint: <span style={{ color: "#0052cc" }}>{fromNewResult.lexical_precheck.verdict_hint}</span>
+                          </div>
+                        </div>
+                      </details>
+                    )}
+
+                    {fromNewResult.sanity_flag && (
+                      <div style={{ marginTop: 4, padding: 6, background: "#fff1f0", border: "1px solid #ffbdad", borderRadius: 4, fontSize: 11, color: "#ae2a19" }}>
+                        ⚠ <strong>Sanity flag:</strong> {fromNewResult.sanity_flag.replaceAll("_", " ")}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
