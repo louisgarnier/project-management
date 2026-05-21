@@ -161,12 +161,27 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   };
 
   // ── Patch helpers ──
+  // Persist either via topics PATCH (when topic has a DB id — past stages)
+  // OR via calls/extraction-cache PATCH (call_topics stage: topics live in
+  // extraction_cache JSONB, no DB id yet). Without the fallback, edits at
+  // call_topics stage would be lost on page refresh.
+  const persistExtractionCache = async (nextTopics: TopicData[]) => {
+    try {
+      await callsAPI.patchExtractionCache(call.id, nextTopics);
+    } catch (e: unknown) {
+      logger.error("[CallTopicsStage] extraction_cache patch failed", { data: e });
+    }
+  };
+
   const patchTopic = async (idx: number, partial: Partial<TopicData>) => {
     const topic = topics[idx];
     const id = topic.id ?? topic.topic_id;
-    // Optimistic local update
-    setTopics((prev) => prev.map((t, i) => (i === idx ? { ...t, ...partial } : t)));
-    if (!id) return;
+    const nextTopics = topics.map((t, i) => (i === idx ? { ...t, ...partial } : t));
+    setTopics(nextTopics);
+    if (!id) {
+      await persistExtractionCache(nextTopics);
+      return;
+    }
     try {
       await topicsAPI.patch(id, partial as Parameters<typeof topicsAPI.patch>[1]);
     } catch (e: unknown) {
@@ -177,10 +192,12 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   const updateTasks = async (idx: number, newTasks: TaskData[]) => {
     const topic = topics[idx];
     const id = topic.id ?? topic.topic_id;
-    setTopics((prev) =>
-      prev.map((t, i) => (i === idx ? { ...t, tasks: newTasks } : t))
-    );
-    if (!id) return;
+    const nextTopics = topics.map((t, i) => (i === idx ? { ...t, tasks: newTasks } : t));
+    setTopics(nextTopics);
+    if (!id) {
+      await persistExtractionCache(nextTopics);
+      return;
+    }
     try {
       await topicsAPI.patch(id, { tasks: newTasks });
     } catch (e: unknown) {
@@ -194,10 +211,12 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   ) => {
     const topic = topics[idx];
     const id = topic.id ?? topic.topic_id;
-    setTopics((prev) =>
-      prev.map((t, i) => (i === idx ? { ...t, open_questions: newOQ } : t))
-    );
-    if (!id) return;
+    const nextTopics = topics.map((t, i) => (i === idx ? { ...t, open_questions: newOQ } : t));
+    setTopics(nextTopics);
+    if (!id) {
+      await persistExtractionCache(nextTopics);
+      return;
+    }
     try {
       await topicsAPI.patch(id, { open_questions: newOQ });
     } catch (e: unknown) {
@@ -211,10 +230,12 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   ) => {
     const topic = topics[idx];
     const id = topic.id ?? topic.topic_id;
-    setTopics((prev) =>
-      prev.map((t, i) => (i === idx ? { ...t, decisions: newDec } : t))
-    );
-    if (!id) return;
+    const nextTopics = topics.map((t, i) => (i === idx ? { ...t, decisions: newDec } : t));
+    setTopics(nextTopics);
+    if (!id) {
+      await persistExtractionCache(nextTopics);
+      return;
+    }
     try {
       await topicsAPI.patch(id, { decisions: newDec });
     } catch (e: unknown) {
@@ -224,11 +245,15 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
 
   const deleteTopic = async (idx: number) => {
     const topic = topics[idx];
-    // Backend DELETE endpoint takes topics.id (parent table FK), not topic_updates.id.
     const topicTableId = topic.topic_id;
     if (!confirm(`Delete topic "${topic.name}"?`)) return;
-    setTopics((prev) => prev.filter((_, i) => i !== idx));
-    if (!topicTableId) return;
+    const nextTopics = topics.filter((_, i) => i !== idx);
+    setTopics(nextTopics);
+    if (!topicTableId) {
+      // call_topics stage — persist trimmed list to extraction_cache.
+      await persistExtractionCache(nextTopics);
+      return;
+    }
     try {
       await topicsAPI.deleteTopic(call.id, topicTableId);
     } catch (e: unknown) {
@@ -878,20 +903,21 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                 <button
                   type="button"
                   onClick={() => {
-                    setTopics((prev) => [
-                      ...prev,
-                      {
-                        name: "New topic",
-                        importance: "medium",
-                        key_terms: [],
-                        tasks: [],
-                        open_questions: [],
-                        decisions: [],
-                        evidence: [],
-                        status: "open",
-                        sentiment: "neutral",
-                      } as unknown as TopicData,
-                    ]);
+                    const newTopic = {
+                      name: "New topic",
+                      importance: "medium",
+                      key_terms: [],
+                      tasks: [],
+                      open_questions: [],
+                      decisions: [],
+                      evidence: [],
+                      status: "open",
+                      sentiment: "neutral",
+                    } as unknown as TopicData;
+                    const nextTopics = [...topics, newTopic];
+                    setTopics(nextTopics);
+                    // Persist at call_topics stage (no DB id yet) so refresh keeps it.
+                    void persistExtractionCache(nextTopics);
                     setMenu(null);
                   }}
                   style={menuItem}

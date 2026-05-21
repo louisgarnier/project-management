@@ -79,6 +79,14 @@ export const callsAPI = {
       body: JSON.stringify(data),
     }),
   getCall: (callId: string) => proxyFetch<Call>(`/api/calls/${callId}`),
+  patchExtractionCache: (callId: string, topics: TopicData[]) =>
+    proxyFetch<{ updated: boolean; count: number }>(
+      `/api/calls/${callId}/extraction-cache`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ topics }),
+      },
+    ),
   submitTranscript: (callId: string, transcript: string, sourceFilename?: string) =>
     proxyFetch<Call>(`/api/calls/${callId}/transcript`, {
       method: "POST",

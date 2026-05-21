@@ -399,6 +399,26 @@ def patch_call_prompt_selection(call_id: str, body: CallPromptSelection):
     return res.data[0]
 
 
+@router.patch("/calls/{call_id}/extraction-cache")
+def patch_extraction_cache(call_id: str, body: dict):
+    """Overwrite calls.extraction_cache with the user-edited topic list.
+
+    Used at the call_topics stage: topics here don't yet have DB ids (they live
+    in extraction_cache JSONB), so /api/topics/{id} PATCH can't reach them.
+    This endpoint persists local edits so they survive page refresh until the
+    user clicks Save & Continue (which moves the data to the topics table).
+    """
+    db = get_client()
+    topics = body.get("topics")
+    if not isinstance(topics, list):
+        raise HTTPException(status_code=422, detail="topics must be a list")
+    db_logger.info(f"🗄️ [DB] Patching extraction_cache for call: {call_id} ({len(topics)} topic(s))")
+    res = db.table("calls").update({"extraction_cache": topics}).eq("id", call_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="call not found")
+    return {"updated": True, "count": len(topics)}
+
+
 @router.get("/calls/{call_id}/export")
 async def export_call(call_id: str):
     """Download a single call's recap (topics + artifacts) as markdown."""
