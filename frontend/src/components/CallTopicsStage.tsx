@@ -455,6 +455,41 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
               </button>
 
               <button
+                onClick={() => {
+                  const newTopic = {
+                    name: "New topic",
+                    importance: "medium",
+                    key_terms: [],
+                    tasks: [
+                      {
+                        task_id: crypto.randomUUID(),
+                        task: "",
+                        next_step: "",
+                        status: "open",
+                        owner: "",
+                      },
+                    ],
+                    open_questions: [],
+                    decisions: [],
+                    evidence: [],
+                    status: "open",
+                    sentiment: "neutral",
+                  } as unknown as TopicData;
+                  const nextTopics = [...topics, newTopic];
+                  setTopics(nextTopics);
+                  void persistExtractionCache(nextTopics);
+                }}
+                disabled={extracting || polling}
+                style={{
+                  ...btn,
+                  opacity: extracting || polling ? 0.6 : 1,
+                  cursor: extracting || polling ? "default" : "pointer",
+                }}
+              >
+                + Add topic
+              </button>
+
+              <button
                 onClick={handleContinue}
                 disabled={aggregating || topics.length === 0}
                 style={{
