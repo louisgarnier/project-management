@@ -773,17 +773,25 @@ def _resolve_workflow_llm_for_category(
     return llm or "openrouter", model
 
 
-async def extract_call_topics(call_id: str) -> list[dict]:
+async def extract_call_topics(call_id: str, plog=None) -> list[dict]:
     """
-    Extract topics from this call's transcript using the v2 schema.
+    Extract topics from this call's transcript using the v2/v3/v4 schema.
 
     Prompt is resolved library-only (no Python fallback). Invalid topics
     (missing evidence/tasks/key_terms or bad enums) are dropped with a
     logged reason. Each surviving task gets a task_id UUID.
+
+    plog (optional): a ProgressLogger that streams per-step progress to
+    calls.extract_call_progress JSONB so the frontend can render a live log.
     """
     import time
     db = get_client()
 
+    async def _plog(msg: str) -> None:
+        if plog:
+            await plog.log(msg)
+
+    await _plog("Loading call transcript…")
     call_row = (
         db.table("calls")
         .select("project_id, transcript")
@@ -796,9 +804,12 @@ async def extract_call_topics(call_id: str) -> list[dict]:
     transcript = (call_row[0]["transcript"] or "").strip()
     if not transcript:
         raise ValueError("no_transcript")
+    await _plog(f"Transcript loaded — {len(transcript):,} chars (~{len(transcript) // 4:,} tokens estimated)")
 
     project_id = call_row[0]["project_id"]
+    await _plog("Resolving extraction prompt + LLM config (project default)…")
     prompt_body, llm, model, lib_name = _resolve_call_topics_prompt(call_id, db)
+    await _plog(f"Using library entry: \"{lib_name}\" via {llm}/{model or '(default)'}")
 
     proj_rows = (
         db.table("projects")
@@ -811,6 +822,8 @@ async def extract_call_topics(call_id: str) -> list[dict]:
     context_prefix = (
         f"Project context:\n{project_context}\n\n" if project_context else ""
     )
+    if project_context:
+        await _plog(f"Project-level context attached ({len(project_context)} chars)")
 
     prompt = (
         context_prefix
@@ -818,10 +831,12 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         + f"Return a JSON array where each element matches this exact schema:\n{_TOPIC_SCHEMA}\n\n"
         + f"Transcript:\n{transcript}"
     )
+    await _plog(f"Calling LLM ({llm}/{model or '(default)'})… total prompt {len(prompt):,} chars (~{len(prompt) // 4:,} tokens)")
 
     t0 = time.monotonic()
     raw = await _call_llm(prompt, llm, model=model)
     latency_ms = int((time.monotonic() - t0) * 1000)
+    await _plog(f"LLM responded in {latency_ms:,}ms")
 
     if isinstance(raw, dict):
         flat: list[dict] = []
@@ -829,8 +844,12 @@ async def extract_call_topics(call_id: str) -> list[dict]:
             if isinstance(v, list):
                 flat.extend(v)
         raw = flat
+        await _plog(f"LLM returned a dict — flattened to a list of {len(raw)} topic candidate(s)")
     if not isinstance(raw, list):
         raw = []
+        await _plog("⚠ LLM response not parseable as a list — 0 topic candidates")
+    else:
+        await _plog(f"Parsing {len(raw)} topic candidate(s)…")
 
     kept: list[dict] = []
     rejected: list[tuple[str, str]] = []
@@ -851,8 +870,12 @@ async def extract_call_topics(call_id: str) -> list[dict]:
         f"tasks={total_tasks} open_questions={total_oqs} decisions={total_decs} "
         f"topics_rejected={len(rejected)} latency_ms={latency_ms}"
     )
-    for n, r in rejected:
-        logger.warning(f"⚠️ [CallTopics] rejected {n!r}: {r}")
+    await _plog(f"✓ Kept {len(kept)} valid topic(s): {total_tasks} tasks, {total_oqs} open_questions, {total_decs} decisions")
+    if rejected:
+        await _plog(f"⚠ Rejected {len(rejected)} invalid topic(s):")
+        for n, r in rejected:
+            logger.warning(f"⚠️ [CallTopics] rejected {n!r}: {r}")
+            await _plog(f"    ✗ \"{n}\": {r}")
 
     return kept
 
@@ -861,16 +884,28 @@ async def run_extraction_background(call_id: str) -> None:
     """
     Run extract_call_topics in the background, saving result to extraction_cache.
     Called via FastAPI BackgroundTasks so the HTTP response returns immediately.
+
+    Streams per-step progress to calls.extract_call_progress via ProgressLogger.
     """
+    from backend.services.topic_verification import ProgressLogger
     db = get_client()
+    # Clear the progress field at start (last run's log shouldn't bleed in).
     try:
-        topics = await extract_call_topics(call_id)
+        db.table("calls").update({"extract_call_progress": None}).eq("id", call_id).execute()
+    except Exception:
+        pass
+    plog = ProgressLogger(db, call_id, "extract_call_progress")
+    await plog.start()
+    try:
+        await plog.log("Starting call_topics extraction…")
+        topics = await extract_call_topics(call_id, plog=plog)
         db.table("calls").update(
             {
                 "extraction_cache": topics,
                 "extraction_status": "done",
             }
         ).eq("id", call_id).execute()
+        await plog.log(f"✅ Extraction complete — {len(topics)} topic(s) saved to extraction_cache")
         logger.info(
             f"✅ [Topics] Background extraction complete: {len(topics)} topics saved for call {call_id}"
         )
@@ -878,12 +913,16 @@ async def run_extraction_background(call_id: str) -> None:
         db.table("calls").update({"extraction_status": "failed"}).eq(
             "id", call_id
         ).execute()
+        await plog.log(f"❌ Extraction failed (ValueError): {e}")
         logger.warning(f"⚠️ [Topics] Background extraction failed (ValueError): {e}")
     except Exception as e:
         db.table("calls").update({"extraction_status": "failed"}).eq(
             "id", call_id
         ).execute()
+        await plog.log(f"❌ Extraction failed: {type(e).__name__}: {e}")
         logger.exception(f"❌ [Topics] Background extraction failed: {e}")
+    finally:
+        await plog.stop()
 
 
 _AGGREGATE_SYSTEM = (

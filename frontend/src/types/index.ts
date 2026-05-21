@@ -31,6 +31,9 @@ export interface Call {
   topics_stale: boolean;
   extraction_cache: TopicData[] | null;
   extraction_status: "idle" | "processing" | "done" | "failed";
+  // EPIC-16: live progress log written by run_extraction_background.
+  // Shape: { __progress__: [{ts, msg}, ...] }
+  extract_call_progress?: { __progress__?: { ts: string; msg: string }[] } | null;
   pending_topics: TopicData[] | null;
   merge_cache: TopicData[] | null;
   merge_status: "idle" | "processing" | "done" | "failed";

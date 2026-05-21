@@ -493,7 +493,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
           until the parent re-fetches (3s polling tick), masking the click. */}
       {polling || extracting ? (
         <div style={{ padding: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <svg
               className="animate-spin"
               style={{ width: 16, height: 16, color: "#ff8b00" }}
@@ -516,6 +516,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
             </svg>
             <span style={{ fontSize: 13, color: "#5e6c84" }}>Generating…</span>
           </div>
+          <ExtractionProgressLog entries={call.extract_call_progress?.__progress__ ?? []} />
         </div>
       ) : !extracted ? (
         <div style={{ padding: 20 }}>
@@ -1388,6 +1389,56 @@ function DecisionsCell({
       <button type="button" onClick={add} style={ADD_CELL_BUTTON_STYLE}>
         + add decision
       </button>
+    </div>
+  );
+}
+
+
+/** ExtractionProgressLog — renders timestamped per-step progress entries
+ *  written by run_extraction_background. Auto-scrolls to bottom on update. */
+function ExtractionProgressLog({ entries }: { entries: { ts: string; msg: string }[] }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [entries.length]);
+  if (entries.length === 0) {
+    return (
+      <div style={{ fontSize: 11, color: "#97a0af", fontStyle: "italic", paddingLeft: 24 }}>
+        Waiting for extraction to start…
+      </div>
+    );
+  }
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        marginLeft: 24,
+        marginTop: 4,
+        padding: "8px 10px",
+        background: "#f4f5f7",
+        border: "1px solid #ebecf0",
+        borderRadius: 4,
+        fontSize: 11,
+        color: "#42526e",
+        maxHeight: 260,
+        overflowY: "auto",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+      }}
+    >
+      {entries.map((e, i) => {
+        const t = new Date(e.ts);
+        const hh = String(t.getHours()).padStart(2, "0");
+        const mm = String(t.getMinutes()).padStart(2, "0");
+        const ss = String(t.getSeconds()).padStart(2, "0");
+        return (
+          <div key={i} style={{ display: "flex", gap: 8, marginBottom: 2 }}>
+            <span style={{ color: "#97a0af", flexShrink: 0 }}>{hh}:{mm}:{ss}</span>
+            <span>{e.msg}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
