@@ -54,11 +54,14 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
 
   // ── User decisions (override LLM verdicts) ──
   // Keys: lowercased topic name (Section 1) or topic_id (Section 2).
-  // merge_to_ids: 0 = no target picked yet (action stays "new"); 1 = standard
-  // 1:1 merge (absorbed INTO the target topic); 2+ = M:N merge (new topic
-  // created that absorbs all the source topics, sources get archived).
+  // Decision shape:
+  //   action          : "new" | "merge"
+  //   merge_to_ids    : project_topic ids being merged with (old topics — archived if ≥2 sources)
+  //   merge_pending_names : OTHER call-topic names from this call to absorb into this merge
+  // 1 source (1 merge_to_id, 0 merge_pending_names) = standard 1:1 merge
+  // ≥2 sources total = M:N — new topic created, old topics archived, other absorbed candidates skipped from payload
   const [newDecisions, setNewDecisions] = useState<
-    Record<string, { action: "new" | "merge"; merge_to_ids: string[] }>
+    Record<string, { action: "new" | "merge"; merge_to_ids: string[]; merge_pending_names: string[] }>
   >({});
   const [ndDecisions, setNdDecisions] = useState<
     Record<string, { action: "not_discussed" | "discussed" }>
@@ -67,16 +70,16 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
   function resolveNewDecision(
     name: string,
     result: VerifyNewResult | undefined
-  ): { action: "new" | "merge"; merge_to_ids: string[] } {
+  ): { action: "new" | "merge"; merge_to_ids: string[]; merge_pending_names: string[] } {
     const explicit = newDecisions[name.toLowerCase().trim()];
     if (explicit) return explicit;
     if (result && !result.needs_manual_review) {
       if (result.verdict === "should_be_merged_with" && result.matched_topic_id) {
-        return { action: "merge", merge_to_ids: [result.matched_topic_id] };
+        return { action: "merge", merge_to_ids: [result.matched_topic_id], merge_pending_names: [] };
       }
-      if (result.verdict === "truly_new") return { action: "new", merge_to_ids: [] };
+      if (result.verdict === "truly_new") return { action: "new", merge_to_ids: [], merge_pending_names: [] };
     }
-    return { action: "new", merge_to_ids: [] };
+    return { action: "new", merge_to_ids: [], merge_pending_names: [] };
   }
   function resolveNdDecision(
     topic_id: string,
@@ -132,6 +135,23 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       }
     }
     return ids;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, eff.verify_new_cache, newDecisions]);
+
+  // Names of pending candidates that have been ABSORBED by another candidate's
+  // M:N merge. They get hidden from Section 1 (the primary candidate's card
+  // represents the whole merge).
+  const absorbedPendingNames = useMemo<Set<string>>(() => {
+    const names = new Set<string>();
+    const cache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
+    for (const p of pending) {
+      const r = cache[p.name];
+      const d = resolveNewDecision(p.name, r);
+      if (d.action === "merge" && d.merge_pending_names && d.merge_pending_names.length > 0) {
+        d.merge_pending_names.forEach((n) => names.add(n.toLowerCase().trim()));
+      }
+    }
+    return names;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, eff.verify_new_cache, newDecisions]);
 
@@ -221,10 +241,16 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     // Then exclude those that ① later decided should be merged (they live in section 3).
     const newCandidates = pending.filter((p) => newGroupCallNames.has(norm(p.name)));
     const newTopics = newCandidates.filter((p) => {
+      // Hide candidates that have been absorbed by another candidate's M:N merge.
+      if (absorbedPendingNames.has(norm(p.name))) return false;
       const r = (eff.verify_new_cache ?? {})[p.name];
       const d = resolveNewDecision(p.name, r);
-      // Topic stays in Section 1 unless it has at least 1 merge target.
-      return !(d.action === "merge" && d.merge_to_ids.length >= 1);
+      // Hide candidates whose own decision is to merge — with old topics OR
+      // with other pending candidates. Both routes leave Section 1.
+      return !(
+        d.action === "merge" &&
+        (d.merge_to_ids.length >= 1 || d.merge_pending_names.length >= 1)
+      );
     });
 
     // Old project topics NOT in any match group AND not migrated to Merged by either pass.
@@ -252,7 +278,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
 
     return { newTopics, notInCall, merged };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, pending, projectTopics, eff.verify_new_cache, migratedFromNew, migratedFromNotDiscussed, subordinateMergeIds, newDecisions]);
+  }, [groups, pending, projectTopics, eff.verify_new_cache, migratedFromNew, migratedFromNotDiscussed, subordinateMergeIds, absorbedPendingNames, newDecisions]);
 
   const stage1Done = eff.verify_new_status === "done";
   const stage2Done = eff.verify_not_discussed_status === "done";
@@ -344,24 +370,51 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
         payload.push({ ...p, topic_id: null });
       }
 
-      // Topics the user explicitly merged from New → existing topic(s).
-      // For 1-target merges, the call topic's data becomes a topic_update on
-      // the existing target. For M:N merges (2+ targets), the candidate
-      // becomes a NEW topic that absorbs all the source targets (sources get
-      // archived via _source_topic_ids).
-      const userMergedFromNew = new Map<string, { pending: TopicData; all_targets: string[] }>();
+      // Topics the user explicitly merged from New → existing topic(s) and/or
+      // other call candidates. The merge collapses all into ONE topic.
+      // Tasks/OQ/decisions are union'd across the primary candidate + all
+      // absorbed call-topic candidates.
+      const userMergedFromNew = new Map<
+        string,
+        { primary_pending: TopicData; all_targets: string[]; absorbed_pending: TopicData[] }
+      >();
+      const absorbedNames = new Set<string>();
       const vnCache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
       for (const p of pending) {
         const r = vnCache[p.name];
         const d = resolveNewDecision(p.name, r);
-        if (d.action === "merge" && d.merge_to_ids.length >= 1) {
-          // Use the FIRST target as the "anchor" for Section 3 placement.
-          userMergedFromNew.set(d.merge_to_ids[0], { pending: p, all_targets: d.merge_to_ids });
+        if (d.action === "merge" && (d.merge_to_ids.length >= 1 || d.merge_pending_names.length >= 1)) {
+          const absorbedPendings: TopicData[] = [];
+          for (const n of d.merge_pending_names) {
+            const found = pending.find((pp) => pp.name.toLowerCase().trim() === n);
+            if (found) {
+              absorbedPendings.push(found);
+              absorbedNames.add(found.name.toLowerCase().trim());
+            }
+          }
+          // Anchor key for Section 3 placement: use first old target_id if any,
+          // else a synthetic key (we'll see this when only call-to-call merge).
+          const anchorKey = d.merge_to_ids[0] ?? `__pending_merge__${p.name.toLowerCase().trim()}`;
+          userMergedFromNew.set(anchorKey, {
+            primary_pending: p,
+            all_targets: d.merge_to_ids,
+            absorbed_pending: absorbedPendings,
+          });
         }
       }
+      // Skip absorbed candidates from the new_topics payload (they are absorbed
+      // into the primary's merge, not standalone new topics).
+      // (Implementation: we'll filter when building payload below.)
 
-      // For merged topics: use extracted snapshot if present (Section 3 ran ③),
-      // else user-merged-from-new data if available, else raw project topic.
+      // Helper: union tasks/OQ/decisions across primary + absorbed candidates.
+      const unionPendings = (primary: TopicData, absorbed: TopicData[]) => ({
+        tasks: [...(primary.tasks ?? []), ...absorbed.flatMap((a) => a.tasks ?? [])],
+        open_questions: [...(primary.open_questions ?? []), ...absorbed.flatMap((a) => a.open_questions ?? [])],
+        decisions: [...(primary.decisions ?? []), ...absorbed.flatMap((a) => a.decisions ?? [])],
+      });
+
+      const processedAnchorKeys = new Set<string>();
+
       for (const m of sections.merged) {
         const tid = m.topic_id ?? "";
         const extracted = extractCache[tid];
@@ -384,23 +437,41 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             needs_manual_review: extracted.needs_manual_review,
           });
         } else if (fromNew) {
-          if (fromNew.all_targets.length >= 2) {
-            // M:N — create a NEW topic that absorbs all source targets.
-            // validate_project_updates archives the sources via _source_topic_ids.
+          const u = unionPendings(fromNew.primary_pending, fromNew.absorbed_pending);
+          const totalSources = fromNew.all_targets.length + fromNew.absorbed_pending.length;
+          if (totalSources >= 2 || fromNew.absorbed_pending.length >= 1) {
+            // M:N — new topic absorbing all sources. _source_topic_ids triggers
+            // archival of the old topics in validate_project_updates.
             payload.push({
-              ...fromNew.pending,
+              ...fromNew.primary_pending,
+              ...u,
               topic_id: null,
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               _source_topic_ids: fromNew.all_targets,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             } as any);
           } else {
-            // 1:1 — promote call topic content onto the existing topic_id.
-            payload.push({ ...fromNew.pending, topic_id: tid });
+            // 1:1 — promote primary onto the existing target topic_id.
+            payload.push({ ...fromNew.primary_pending, topic_id: tid });
           }
+          processedAnchorKeys.add(tid);
         } else {
           payload.push({ ...m, topic_id: tid });
         }
+      }
+
+      // Pure-pending merges (primary + absorbed candidates, NO old topics).
+      // These don't appear in sections.merged (no project_topic anchor), so
+      // we emit them separately as new topics combining the absorbed data.
+      for (const [anchorKey, group] of userMergedFromNew.entries()) {
+        if (processedAnchorKeys.has(anchorKey)) continue;
+        // Only pure-pending anchors remain (synthetic __pending_merge__ keys).
+        const u = unionPendings(group.primary_pending, group.absorbed_pending);
+        payload.push({
+          ...group.primary_pending,
+          ...u,
+          topic_id: null,
+        });
       }
 
       // Not-discussed topics: backend will mark not_discussed=true via flag in payload
@@ -500,6 +571,9 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
           {sections.newTopics.map((t) => {
             const r = (eff.verify_new_cache ?? {})[t.name] as VerifyNewResult | undefined;
             const d = resolveNewDecision(t.name, r);
+            // Other call topics visible in Section 1 = all newTopics except self.
+            // Excluding the absorbed ones (already hidden from sections.newTopics anyway).
+            const otherPending = sections.newTopics.filter((p) => p.name !== t.name);
             return (
               <NewTopicCard
                 key={t.name}
@@ -507,6 +581,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                 result={r}
                 decision={d}
                 projectTopics={projectTopics}
+                otherPending={otherPending}
                 onDecisionChange={(next) =>
                   setNewDecisions((prev) => ({ ...prev, [t.name.toLowerCase().trim()]: next }))
                 }
@@ -611,7 +686,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                     ? () =>
                         setNewDecisions((prev) => ({
                           ...prev,
-                          [fromNewName.toLowerCase().trim()]: { action: "new", merge_to_ids: [] },
+                          [fromNewName.toLowerCase().trim()]: { action: "new", merge_to_ids: [], merge_pending_names: [] },
                         }))
                     : undefined
                 }
@@ -620,7 +695,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                     ? (new_id: string) =>
                         setNewDecisions((prev) => ({
                           ...prev,
-                          [fromNewName.toLowerCase().trim()]: { action: "merge", merge_to_ids: [new_id] },
+                          [fromNewName.toLowerCase().trim()]: { action: "merge", merge_to_ids: [new_id], merge_pending_names: [] },
                         }))
                     : undefined
                 }
@@ -701,23 +776,30 @@ function NewTopicCard({
   result,
   decision,
   projectTopics,
+  otherPending,
   onDecisionChange,
 }: {
   topic: TopicData;
   result?: VerifyNewResult;
-  decision: { action: "new" | "merge"; merge_to_ids: string[] };
+  decision: { action: "new" | "merge"; merge_to_ids: string[]; merge_pending_names: string[] };
   projectTopics: TopicData[];
-  onDecisionChange: (d: { action: "new" | "merge"; merge_to_ids: string[] }) => void;
+  otherPending: TopicData[];  // other call topics from this call (excluding self)
+  onDecisionChange: (d: {
+    action: "new" | "merge";
+    merge_to_ids: string[];
+    merge_pending_names: string[];
+  }) => void;
 }) {
   const isNewSelected = decision.action === "new";
   const isMergeSelected = decision.action === "merge";
 
-  // Local DRAFT state while user is editing the merge picker. While draft is
-  // active (not null), checkboxes update local state ONLY — the parent
-  // decision (and section migration) doesn't move until user clicks Apply.
+  // Local DRAFT state while user is editing the merge picker.
   const [draftIds, setDraftIds] = useState<string[] | null>(null);
+  const [draftPendingNames, setDraftPendingNames] = useState<string[] | null>(null);
   const pickerOpen = draftIds !== null;
   const displayedIds = draftIds ?? decision.merge_to_ids;
+  const displayedPendingNames = draftPendingNames ?? decision.merge_pending_names;
+  const totalSelected = displayedIds.length + displayedPendingNames.length;
 
   // The "primary" target for comparison display = first picked, fallback to LLM suggestion.
   const mergeTargetId = decision.merge_to_ids[0] ?? result?.matched_topic_id ?? null;
@@ -976,7 +1058,7 @@ function NewTopicCard({
           </span>
           <button
             type="button"
-            onClick={() => onDecisionChange({ action: "new", merge_to_ids: [] })}
+            onClick={() => onDecisionChange({ action: "new", merge_to_ids: [], merge_pending_names: [] })}
             style={isNewSelected ? decisionButtonSelected : decisionButton}
           >
             ✓ Confirm new
@@ -984,7 +1066,6 @@ function NewTopicCard({
           <button
             type="button"
             onClick={() => {
-              // Open picker in DRAFT mode. Don't commit to parent state yet.
               const initial =
                 decision.merge_to_ids.length > 0
                   ? decision.merge_to_ids
@@ -992,6 +1073,7 @@ function NewTopicCard({
                     ? [result.matched_topic_id]
                     : [];
               setDraftIds(initial);
+              setDraftPendingNames(decision.merge_pending_names);
             }}
             style={isMergeSelected || pickerOpen ? decisionButtonSelected : decisionButton}
           >
@@ -1023,61 +1105,112 @@ function NewTopicCard({
                   borderBottom: "1px solid #ebecf0",
                 }}
               >
-                Select 1 or more topic(s) to merge with{" "}
+                Pick topics to merge with{" "}
                 <span style={{ color: "#0052cc", fontWeight: 700 }}>
-                  ({decision.merge_to_ids.length} selected)
+                  ({totalSelected} selected: {displayedIds.length} old, {displayedPendingNames.length} new)
                 </span>
               </div>
-              <div style={{ maxHeight: 220, overflowY: "auto", padding: 4 }}>
-                {projectTopics.length === 0 ? (
-                  <div style={{ padding: 8, fontSize: 11, color: "#97a0af" }}>
-                    No project topics available to merge with.
+              <div style={{ display: "flex", gap: 0 }}>
+                {/* LEFT — existing project topics */}
+                <div style={{ flex: 1, borderRight: "1px solid #ebecf0" }}>
+                  <div style={{ padding: "4px 8px", fontSize: 9, color: "#5e6c84", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", background: "#f4f5f7" }}>
+                    Existing project topics (old)
                   </div>
-                ) : (
-                  projectTopics.map((t) => {
-                    const id = t.topic_id ?? "";
-                    const checked = displayedIds.includes(id);
-                    return (
-                      <label
-                        key={id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          padding: "4px 8px",
-                          fontSize: 12,
-                          cursor: "pointer",
-                          color: checked ? "#0052cc" : "#172b4d",
-                          background: checked ? "#deebff" : "transparent",
-                          borderRadius: 3,
-                          marginBottom: 1,
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            // Toggle LOCAL draft only — does not commit.
-                            const current = draftIds ?? decision.merge_to_ids;
-                            const next = e.target.checked
-                              ? [...current, id]
-                              : current.filter((x) => x !== id);
-                            setDraftIds(next);
-                          }}
-                          style={{ cursor: "pointer" }}
-                        />
-                        <span style={{ fontWeight: checked ? 600 : 400, flex: 1 }}>{t.name}</span>
-                        {t.summary && (
-                          <span style={{ fontSize: 10, color: "#97a0af", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {t.summary}
-                          </span>
-                        )}
-                      </label>
-                    );
-                  })
-                )}
+                  <div style={{ maxHeight: 220, overflowY: "auto", padding: 4 }}>
+                    {projectTopics.length === 0 ? (
+                      <div style={{ padding: 8, fontSize: 11, color: "#97a0af" }}>(none)</div>
+                    ) : (
+                      projectTopics.map((t) => {
+                        const id = t.topic_id ?? "";
+                        const checked = displayedIds.includes(id);
+                        return (
+                          <label
+                            key={id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: "4px 8px",
+                              fontSize: 12,
+                              cursor: "pointer",
+                              color: checked ? "#0052cc" : "#172b4d",
+                              background: checked ? "#deebff" : "transparent",
+                              borderRadius: 3,
+                              marginBottom: 1,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                const current = draftIds ?? decision.merge_to_ids;
+                                const next = e.target.checked
+                                  ? [...current, id]
+                                  : current.filter((x) => x !== id);
+                                setDraftIds(next);
+                              }}
+                              style={{ cursor: "pointer" }}
+                            />
+                            <span style={{ fontWeight: checked ? 600 : 400, flex: 1 }}>{t.name}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* RIGHT — other call topics from this call */}
+                <div style={{ flex: 1 }}>
+                  <div style={{ padding: "4px 8px", fontSize: 9, color: "#5e6c84", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", background: "#f4f5f7" }}>
+                    Other call topics (this call)
+                  </div>
+                  <div style={{ maxHeight: 220, overflowY: "auto", padding: 4 }}>
+                    {otherPending.length === 0 ? (
+                      <div style={{ padding: 8, fontSize: 11, color: "#97a0af" }}>
+                        (no other new candidates in this call)
+                      </div>
+                    ) : (
+                      otherPending.map((t) => {
+                        const norm = t.name.toLowerCase().trim();
+                        const checked = displayedPendingNames.includes(norm);
+                        return (
+                          <label
+                            key={t.name}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: "4px 8px",
+                              fontSize: 12,
+                              cursor: "pointer",
+                              color: checked ? "#0052cc" : "#172b4d",
+                              background: checked ? "#deebff" : "transparent",
+                              borderRadius: 3,
+                              marginBottom: 1,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                const current = draftPendingNames ?? decision.merge_pending_names;
+                                const next = e.target.checked
+                                  ? [...current, norm]
+                                  : current.filter((x) => x !== norm);
+                                setDraftPendingNames(next);
+                              }}
+                              style={{ cursor: "pointer" }}
+                            />
+                            <span style={{ fontWeight: checked ? 600 : 400, flex: 1 }}>{t.name}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               </div>
-              {displayedIds.length >= 2 && (
+
+              {totalSelected >= 2 && (
                 <div
                   style={{
                     padding: "6px 10px",
@@ -1088,24 +1221,20 @@ function NewTopicCard({
                     fontStyle: "italic",
                   }}
                 >
-                  M:N merge — a new topic will be created absorbing all {displayedIds.length} sources (they get archived).
+                  M:N merge — a new topic will be created absorbing this candidate + {displayedIds.length} old topic(s) + {displayedPendingNames.length} other call topic(s). Old topics get archived; other call topics are merged into this one.
                 </div>
               )}
-              {displayedIds.length === 1 && (
-                <div
-                  style={{
-                    padding: "6px 10px",
-                    fontSize: 10,
-                    color: "#42526e",
-                    background: "#deebff",
-                    borderTop: "1px solid #b3d4ff",
-                  }}
-                >
+              {totalSelected === 1 && displayedIds.length === 1 && (
+                <div style={{ padding: "6px 10px", fontSize: 10, color: "#42526e", background: "#deebff", borderTop: "1px solid #b3d4ff" }}>
                   1:1 merge — candidate&apos;s tasks will be added to &quot;{topicNameById(displayedIds[0])}&quot;.
                 </div>
               )}
+              {totalSelected === 1 && displayedPendingNames.length === 1 && (
+                <div style={{ padding: "6px 10px", fontSize: 10, color: "#42526e", background: "#deebff", borderTop: "1px solid #b3d4ff" }}>
+                  Merging with another candidate &quot;{displayedPendingNames[0]}&quot; — a new topic will be created absorbing both.
+                </div>
+              )}
 
-              {/* Apply / Cancel — commit or discard the draft */}
               <div
                 style={{
                   display: "flex",
@@ -1118,42 +1247,39 @@ function NewTopicCard({
               >
                 <button
                   type="button"
-                  onClick={() => setDraftIds(null)}
-                  style={{
-                    fontSize: 11,
-                    padding: "4px 10px",
-                    borderRadius: 4,
-                    border: "1px solid #c1c7d0",
-                    background: "white",
-                    color: "#42526e",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
+                  onClick={() => {
+                    setDraftIds(null);
+                    setDraftPendingNames(null);
                   }}
+                  style={{ fontSize: 11, padding: "4px 10px", borderRadius: 4, border: "1px solid #c1c7d0", background: "white", color: "#42526e", cursor: "pointer", fontFamily: "inherit" }}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  disabled={displayedIds.length === 0}
+                  disabled={totalSelected === 0}
                   onClick={() => {
-                    onDecisionChange({ action: "merge", merge_to_ids: displayedIds });
+                    onDecisionChange({
+                      action: "merge",
+                      merge_to_ids: displayedIds,
+                      merge_pending_names: displayedPendingNames,
+                    });
                     setDraftIds(null);
+                    setDraftPendingNames(null);
                   }}
                   style={{
                     fontSize: 11,
                     padding: "4px 12px",
                     borderRadius: 4,
                     border: "none",
-                    background: displayedIds.length === 0 ? "#f4f5f7" : "#0052cc",
-                    color: displayedIds.length === 0 ? "#97a0af" : "white",
-                    cursor: displayedIds.length === 0 ? "default" : "pointer",
+                    background: totalSelected === 0 ? "#f4f5f7" : "#0052cc",
+                    color: totalSelected === 0 ? "#97a0af" : "white",
+                    cursor: totalSelected === 0 ? "default" : "pointer",
                     fontFamily: "inherit",
                     fontWeight: 600,
                   }}
                 >
-                  {displayedIds.length >= 2
-                    ? `Apply M:N merge (${displayedIds.length} sources)`
-                    : "Apply merge"}
+                  {totalSelected >= 2 ? `Apply M:N merge (${totalSelected + 1} total topics)` : "Apply merge"}
                 </button>
               </div>
             </div>
