@@ -124,6 +124,19 @@ export default function ConfidenceGauge({ result }: Props) {
   const conf = computeConfidence(result);
   if (!conf) return null;
 
+  // Directional label: what is the % confidence FOR?
+  let directional = "system recommendation";
+  if (result?.verdict === "should_be_merged_with" && result.matched_topic_name) {
+    directional = `merge with "${result.matched_topic_name}"`;
+  } else if (result?.verdict === "truly_new") {
+    directional = "truly new (no merge)";
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mechanicalSkip = (result as any)?.mechanical_skip === true;
+  if (mechanicalSkip) {
+    directional = "truly new (no merge — mechanical skip)";
+  }
+
   return (
     <div
       style={{
@@ -131,12 +144,15 @@ export default function ConfidenceGauge({ result }: Props) {
         marginBottom: 8,
         padding: "6px 10px",
         background: conf.bg,
-        border: `1px solid ${conf.color}40`,  // 25% alpha border
+        border: `1px solid ${conf.color}40`,
         borderRadius: 4,
         fontSize: 11,
       }}
       title={conf.rationale.join("\n")}
     >
+      <div style={{ fontSize: 10, color: conf.color, opacity: 0.9, marginBottom: 3 }}>
+        Confidence in proposal: <strong>{directional}</strong>
+      </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontWeight: 700, color: conf.color, minWidth: 36 }}>
           {conf.pct}%
@@ -167,6 +183,11 @@ export default function ConfidenceGauge({ result }: Props) {
       <div style={{ marginTop: 3, color: conf.color, opacity: 0.85, fontSize: 10 }}>
         {conf.rationale.join(" · ")}
       </div>
+      {conf.pct < 50 && (
+        <div style={{ marginTop: 3, color: conf.color, fontSize: 10, fontWeight: 600 }}>
+          → Strong signal to review/override manually
+        </div>
+      )}
     </div>
   );
 }
