@@ -406,6 +406,51 @@ def _status_rollup(tasks: list[dict]) -> str:
     return "resolved"
 
 
+def _aggregate_per_task_to_topic_level(topic: dict) -> dict:
+    """Return a dict with topic-level {key_terms, open_questions, decisions}
+    populated by union from per-task fields (v4) UNIONed with any existing
+    topic-level values (v3 back-compat). Dedupes:
+      - key_terms by lower().strip()
+      - open_questions by id
+      - decisions by id
+    """
+    key_terms: list[str] = list(topic.get("key_terms") or [])
+    open_questions: list[dict] = list(topic.get("open_questions") or [])
+    decisions: list[dict] = list(topic.get("decisions") or [])
+    seen_kt = {k.lower().strip() for k in key_terms if isinstance(k, str)}
+    seen_oq_ids = {oq.get("id") for oq in open_questions if isinstance(oq, dict)}
+    seen_dec_ids = {d.get("id") for d in decisions if isinstance(d, dict)}
+    for task in (topic.get("tasks") or []):
+        if not isinstance(task, dict):
+            continue
+        for kt in (task.get("key_terms") or []):
+            if isinstance(kt, str) and kt.lower().strip() not in seen_kt:
+                key_terms.append(kt)
+                seen_kt.add(kt.lower().strip())
+        for oq in (task.get("open_questions") or []):
+            if isinstance(oq, dict) and oq.get("id") not in seen_oq_ids:
+                open_questions.append(oq)
+                seen_oq_ids.add(oq.get("id"))
+        for d in (task.get("decisions") or []):
+            if isinstance(d, dict) and d.get("id") not in seen_dec_ids:
+                decisions.append(d)
+                seen_dec_ids.add(d.get("id"))
+    return {
+        "key_terms": key_terms,
+        "open_questions": open_questions,
+        "decisions": decisions,
+    }
+
+
+def _topic_with_topic_level_aggregation(topic: dict) -> dict:
+    """Return a copy of topic with topic-level fields populated via aggregation.
+    Used at pending_topics save time so downstream stages (project_matching,
+    project_updates, artifacts) see the data via their legacy topic-level reads.
+    Per-task data on tasks[] is preserved."""
+    agg = _aggregate_per_task_to_topic_level(topic)
+    return {**topic, **agg}
+
+
 def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
     """Insert a single topic_updates row in the new EPIC-15 shape.
 
@@ -430,31 +475,9 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
     """
     db = get_client()
 
-    # v4 (task-centric) → aggregate per-task fields into topic-level columns
-    # so legacy reads (frontend old code, Pass ① fallback) still work. Per-task
-    # data lives inside the tasks JSONB field unchanged.
+    # v4 → aggregate per-task fields into topic-level for legacy reads.
+    agg = _aggregate_per_task_to_topic_level(topic)
     tasks = topic.get("tasks", []) or []
-    agg_key_terms = list(topic.get("key_terms") or [])
-    agg_open_questions = list(topic.get("open_questions") or [])
-    agg_decisions = list(topic.get("decisions") or [])
-    seen_kt = set(k.lower().strip() for k in agg_key_terms if isinstance(k, str))
-    seen_oq_ids = set(oq.get("id") for oq in agg_open_questions if isinstance(oq, dict))
-    seen_dec_ids = set(d.get("id") for d in agg_decisions if isinstance(d, dict))
-    for task in tasks:
-        if not isinstance(task, dict):
-            continue
-        for kt in task.get("key_terms") or []:
-            if isinstance(kt, str) and kt.lower().strip() not in seen_kt:
-                agg_key_terms.append(kt)
-                seen_kt.add(kt.lower().strip())
-        for oq in task.get("open_questions") or []:
-            if isinstance(oq, dict) and oq.get("id") not in seen_oq_ids:
-                agg_open_questions.append(oq)
-                seen_oq_ids.add(oq.get("id"))
-        for d in task.get("decisions") or []:
-            if isinstance(d, dict) and d.get("id") not in seen_dec_ids:
-                agg_decisions.append(d)
-                seen_dec_ids.add(d.get("id"))
 
     payload: dict = {
         "topic_id": topic_id,
@@ -462,10 +485,10 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
         "summary": topic.get("summary") or "",
         "importance": topic.get("importance", "medium"),
         "evidence": topic.get("evidence", []),
-        "key_terms": agg_key_terms,
+        "key_terms": agg["key_terms"],
         "tasks": tasks,
-        "open_questions": agg_open_questions,
-        "decisions": agg_decisions,
+        "open_questions": agg["open_questions"],
+        "decisions": agg["decisions"],
         "citations": topic.get("citations") or [],
         "evidence_trail": topic.get("evidence_trail") or [],
         "needs_manual_review": bool(topic.get("needs_manual_review")),
@@ -1017,10 +1040,14 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
         )
         return {"auto_advanced": True, "call_number": call_number}
 
-    # Call 2+: save pending topics and advance to project_matching for manual matching
+    # Call 2+: save pending topics and advance to project_matching.
+    # Aggregate per-task fields to topic-level so downstream stages
+    # (project_matching, project_updates, artifacts) see the data via their
+    # existing topic-level reads. tasks[] keep their per-task fields too.
+    pending_for_save = [_topic_with_topic_level_aggregation(t) for t in call_topics]
     db.table("calls").update(
         {
-            "pending_topics": call_topics,
+            "pending_topics": pending_for_save,
             "kanban_stage": "project_matching",
         }
     ).eq("id", call_id).execute()
