@@ -683,54 +683,22 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                         {/* Task + per-task extras (v4: key_terms, OQ, decisions, citations) */}
                         <td style={TABLE_TD_STYLE}>
                           {task && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                <input
-                                  key={task.task_id}
-                                  type="text"
-                                  defaultValue={task.task}
-                                  placeholder="Describe task…"
-                                  onBlur={(e) => {
-                                    if (e.target.value !== task.task)
-                                      updateTasks(
-                                        ti,
-                                        tasks.map((t, i) =>
-                                          i === ri ? { ...t, task: e.target.value } : t,
-                                        ),
-                                      );
-                                  }}
-                                  style={{ ...INLINE_INPUT_STYLE, flex: 1 }}
-                                />
-                                {(task.citations?.length ?? 0) > 0 && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) =>
-                                      setTaskCitationPopover({
-                                        ti,
-                                        rowIdx: ri,
-                                        x: e.clientX,
-                                        y: e.clientY,
-                                      })
-                                    }
-                                    title={`${task.citations!.length} citation(s) anchoring this task`}
-                                    style={{
-                                      fontSize: 10,
-                                      color: "#0052cc",
-                                      background: "#deebff",
-                                      border: "1px solid #b3d4ff",
-                                      borderRadius: 3,
-                                      padding: "1px 5px",
-                                      cursor: "pointer",
-                                      flexShrink: 0,
-                                    }}
-                                  >
-                                    📎 {task.citations!.length}
-                                  </button>
-                                )}
-                              </div>
-                              {/* PerTaskExtras removed — its key_terms / OQ / decisions
-                                  now live in their dedicated columns per task (v4). */}
-                            </div>
+                            <input
+                              key={task.task_id}
+                              type="text"
+                              defaultValue={task.task}
+                              placeholder="Describe task…"
+                              onBlur={(e) => {
+                                if (e.target.value !== task.task)
+                                  updateTasks(
+                                    ti,
+                                    tasks.map((t, i) =>
+                                      i === ri ? { ...t, task: e.target.value } : t,
+                                    ),
+                                  );
+                              }}
+                              style={INLINE_INPUT_STYLE}
+                            />
                           )}
                         </td>
                         <td style={TABLE_TD_STYLE}>
@@ -831,11 +799,36 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                             />
                           )}
                         </td>
-                        {/* Evidence — first row only (topic-level indicator) */}
+                        {/* Evidence — per-task citations (v4); falls back to
+                            topic.evidence for legacy/v3 data on first row. */}
                         <td style={{ ...TABLE_TD_STYLE, textAlign: "center" }}>
-                          {isFirstRow && topic.evidence && topic.evidence.length > 0 && (
+                          {task && (task.citations?.length ?? 0) > 0 ? (
+                            <button
+                              type="button"
+                              onClick={(e) =>
+                                setTaskCitationPopover({
+                                  ti,
+                                  rowIdx: ri,
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                })
+                              }
+                              title={`${task.citations!.length} citation(s) anchoring this task`}
+                              style={{
+                                fontSize: 10,
+                                color: "#0052cc",
+                                background: "#deebff",
+                                border: "1px solid #b3d4ff",
+                                borderRadius: 3,
+                                padding: "1px 5px",
+                                cursor: "pointer",
+                              }}
+                            >
+                              📎 {task.citations!.length}
+                            </button>
+                          ) : isFirstRow && topic.evidence && topic.evidence.length > 0 ? (
                             <EvidenceRefPopover evidence={topic.evidence} />
-                          )}
+                          ) : null}
                         </td>
                         {/* Delete task; falls back to delete topic on first row of empty-tasks topic */}
                         <td style={{ ...TABLE_TD_STYLE, textAlign: "center" }}>
