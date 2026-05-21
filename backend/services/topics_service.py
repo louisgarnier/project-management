@@ -859,42 +859,10 @@ async def extract_call_topics(call_id: str, plog=None) -> list[dict]:
             name = (t.get("name") if isinstance(t, dict) else "?") or "?"
             rejected.append((name, reason))
             continue
-        stamped = _stamp_item_ids(t, call_id)
-        # v4 aggregation: when LLM produced per-task key_terms/OQ/decisions and
-        # left the topic-level fields empty, populate topic-level with the UNION
-        # so legacy UI cells (KeyTermChips, OpenQuestionsCell, DecisionsCell) keep
-        # rendering content. _persist_topic_update does the same at save time;
-        # we mirror it here so the call_topics UI shows data without requiring
-        # Save & Continue.
-        tasks_list = stamped.get("tasks") or []
-        if not (stamped.get("key_terms") or []):
-            agg_kt: list[str] = []
-            seen_kt: set[str] = set()
-            for tk in tasks_list:
-                for kt in (tk.get("key_terms") or []):
-                    if isinstance(kt, str) and kt.lower().strip() not in seen_kt:
-                        agg_kt.append(kt)
-                        seen_kt.add(kt.lower().strip())
-            stamped["key_terms"] = agg_kt
-        if not (stamped.get("open_questions") or []):
-            agg_oq: list[dict] = []
-            seen_oq_ids: set = set()
-            for tk in tasks_list:
-                for oq in (tk.get("open_questions") or []):
-                    if isinstance(oq, dict) and oq.get("id") not in seen_oq_ids:
-                        agg_oq.append(oq)
-                        seen_oq_ids.add(oq.get("id"))
-            stamped["open_questions"] = agg_oq
-        if not (stamped.get("decisions") or []):
-            agg_dec: list[dict] = []
-            seen_dec_ids: set = set()
-            for tk in tasks_list:
-                for d in (tk.get("decisions") or []):
-                    if isinstance(d, dict) and d.get("id") not in seen_dec_ids:
-                        agg_dec.append(d)
-                        seen_dec_ids.add(d.get("id"))
-            stamped["decisions"] = agg_dec
-        kept.append(stamped)
+        kept.append(_stamp_item_ids(t, call_id))
+    # v4 data stays pure per-task — UI reads task-level fields directly.
+    # _persist_topic_update still aggregates to topic-level at Save & Continue
+    # so legacy reads (Pass ① fallback, old UI paths) keep working.
 
     total_tasks = sum(len(t.get("tasks") or []) for t in kept)
     total_oqs   = sum(len(t.get("open_questions") or []) for t in kept)

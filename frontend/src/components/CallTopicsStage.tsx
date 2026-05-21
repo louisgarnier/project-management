@@ -663,13 +663,20 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                             />
                           )}
                         </td>
-                        {/* Key terms — only first row */}
+                        {/* Key terms — per task (v4) */}
                         <td style={TABLE_TD_STYLE}>
-                          {isFirstRow && (
+                          {task && (
                             <KeyTermChips
-                              terms={keyTerms}
+                              terms={task.key_terms ?? []}
                               editable
-                              onChange={(next) => patchTopic(ti, { key_terms: next })}
+                              onChange={(next) =>
+                                updateTasks(
+                                  ti,
+                                  tasks.map((t, i) =>
+                                    i === ri ? { ...t, key_terms: next } : t,
+                                  ),
+                                )
+                              }
                             />
                           )}
                         </td>
@@ -721,15 +728,8 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                                   </button>
                                 )}
                               </div>
-                              <PerTaskExtras
-                                task={task}
-                                onChange={(updated) =>
-                                  updateTasks(
-                                    ti,
-                                    tasks.map((t, i) => (i === ri ? updated : t)),
-                                  )
-                                }
-                              />
+                              {/* PerTaskExtras removed — its key_terms / OQ / decisions
+                                  now live in their dedicated columns per task (v4). */}
                             </div>
                           )}
                         </td>
@@ -799,21 +799,35 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                             </select>
                           )}
                         </td>
-                        {/* Open questions — only first row */}
+                        {/* Open questions — per task (v4) */}
                         <td style={TABLE_TD_STYLE}>
-                          {isFirstRow && (
+                          {task && (
                             <OpenQuestionsCell
-                              oqs={oqs}
-                              onUpdate={(next) => updateOpenQuestions(ti, next)}
+                              oqs={task.open_questions ?? []}
+                              onUpdate={(next) =>
+                                updateTasks(
+                                  ti,
+                                  tasks.map((t, i) =>
+                                    i === ri ? { ...t, open_questions: next } : t,
+                                  ),
+                                )
+                              }
                             />
                           )}
                         </td>
-                        {/* Decisions — only first row */}
+                        {/* Decisions — per task (v4) */}
                         <td style={TABLE_TD_STYLE}>
-                          {isFirstRow && (
+                          {task && (
                             <DecisionsCell
-                              decisions={decisions}
-                              onUpdate={(next) => updateDecisions(ti, next)}
+                              decisions={task.decisions ?? []}
+                              onUpdate={(next) =>
+                                updateTasks(
+                                  ti,
+                                  tasks.map((t, i) =>
+                                    i === ri ? { ...t, decisions: next } : t,
+                                  ),
+                                )
+                              }
                             />
                           )}
                         </td>
@@ -1479,11 +1493,13 @@ function PerTaskExtras({
   task: TaskData;
   onChange: (updated: TaskData) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const keyTerms = task.key_terms ?? [];
   const oqs = task.open_questions ?? [];
   const decs = task.decisions ?? [];
   const totalExtras = keyTerms.length + oqs.length + decs.length;
+  // Auto-expand when the task has any per-task data — makes v4 structure
+  // visible by default. User can collapse to focus on task text.
+  const [expanded, setExpanded] = useState(totalExtras > 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
