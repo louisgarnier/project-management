@@ -50,7 +50,10 @@ SYSTEM_LIBRARY: list[dict] = [
         "template_id": None,
         "llm": "openrouter",
         "model": "deepseek/deepseek-v3.2",
-        "context_scope": "call",
+        # DB constraint (Phase 2 migration, kept applied even after code rollback)
+        # restricts context_scope to the 4-value enum. "this_call_transcript" is
+        # the right semantic for call_topics extraction.
+        "context_scope": "this_call_transcript",
         "category": "call_topics",
         "is_system": True,
         "seeded_by_default": True,
