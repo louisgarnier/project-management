@@ -271,10 +271,10 @@ export default function CallTopicsHistoricalView({ callId, call }: Props) {
                           </div>
                         )}
                       </td>
-                      {/* Key terms — only first row */}
+                      {/* Key terms — per task (v4) */}
                       <td style={TABLE_TD_STYLE}>
-                        {isFirstRow && keyTerms.length > 0 && (
-                          <KeyTermChips terms={keyTerms} />
+                        {task && (task.key_terms?.length ?? 0) > 0 && (
+                          <KeyTermChips terms={task.key_terms ?? []} />
                         )}
                       </td>
                       {/* Task / Next step / Owner / Status — per task */}
@@ -300,14 +300,16 @@ export default function CallTopicsHistoricalView({ callId, call }: Props) {
                           </span>
                         )}
                       </td>
-                      {/* Open questions — only first row */}
+                      {/* Open questions — per task (v4) */}
                       <td style={TABLE_TD_STYLE}>
-                        {isFirstRow && (
-                          oqs.length === 0 ? (
-                            <div style={EMPTY_CELL_STYLE}>— no open questions in this call</div>
-                          ) : (
+                        {task && (() => {
+                          const tOQ = task.open_questions ?? [];
+                          if (tOQ.length === 0) {
+                            return <div style={EMPTY_CELL_STYLE}>— no open questions</div>;
+                          }
+                          return (
                             <ul style={{ margin: 0, paddingLeft: 16, listStyle: "disc" }}>
-                              {oqs.map((q, qi) => (
+                              {tOQ.map((q, qi) => (
                                 <li key={q.id || qi} style={{ marginBottom: 4, fontSize: 12, color: "#172b4d", lineHeight: 1.4 }}>
                                   <div style={{ wordBreak: "break-word" }}>{q.text}</div>
                                   {(q.owner || q.status) && (
@@ -328,30 +330,41 @@ export default function CallTopicsHistoricalView({ callId, call }: Props) {
                                 </li>
                               ))}
                             </ul>
-                          )
-                        )}
+                          );
+                        })()}
                       </td>
-                      {/* Decisions — only first row */}
+                      {/* Decisions — per task (v4) */}
                       <td style={TABLE_TD_STYLE}>
-                        {isFirstRow && (
-                          decisions.length === 0 ? (
-                            <div style={EMPTY_CELL_STYLE}>— no decisions in this call</div>
-                          ) : (
+                        {task && (() => {
+                          const tDec = task.decisions ?? [];
+                          if (tDec.length === 0) {
+                            return <div style={EMPTY_CELL_STYLE}>— no decisions</div>;
+                          }
+                          return (
                             <ul style={{ margin: 0, paddingLeft: 16, listStyle: "disc" }}>
-                              {decisions.map((d, di) => (
+                              {tDec.map((d, di) => (
                                 <li key={d.id || di} style={{ marginBottom: 4, fontSize: 12, color: "#172b4d", lineHeight: 1.4, wordBreak: "break-word" }}>
                                   {d.text}
                                 </li>
                               ))}
                             </ul>
-                          )
-                        )}
+                          );
+                        })()}
                       </td>
-                      {/* Evidence — first row only (topic-level indicator) */}
+                      {/* Evidence — per-task citations (v4); falls back to
+                          topic.evidence on first row for legacy/v3 data. */}
                       <td style={{ ...TABLE_TD_STYLE, textAlign: "center" }}>
-                        {isFirstRow && topic.evidence && topic.evidence.length > 0 && (
+                        {task && (task.citations?.length ?? 0) > 0 ? (
+                          <EvidenceRefPopover
+                            evidence={(task.citations ?? []).map((c) => ({
+                              speaker: c.speaker ?? "",
+                              quote: c.quote ?? "",
+                              citation: c.lines ? `lines ${c.lines}` : "",
+                            }))}
+                          />
+                        ) : isFirstRow && topic.evidence && topic.evidence.length > 0 ? (
                           <EvidenceRefPopover evidence={topic.evidence} />
-                        )}
+                        ) : null}
                       </td>
                     </tr>
                   );
