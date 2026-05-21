@@ -406,7 +406,7 @@ def _status_rollup(tasks: list[dict]) -> str:
     return "resolved"
 
 
-def _aggregate_per_task_to_topic_level(topic: dict) -> dict:
+def _aggregate_per_task_to_topic_level_DEPRECATED(topic: dict) -> dict:
     """Return a dict with topic-level {key_terms, open_questions, decisions, evidence}
     populated by union from per-task fields (v4) UNIONed with any existing
     topic-level values (v3 back-compat). Dedupes:
@@ -464,12 +464,10 @@ def _aggregate_per_task_to_topic_level(topic: dict) -> dict:
 
 
 def _topic_with_topic_level_aggregation(topic: dict) -> dict:
-    """Return a copy of topic with topic-level fields populated via aggregation.
-    Used at pending_topics save time so downstream stages (project_matching,
-    project_updates, artifacts) see the data via their legacy topic-level reads.
-    Per-task data on tasks[] is preserved."""
-    agg = _aggregate_per_task_to_topic_level(topic)
-    return {**topic, **agg}
+    """v4 task-centric: NO-OP. Per-task data lives on tasks[]; topic-level
+    fields stay empty. Downstream stages must read per-task.
+    Kept as a function for call-site compatibility — does nothing now."""
+    return topic
 
 
 def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
@@ -496,8 +494,7 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
     """
     db = get_client()
 
-    # v4 → aggregate per-task fields into topic-level for legacy reads.
-    agg = _aggregate_per_task_to_topic_level(topic)
+    # v4: topic-level fields stay empty. Per-task data lives on tasks[].
     tasks = topic.get("tasks", []) or []
 
     payload: dict = {
@@ -505,11 +502,11 @@ def _persist_topic_update(topic: dict, topic_id: str, call_id: str) -> str:
         "call_id": call_id,
         "summary": topic.get("summary") or "",
         "importance": topic.get("importance", "medium"),
-        "evidence": agg["evidence"],
-        "key_terms": agg["key_terms"],
+        "evidence": topic.get("evidence") or [],
+        "key_terms": topic.get("key_terms") or [],
         "tasks": tasks,
-        "open_questions": agg["open_questions"],
-        "decisions": agg["decisions"],
+        "open_questions": topic.get("open_questions") or [],
+        "decisions": topic.get("decisions") or [],
         "citations": topic.get("citations") or [],
         "evidence_trail": topic.get("evidence_trail") or [],
         "needs_manual_review": bool(topic.get("needs_manual_review")),

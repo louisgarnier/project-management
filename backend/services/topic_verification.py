@@ -418,37 +418,15 @@ def _build_verify_new_prompt(
         f"--- CALL {cid} ---\n{body}" for cid, body in transcripts.items()
     )
     # v4 task-centric: each TASK carries its own key_terms / open_questions /
-    # decisions / citations. The LLM compares per-task — topic-level fields are
-    # NOT sent to avoid confusion (flat unions hide which task owns which term).
-    # For legacy v3 topics where data still lives at topic-level only, we fall
-    # back to embedding the legacy fields under a __legacy_topic_level key so
-    # the LLM treats them as a separate signal.
+    # decisions / citations. The LLM compares per-task. Topic-level fields are
+    # NOT sent — they're empty in v4 and would only confuse the LLM.
     def _shape_topic_for_llm(t: dict) -> dict:
-        tasks = t.get("tasks") or []
-        # Detect v3 legacy: tasks have no per-task key_terms anywhere, but
-        # topic-level fields are populated. In that case we surface the
-        # legacy data explicitly.
-        any_per_task_kt = any(
-            isinstance(tk, dict) and (tk.get("key_terms") or [])
-            for tk in tasks
-        )
-        out: dict = {
+        return {
             "topic_id": t.get("topic_id"),
             "name": t.get("name"),
             "summary": t.get("summary") or "",
-            "tasks": tasks,  # per-task fields (v4) embedded
+            "tasks": t.get("tasks") or [],
         }
-        if not any_per_task_kt:
-            legacy = {}
-            if t.get("key_terms"):
-                legacy["key_terms"] = t["key_terms"]
-            if t.get("open_questions"):
-                legacy["open_questions"] = t["open_questions"]
-            if t.get("decisions"):
-                legacy["decisions"] = t["decisions"]
-            if legacy:
-                out["__legacy_topic_level"] = legacy
-        return out
 
     project_topics_block = json.dumps(
         [_shape_topic_for_llm(t) for t in project_topics],
