@@ -417,35 +417,44 @@ def _build_verify_new_prompt(
     transcripts_block = "\n\n".join(
         f"--- CALL {cid} ---\n{body}" for cid, body in transcripts.items()
     )
-    # v3 (task-centric + task-fit): send FULL tasks for each existing topic.
-    # If v4 data is present (tasks carry their own key_terms/OQ/decisions),
-    # the LLM sees per-task context — granular work-continuity test.
-    # Topic-level OQ/decisions still included for legacy v3 data fallback.
+    # v4 task-centric: each TASK carries its own key_terms / open_questions /
+    # decisions / citations. The LLM compares per-task — topic-level fields are
+    # NOT sent to avoid confusion (flat unions hide which task owns which term).
+    # For legacy v3 topics where data still lives at topic-level only, we fall
+    # back to embedding the legacy fields under a __legacy_topic_level key so
+    # the LLM treats them as a separate signal.
+    def _shape_topic_for_llm(t: dict) -> dict:
+        tasks = t.get("tasks") or []
+        # Detect v3 legacy: tasks have no per-task key_terms anywhere, but
+        # topic-level fields are populated. In that case we surface the
+        # legacy data explicitly.
+        any_per_task_kt = any(
+            isinstance(tk, dict) and (tk.get("key_terms") or [])
+            for tk in tasks
+        )
+        out: dict = {
+            "topic_id": t.get("topic_id"),
+            "name": t.get("name"),
+            "summary": t.get("summary") or "",
+            "tasks": tasks,  # per-task fields (v4) embedded
+        }
+        if not any_per_task_kt:
+            legacy = {}
+            if t.get("key_terms"):
+                legacy["key_terms"] = t["key_terms"]
+            if t.get("open_questions"):
+                legacy["open_questions"] = t["open_questions"]
+            if t.get("decisions"):
+                legacy["decisions"] = t["decisions"]
+            if legacy:
+                out["__legacy_topic_level"] = legacy
+        return out
+
     project_topics_block = json.dumps(
-        [
-            {
-                "topic_id": t.get("topic_id"),
-                "name": t.get("name"),
-                "key_terms": t.get("key_terms") or [],
-                "summary": t.get("summary") or "",
-                # tasks may carry per-task key_terms/OQ/decisions/citations (v4) or
-                # just task/next_step/owner/status (v3) — LLM gets whatever is present.
-                "tasks": t.get("tasks") or [],
-                # Legacy topic-level OQ/decisions for v3 data
-                "open_questions": t.get("open_questions") or [],
-                "decisions": t.get("decisions") or [],
-            }
-            for t in project_topics
-        ],
+        [_shape_topic_for_llm(t) for t in project_topics],
         indent=2,
     )
-    candidate_block = json.dumps({
-        "name": candidate.get("name"),
-        "key_terms": candidate.get("key_terms", []),
-        "tasks": candidate.get("tasks", []),
-        "open_questions": candidate.get("open_questions", []),
-        "decisions": candidate.get("decisions", []),
-    }, indent=2)
+    candidate_block = json.dumps(_shape_topic_for_llm(candidate), indent=2)
     precheck_block = ""
     if precheck:
         precheck_block = (
@@ -457,8 +466,16 @@ def _build_verify_new_prompt(
         )
     return (
         f"{VERIFY_NEW_TOPIC_PROMPT}\n\n"
-        f"CANDIDATE NEW TOPIC (full data — what the user proposes as new in the current call):\n{candidate_block}\n\n"
-        f"EXISTING PROJECT TOPICS (name + key_terms + summary + brief task list — use to check for duplicates):\n{project_topics_block}\n\n"
+        f"CANDIDATE NEW TOPIC (v4 task-centric — each task carries its OWN "
+        f"key_terms, open_questions, decisions, citations. Compare PER-TASK, "
+        f"not by topic-level flat unions. __legacy_topic_level appears only "
+        f"when the row predates v4 and lacks per-task fields.):\n"
+        f"{candidate_block}\n\n"
+        f"EXISTING PROJECT TOPICS (same v4 shape — compare per-task to assess "
+        f"work-continuity. If a candidate task fits naturally into the task "
+        f"list of an existing topic, it's a duplicate. Topic-level legacy "
+        f"fields, if present, are a fallback signal only.):\n"
+        f"{project_topics_block}\n\n"
         f"PAST TRANSCRIPTS (calls N-1, ..., 1 — NOT the current call N):\n{transcripts_block}"
         f"{precheck_block}"
     )
