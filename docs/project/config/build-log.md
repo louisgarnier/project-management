@@ -526,3 +526,40 @@
 - Manual browser test required before EPIC-3
 
 **Next session starts at:** EPIC-3 / Story 3.1 — Calls API with Sequential Enforcement
+
+### 2026-05-21 — EPIC-16 / Task-centric data model refactor (Phases 1-4)
+**Completed:** Migrate topic → task ownership of key_terms / open_questions / decisions / citations.
+**Design + plan:**
+- `docs/project/config/2026-05-21-task-centric-data-model-refactor-design.md`
+- `docs/project/config/2026-05-21-task-centric-data-model-refactor-plan.md`
+
+**Phase 1 — Foundation (commits 46c5e55, cde1456):**
+- New `CALL_TOPICS_V4_PROMPT_BODY` in `backend/prompts/call_topics.py` — task is the unit; topic is a thin container.
+- `backend/library/seed.py`: v4 entry seeded by default; v3 demoted to legacy.
+- `_validate_topic` accepts v3 (topic-level) AND v4 (task-level) schemas.
+- `_stamp_item_ids` stamps per-task OQ + decision ids.
+- `_persist_topic_update` aggregates per-task fields into topic-level columns for back-compat reads.
+- `TaskData` TS type gains optional `key_terms` / `open_questions` / `decisions` / `citations`.
+
+**Phase 2 — UI (commit 40bbad0):**
+- New `<PerTaskExtras>` component in `CallTopicsStage.tsx`: collapsible per-task editor for key_terms (KeyTermChips), open_questions (OpenQuestionsCell), decisions (DecisionsCell). Compact header "▸ per-task: N key_terms · M OQ · K dec".
+
+**Phase 3 — Move task verification:**
+- Existing right-click move-task handler already spreads the full task object → per-task data transfers automatically.
+
+**Phase 4 — Pass ①/③ adapted (commit fa7f85b):**
+- `effective_token_set` aggregates per-task key_terms (union across all tasks of a topic).
+- Pass ① prompt now ships per-task data in the project_topics_block (granular work-continuity test).
+- Pass ③ extract prompt schema requests per-task key_terms/OQ/decisions inside each task object.
+- 1 new test: `test_effective_token_set_aggregates_per_task_key_terms`. 267 tests pass.
+
+**Phase 5 — Cleanup (this entry):**
+- Topic-level aggregation kept in `_persist_topic_update` — back-compat reads depend on it.
+- Legacy topic-level UI rendering kept — to be deprecated alongside the Kanban refactor (next milestone).
+
+**Backward compatibility:**
+- Existing topic_updates rows continue to render via legacy topic-level paths.
+- v4 extractions populate both per-task fields AND topic-level aggregations.
+- No DB migration required.
+
+**Next:** validate v4 prompt produces good extractions on a real call. Then Kanban refactor (project_matching → 3 stages).
