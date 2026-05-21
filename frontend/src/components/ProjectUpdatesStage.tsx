@@ -54,8 +54,11 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
 
   // ── User decisions (override LLM verdicts) ──
   // Keys: lowercased topic name (Section 1) or topic_id (Section 2).
+  // merge_to_ids: 0 = no target picked yet (action stays "new"); 1 = standard
+  // 1:1 merge (absorbed INTO the target topic); 2+ = M:N merge (new topic
+  // created that absorbs all the source topics, sources get archived).
   const [newDecisions, setNewDecisions] = useState<
-    Record<string, { action: "new" | "merge"; merge_to_id?: string | null }>
+    Record<string, { action: "new" | "merge"; merge_to_ids: string[] }>
   >({});
   const [ndDecisions, setNdDecisions] = useState<
     Record<string, { action: "not_discussed" | "discussed" }>
@@ -64,16 +67,16 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
   function resolveNewDecision(
     name: string,
     result: VerifyNewResult | undefined
-  ): { action: "new" | "merge"; merge_to_id?: string | null } {
+  ): { action: "new" | "merge"; merge_to_ids: string[] } {
     const explicit = newDecisions[name.toLowerCase().trim()];
     if (explicit) return explicit;
     if (result && !result.needs_manual_review) {
       if (result.verdict === "should_be_merged_with" && result.matched_topic_id) {
-        return { action: "merge", merge_to_id: result.matched_topic_id };
+        return { action: "merge", merge_to_ids: [result.matched_topic_id] };
       }
-      if (result.verdict === "truly_new") return { action: "new" };
+      if (result.verdict === "truly_new") return { action: "new", merge_to_ids: [] };
     }
-    return { action: "new" };
+    return { action: "new", merge_to_ids: [] };
   }
   function resolveNdDecision(
     topic_id: string,
@@ -124,25 +127,66 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     for (const p of pending) {
       const r = cache[p.name];
       const d = resolveNewDecision(p.name, r);
-      if (d.action === "merge" && d.merge_to_id) ids.add(d.merge_to_id);
+      if (d.action === "merge") {
+        d.merge_to_ids.forEach((id) => ids.add(id));
+      }
     }
     return ids;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, eff.verify_new_cache, newDecisions]);
 
-  // Inverse map: which pending topic was merged INTO each project topic? Lets
-  // the Merged card surface an "override" affordance to revert the decision.
+  // For M:N merges (≥2 targets), the FIRST target id is the "primary" — it
+  // shows the merge card in Section 3. Subordinate ids are hidden (they will
+  // be archived at Save & Continue, so showing them as separate Section 3
+  // entries would be confusing).
+  const subordinateMergeIds = useMemo<Set<string>>(() => {
+    const ids = new Set<string>();
+    const cache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
+    for (const p of pending) {
+      const r = cache[p.name];
+      const d = resolveNewDecision(p.name, r);
+      if (d.action === "merge" && d.merge_to_ids.length >= 2) {
+        d.merge_to_ids.slice(1).forEach((id) => ids.add(id));
+      }
+    }
+    return ids;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, eff.verify_new_cache, newDecisions]);
+
+  // Inverse map: each PRIMARY target id → pending name that merged into it.
+  // Section 3 uses this to show "moved from New: X" + audit trail.
   const mergedFromNewSource = useMemo<Map<string, string>>(() => {
     const m = new Map<string, string>();
     const cache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
     for (const p of pending) {
       const r = cache[p.name];
       const d = resolveNewDecision(p.name, r);
-      if (d.action === "merge" && d.merge_to_id) m.set(d.merge_to_id, p.name);
+      if (d.action === "merge" && d.merge_to_ids.length >= 1) {
+        m.set(d.merge_to_ids[0], p.name);
+      }
     }
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, eff.verify_new_cache, newDecisions]);
+
+  // For showing subordinate target names on the primary card.
+  const mergedFromNewSubordinateNames = useMemo<Map<string, string[]>>(() => {
+    const m = new Map<string, string[]>();
+    const cache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
+    for (const p of pending) {
+      const r = cache[p.name];
+      const d = resolveNewDecision(p.name, r);
+      if (d.action === "merge" && d.merge_to_ids.length >= 2) {
+        const primary = d.merge_to_ids[0];
+        const subs = d.merge_to_ids
+          .slice(1)
+          .map((id) => projectTopics.find((t) => t.topic_id === id)?.name ?? "(unknown)");
+        m.set(primary, subs);
+      }
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, eff.verify_new_cache, newDecisions, projectTopics]);
 
   const migratedFromNotDiscussed = useMemo<Set<string>>(() => {
     const ids = new Set<string>();
@@ -179,8 +223,8 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     const newTopics = newCandidates.filter((p) => {
       const r = (eff.verify_new_cache ?? {})[p.name];
       const d = resolveNewDecision(p.name, r);
-      // Topic stays in Section 1 unless effective decision is to merge with a real topic
-      return !(d.action === "merge" && d.merge_to_id);
+      // Topic stays in Section 1 unless it has at least 1 merge target.
+      return !(d.action === "merge" && d.merge_to_ids.length >= 1);
     });
 
     // Old project topics NOT in any match group AND not migrated to Merged by either pass.
@@ -195,16 +239,20 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     });
 
     // Merged topics = (a) matched project topics + (b) ② migrations + (c) ① migrations
+    // BUT exclude subordinate M:N merge targets (only the primary shows a card).
     const mergedSet = new Set<string>([
       ...matchedProjectIds,
       ...migratedFromNotDiscussed,
       ...migratedFromNew,
     ]);
-    const merged = projectTopics.filter((t) => mergedSet.has(t.topic_id ?? ""));
+    const merged = projectTopics.filter((t) => {
+      const tid = t.topic_id ?? "";
+      return mergedSet.has(tid) && !subordinateMergeIds.has(tid);
+    });
 
     return { newTopics, notInCall, merged };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, pending, projectTopics, eff.verify_new_cache, migratedFromNew, migratedFromNotDiscussed, newDecisions]);
+  }, [groups, pending, projectTopics, eff.verify_new_cache, migratedFromNew, migratedFromNotDiscussed, subordinateMergeIds, newDecisions]);
 
   const stage1Done = eff.verify_new_status === "done";
   const stage2Done = eff.verify_not_discussed_status === "done";
@@ -296,16 +344,19 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
         payload.push({ ...p, topic_id: null });
       }
 
-      // Topics the user explicitly merged from New → existing topic.
-      // For these, the call topic's tasks/OQ/decisions are the source of truth
-      // (not the project topic's). They become a topic_update on the existing topic.
-      const userMergedFromNew = new Map<string, TopicData>();
+      // Topics the user explicitly merged from New → existing topic(s).
+      // For 1-target merges, the call topic's data becomes a topic_update on
+      // the existing target. For M:N merges (2+ targets), the candidate
+      // becomes a NEW topic that absorbs all the source targets (sources get
+      // archived via _source_topic_ids).
+      const userMergedFromNew = new Map<string, { pending: TopicData; all_targets: string[] }>();
       const vnCache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
       for (const p of pending) {
         const r = vnCache[p.name];
         const d = resolveNewDecision(p.name, r);
-        if (d.action === "merge" && d.merge_to_id) {
-          userMergedFromNew.set(d.merge_to_id, p);
+        if (d.action === "merge" && d.merge_to_ids.length >= 1) {
+          // Use the FIRST target as the "anchor" for Section 3 placement.
+          userMergedFromNew.set(d.merge_to_ids[0], { pending: p, all_targets: d.merge_to_ids });
         }
       }
 
@@ -333,8 +384,20 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             needs_manual_review: extracted.needs_manual_review,
           });
         } else if (fromNew) {
-          // Promote call topic content onto the existing project topic_id.
-          payload.push({ ...fromNew, topic_id: tid });
+          if (fromNew.all_targets.length >= 2) {
+            // M:N — create a NEW topic that absorbs all source targets.
+            // validate_project_updates archives the sources via _source_topic_ids.
+            payload.push({
+              ...fromNew.pending,
+              topic_id: null,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              _source_topic_ids: fromNew.all_targets,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            } as any);
+          } else {
+            // 1:1 — promote call topic content onto the existing topic_id.
+            payload.push({ ...fromNew.pending, topic_id: tid });
+          }
         } else {
           payload.push({ ...m, topic_id: tid });
         }
@@ -541,13 +604,14 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                 fromNewSourceName={fromNewName}
                 fromNewPending={fromNewPending}
                 fromNewResult={fromNewResult}
+                subordinateMergeNames={mergedFromNewSubordinateNames.get(tid) ?? []}
                 projectTopics={projectTopics}
                 onRevertFromNew={
                   fromNewName
                     ? () =>
                         setNewDecisions((prev) => ({
                           ...prev,
-                          [fromNewName.toLowerCase().trim()]: { action: "new" },
+                          [fromNewName.toLowerCase().trim()]: { action: "new", merge_to_ids: [] },
                         }))
                     : undefined
                 }
@@ -556,7 +620,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                     ? (new_id: string) =>
                         setNewDecisions((prev) => ({
                           ...prev,
-                          [fromNewName.toLowerCase().trim()]: { action: "merge", merge_to_id: new_id },
+                          [fromNewName.toLowerCase().trim()]: { action: "merge", merge_to_ids: [new_id] },
                         }))
                     : undefined
                 }
@@ -641,18 +705,22 @@ function NewTopicCard({
 }: {
   topic: TopicData;
   result?: VerifyNewResult;
-  decision: { action: "new" | "merge"; merge_to_id?: string | null };
+  decision: { action: "new" | "merge"; merge_to_ids: string[] };
   projectTopics: TopicData[];
-  onDecisionChange: (d: { action: "new" | "merge"; merge_to_id?: string | null }) => void;
+  onDecisionChange: (d: { action: "new" | "merge"; merge_to_ids: string[] }) => void;
 }) {
   const isNewSelected = decision.action === "new";
   const isMergeSelected = decision.action === "merge";
 
-  // Look up the merge target topic so we can show its data for comparison.
-  const mergeTargetId = decision.merge_to_id ?? result?.matched_topic_id ?? null;
+  // The "primary" target for comparison display = first picked, fallback to LLM suggestion.
+  const mergeTargetId = decision.merge_to_ids[0] ?? result?.matched_topic_id ?? null;
   const mergeTarget = mergeTargetId
     ? projectTopics.find((t) => t.topic_id === mergeTargetId)
     : null;
+
+  // Resolved name lookup for chip display
+  const topicNameById = (id: string): string =>
+    projectTopics.find((t) => t.topic_id === id)?.name ?? "(unknown)";
 
   // Helpers for rendering
   const verdictCitations = (result?.citations ?? []).filter(
@@ -901,51 +969,110 @@ function NewTopicCard({
           </span>
           <button
             type="button"
-            onClick={() => onDecisionChange({ action: "new" })}
+            onClick={() => onDecisionChange({ action: "new", merge_to_ids: [] })}
             style={isNewSelected ? decisionButtonSelected : decisionButton}
           >
             ✓ Confirm new
           </button>
           <button
             type="button"
-            onClick={() =>
-              onDecisionChange({
-                action: "merge",
-                // Pre-populate with the LLM's suggested target when present —
-                // saves a manual picker click on the common "accept LLM merge" case.
-                merge_to_id: decision.merge_to_id ?? result?.matched_topic_id ?? null,
-              })
-            }
+            onClick={() => {
+              const initial =
+                decision.merge_to_ids.length > 0
+                  ? decision.merge_to_ids
+                  : result?.matched_topic_id
+                    ? [result.matched_topic_id]
+                    : [];
+              onDecisionChange({ action: "merge", merge_to_ids: initial });
+            }}
             style={isMergeSelected ? decisionButtonSelected : decisionButton}
           >
             ↻ Merge with…
-            {result?.matched_topic_name && !decision.merge_to_id && (
+            {result?.matched_topic_name && decision.merge_to_ids.length === 0 && (
               <span style={{ fontSize: 9, color: "#5e6c84", fontWeight: 400, marginLeft: 4 }}>
                 ({result.matched_topic_name})
               </span>
             )}
           </button>
           {isMergeSelected && (
-            <select
-              value={decision.merge_to_id ?? ""}
-              onChange={(e) => onDecisionChange({ action: "merge", merge_to_id: e.target.value || null })}
-              style={{
-                fontSize: 11,
-                padding: "4px 8px",
-                border: "1px solid #dfe1e6",
-                borderRadius: 4,
-                background: "white",
-                color: "#172b4d",
-                fontFamily: "inherit",
-              }}
-            >
-              <option value="">— select topic —</option>
-              {projectTopics.map((t) => (
-                <option key={t.topic_id} value={t.topic_id ?? ""}>
-                  {t.name}
-                </option>
+            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+              {decision.merge_to_ids.map((id) => (
+                <span
+                  key={id}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 11,
+                    padding: "2px 6px 2px 8px",
+                    borderRadius: 12,
+                    background: "#deebff",
+                    color: "#0052cc",
+                    border: "1px solid #b3d4ff",
+                  }}
+                >
+                  {topicNameById(id)}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onDecisionChange({
+                        action: "merge",
+                        merge_to_ids: decision.merge_to_ids.filter((x) => x !== id),
+                      })
+                    }
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#0052cc",
+                      cursor: "pointer",
+                      padding: 0,
+                      fontSize: 12,
+                      lineHeight: 1,
+                    }}
+                    title="Remove this target"
+                  >
+                    ×
+                  </button>
+                </span>
               ))}
-            </select>
+              <select
+                value=""
+                onChange={(e) => {
+                  const newId = e.target.value;
+                  if (newId && !decision.merge_to_ids.includes(newId)) {
+                    onDecisionChange({
+                      action: "merge",
+                      merge_to_ids: [...decision.merge_to_ids, newId],
+                    });
+                  }
+                }}
+                style={{
+                  fontSize: 11,
+                  padding: "4px 8px",
+                  border: "1px solid #dfe1e6",
+                  borderRadius: 4,
+                  background: "white",
+                  color: "#172b4d",
+                  fontFamily: "inherit",
+                }}
+              >
+                <option value="">
+                  + {decision.merge_to_ids.length === 0 ? "select topic" : "add another target"}…
+                </option>
+                {projectTopics
+                  .filter((t) => !decision.merge_to_ids.includes(t.topic_id ?? ""))
+                  .map((t) => (
+                    <option key={t.topic_id} value={t.topic_id ?? ""}>
+                      {t.name}
+                    </option>
+                  ))}
+              </select>
+              {decision.merge_to_ids.length >= 2 && (
+                <span style={{ fontSize: 10, color: "#974f0c", fontStyle: "italic" }}>
+                  M:N merge — a new topic will be created absorbing all {decision.merge_to_ids.length} sources
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -1033,6 +1160,7 @@ function MergedTopicCard({
   fromNewSourceName,
   fromNewPending,
   fromNewResult,
+  subordinateMergeNames,
   projectTopics,
   onRevertFromNew,
   onChangeMergeTarget,
@@ -1044,8 +1172,9 @@ function MergedTopicCard({
   fromNotDiscussed: boolean;
   callsById: Record<string, Pick<Call, "id" | "title" | "created_at">>;
   fromNewSourceName?: string;
-  fromNewPending?: TopicData;  // the call-topic data that migrated here via ①
+  fromNewPending?: TopicData;
   fromNewResult?: VerifyNewResult;
+  subordinateMergeNames?: string[];  // names of additional sources for M:N merges
   projectTopics: TopicData[];
   onRevertFromNew?: () => void;
   onChangeMergeTarget?: (new_target_id: string) => void;
@@ -1064,6 +1193,11 @@ function MergedTopicCard({
         <strong style={{ fontSize: 13, color: "#172b4d" }}>{projectTopic.name}</strong>
         {fromNew && fromNewSourceName && (
           <span style={badgeAmber}>moved from New: &quot;{fromNewSourceName}&quot;</span>
+        )}
+        {(subordinateMergeNames?.length ?? 0) >= 1 && (
+          <span style={{ ...badgeAmber, background: "#fff1f0", color: "#ae2a19", border: "1px solid #ffbdad" }}>
+            M:N merge — also absorbing: {subordinateMergeNames!.join(", ")} (will be archived)
+          </span>
         )}
         {fromNotDiscussed && <span style={badgeAmber}>moved from Not discussed</span>}
         {extracted && !extracted.needs_manual_review && (
