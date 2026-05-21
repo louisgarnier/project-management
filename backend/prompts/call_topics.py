@@ -255,7 +255,7 @@ A topic is valid only when it has ≥1 valid task.
 - task.key_terms (required, >=1 entry per task — anchoring terms for THIS task)
 - task.open_questions (required — array, may be empty for tasks with no open questions)
 - task.decisions (required — array, may be empty for tasks with no decisions)
-- task.citations (required, >=1 entry — verbatim transcript quotes anchoring THIS task)
+- task.citations (required, >=2 entries — prefer 2-4 verbatim quotes per task. Capture the speaker who raised the topic, key arguments or concerns voiced, AND the moment of commitment/agreement. A single quote rarely tells the full story; include the surrounding exchange when relevant. Each quote MUST be verbatim from the transcript and specifically anchor THIS task — not generic context.)
 - open_question.text (required) / .status (required) / .owner (OPTIONAL)
 - decision.text (required, non-empty)
 - citation.quote (required, verbatim) / .speaker (required) / .lines (required)

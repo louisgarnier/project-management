@@ -1106,6 +1106,14 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
         const task = (t.tasks ?? [])[taskCitationPopover.rowIdx];
         if (!task) return null;
         const cits = task.citations ?? [];
+        // Position: anchor near the click but clamp so the popover fits on screen.
+        const POPOVER_W = 560;
+        const POPOVER_MAX_H = 480;
+        const margin = 12;
+        const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+        const vh = typeof window !== "undefined" ? window.innerHeight : 900;
+        const left = Math.max(margin, Math.min(taskCitationPopover.x - POPOVER_W / 2, vw - POPOVER_W - margin));
+        const top = Math.max(margin, Math.min(taskCitationPopover.y + 12, vh - POPOVER_MAX_H - margin));
         return (
           <>
             <div
@@ -1115,41 +1123,69 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
             <div
               style={{
                 position: "fixed",
-                top: taskCitationPopover.y,
-                left: taskCitationPopover.x,
+                top,
+                left,
                 zIndex: 100,
+                width: POPOVER_W,
+                maxHeight: POPOVER_MAX_H,
+                overflowY: "auto",
                 background: "white",
                 border: "1px solid #c1c7d0",
-                borderRadius: 4,
-                boxShadow: "0 4px 12px rgba(9,30,66,.15)",
-                padding: "8px 10px",
-                maxWidth: 480,
-                fontSize: 11,
+                borderRadius: 6,
+                boxShadow: "0 8px 24px rgba(9,30,66,.18)",
+                padding: "14px 16px",
+                fontSize: 12,
+                color: "#172b4d",
+                lineHeight: 1.5,
               }}
             >
-              <div style={{ fontSize: 9, color: "#5e6c84", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
-                Citations anchoring this task ({cits.length})
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #ebecf0" }}>
+                <div style={{ fontSize: 11, color: "#5e6c84", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                  {cits.length} citation{cits.length === 1 ? "" : "s"} for &ldquo;{task.task || "(unnamed task)"}&rdquo;
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTaskCitationPopover(null)}
+                  style={{ background: "none", border: "none", color: "#5e6c84", cursor: "pointer", fontSize: 14, padding: "0 4px" }}
+                  title="Close"
+                >×</button>
               </div>
               {cits.length === 0 ? (
-                <div style={{ color: "#97a0af" }}>(no citations)</div>
+                <div style={{ color: "#97a0af", fontStyle: "italic" }}>(no citations on this task)</div>
               ) : (
-                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                <ol style={{ margin: 0, paddingLeft: 18, listStyle: "decimal" }}>
                   {cits.map((c, i) => (
-                    <li key={i} style={{ marginBottom: 6 }}>
-                      {c.speaker && (
-                        <span style={{ fontWeight: 600, color: "#172b4d" }}>{c.speaker}:</span>
-                      )}{" "}
-                      <span style={{ fontStyle: "italic", color: "#42526e" }}>
-                        &quot;{c.quote}&quot;
-                      </span>
-                      {c.lines && (
-                        <span style={{ color: "#97a0af", marginLeft: 4, fontSize: 10 }}>
-                          (lines {c.lines})
-                        </span>
-                      )}
+                    <li
+                      key={i}
+                      style={{
+                        marginBottom: 12,
+                        paddingLeft: 4,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 2, flexWrap: "wrap" }}>
+                        {c.speaker && (
+                          <span style={{ fontWeight: 600, color: "#172b4d" }}>{c.speaker}</span>
+                        )}
+                        {c.lines && (
+                          <span style={{ color: "#97a0af", fontSize: 10 }}>lines {c.lines}</span>
+                        )}
+                      </div>
+                      <div
+                        style={{
+                          fontStyle: "italic",
+                          color: "#42526e",
+                          background: "#fafbfc",
+                          borderLeft: "3px solid #b3d4ff",
+                          padding: "6px 10px",
+                          borderRadius: 3,
+                          whiteSpace: "pre-wrap",
+                        }}
+                      >
+                        &ldquo;{c.quote}&rdquo;
+                      </div>
                     </li>
                   ))}
-                </ul>
+                </ol>
               )}
             </div>
           </>
