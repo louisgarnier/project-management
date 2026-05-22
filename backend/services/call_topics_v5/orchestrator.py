@@ -276,30 +276,60 @@ async def run_pipeline(
             "warnings": warnings,
         }
 
-        # Decide state: clean path → run Stage 12 now; otherwise → awaiting_review
-        if report["clean"] and not approvals_needed and not confidence_review:
-            await _emit("Stage 11: skipped (clean run, no review needed)")
-            # Stage 12 happens in the resolve-review endpoint normally; for clean
-            # path we apply it immediately so the user doesn't see a paused state.
-            from backend.services.call_topics_v5.stage_12_serialize import serialize_to_v4
-            v4_output = serialize_to_v4(with_conf)
-            payload["v4_output"] = v4_output
-            payload["completed_at"] = _dt.datetime.utcnow().isoformat() + "Z"
-            # Also write to extraction_cache so the existing UI shows topics
-            client.table("calls").update({
-                "call_topics_v5_state": "done",
-                "call_topics_v5_payload": payload,
-                "extraction_cache": v4_output,
-                "extraction_status": "done",
-            }).eq("id", call_id).execute()
-            await _emit(f"Stage 12: serialized {len(v4_output)} topics — DONE")
-        else:
-            await _emit(
-                f"Stage 11: PAUSED — {len(approvals_needed)} approvals + {len(confidence_review)} confidence review + {len(warnings)} warnings"
-            )
-            payload["completed_at"] = _dt.datetime.utcnow().isoformat() + "Z"
-            _set_state("awaiting_review", payload)
+        # ── Stage 11 SKIPPED (EPIC-17 simplification) ──
+        # New topic approvals, confidence review, warnings → all moved to the
+        # call_topics UI where the user can edit/delete tasks directly. The
+        # gate-style banner added friction without value because everything
+        # ended up Approve-all anyway. Confidence is now displayed PER TASK in
+        # the table (colored chip). Warnings are computed + persisted but not
+        # surfaced as blocking review.
+        #
+        # New topics: auto-added to the project topic_registry so future calls
+        # see them in Stage 5's vocabulary. The user can rename / delete from
+        # the regular call_topics UI; downstream changes to the registry are
+        # rare and can be made via an admin endpoint when needed.
 
+        # Resolve project_id (we have it from earlier — call_rows fetch)
+        proj_id = call_rows[0]["project_id"]
+        new_topics_added: list[str] = []
+        for prop in s6["new_topic_proposals"]:
+            name = (prop.get("proposed_name") or "").strip()
+            if not name:
+                continue
+            try:
+                # Insert into topic_registry; idempotent via the unique index
+                # on (project_id, lower(name)) — duplicates silently skipped.
+                client.table("topic_registry").insert({
+                    "project_id": proj_id,
+                    "name": name,
+                    "approved_by_call_id": call_id,
+                }).execute()
+                new_topics_added.append(name)
+            except Exception as e:  # noqa: BLE001
+                # Likely a unique constraint hit if the topic already exists
+                # (race or case-only difference). Don't fail the pipeline.
+                logger.warning("[Stage 11 auto-approve] registry insert skipped %r: %s", name, e)
+        if new_topics_added:
+            await _emit(f"Auto-added to registry: {', '.join(new_topics_added)}")
+
+        # Always run Stage 12 — no human gate.
+        from backend.services.call_topics_v5.stage_12_serialize import serialize_to_v4
+        v4_output = serialize_to_v4(with_conf)
+        payload["v4_output"] = v4_output
+        payload["auto_registry_additions"] = new_topics_added
+        payload["completed_at"] = _dt.datetime.utcnow().isoformat() + "Z"
+
+        client.table("calls").update({
+            "call_topics_v5_state": "done",
+            "call_topics_v5_payload": payload,
+            "extraction_cache": v4_output,
+            "extraction_status": "done",
+        }).eq("id", call_id).execute()
+        await _emit(
+            f"Stage 12: serialized {len(v4_output)} topic(s) → DONE "
+            f"({report['low_confidence_tasks_count']} task(s) with conf<0.5 visible in table chip; "
+            f"{len(report['soft_warnings'])} warning(s) persisted in payload but non-blocking)"
+        )
         return payload
 
     except Exception as e:  # noqa: BLE001

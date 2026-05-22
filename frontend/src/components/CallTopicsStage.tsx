@@ -739,22 +739,25 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                         {/* Task + per-task extras (v4: key_terms, OQ, decisions, citations) */}
                         <td style={TABLE_TD_STYLE}>
                           {task && (
-                            <input
-                              key={task.task_id}
-                              type="text"
-                              defaultValue={task.task}
-                              placeholder="Describe task…"
-                              onBlur={(e) => {
-                                if (e.target.value !== task.task)
-                                  updateTasks(
-                                    ti,
-                                    tasks.map((t, i) =>
-                                      i === ri ? { ...t, task: e.target.value } : t,
-                                    ),
-                                  );
-                              }}
-                              style={INLINE_INPUT_STYLE}
-                            />
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <input
+                                key={task.task_id}
+                                type="text"
+                                defaultValue={task.task}
+                                placeholder="Describe task…"
+                                onBlur={(e) => {
+                                  if (e.target.value !== task.task)
+                                    updateTasks(
+                                      ti,
+                                      tasks.map((t, i) =>
+                                        i === ri ? { ...t, task: e.target.value } : t,
+                                      ),
+                                    );
+                                }}
+                                style={{ ...INLINE_INPUT_STYLE, flex: 1 }}
+                              />
+                              <TaskConfidenceChip score={task.confidence?.score} />
+                            </div>
                           )}
                         </td>
                         <td style={TABLE_TD_STYLE}>
@@ -1686,5 +1689,36 @@ function PerTaskExtras({
         </div>
       )}
     </div>
+  );
+}
+
+/** TaskConfidenceChip — colored chip showing per-task confidence from the v5
+ *  pipeline. EPIC-17: replaces the Stage 11 confidence review gate. Hover
+ *  shows the score; color encodes High / Moderate / Low. */
+function TaskConfidenceChip({ score }: { score?: number }) {
+  if (score === undefined || score === null) return null;
+  const pct = Math.round(score * 100);
+  let bg = '#e3fcef', color = '#006644', label = 'high';
+  if (pct < 50) {
+    bg = '#fff1f0'; color = '#ae2a19'; label = 'low';
+  } else if (pct < 80) {
+    bg = '#fff4e6'; color = '#974f0c'; label = 'mod';
+  }
+  return (
+    <span
+      title={`Per-task confidence (v5 pipeline): ${pct}% (${label})`}
+      style={{
+        fontSize: 9,
+        padding: '1px 6px',
+        background: bg,
+        color,
+        border: `1px solid ${color}30`,
+        borderRadius: 10,
+        fontWeight: 700,
+        flexShrink: 0,
+      }}
+    >
+      {pct}%
+    </span>
   );
 }

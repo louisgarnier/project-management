@@ -154,6 +154,8 @@ export interface TaskData {
   key_terms?: string[];
   open_questions?: OpenQuestionData[];
   decisions?: DecisionData[];
+  // EPIC-17 v5: per-task confidence (0.0-1.0) + signal breakdown
+  confidence?: { score: number; signals?: Record<string, unknown> };
 }
 
 /** One topic as returned by extract or dashboard endpoints */
