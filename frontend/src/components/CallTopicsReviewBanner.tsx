@@ -30,6 +30,8 @@ export default function CallTopicsReviewBanner({ call, onResolved }: Props) {
   const review = payload?.review_payload;
   const [newTopicDecisions, setNewTopicDecisions] = useState<Record<string, NewTopicDecision>>({});
   const [acknowledgedWarnings, setAcknowledgedWarnings] = useState<Set<number>>(new Set());
+  // Per-task drop decisions sourced from warning actions. Key = "topic|task".
+  const [droppedTasks, setDroppedTasks] = useState<Map<string, { topic_name: string; task_text: string }>>(new Map());
   const [submitting, setSubmitting] = useState(false);
 
   if (!review) return null;
@@ -54,6 +56,7 @@ export default function CallTopicsReviewBanner({ call, onResolved }: Props) {
           action: "approve",  // simplified: this UI auto-approves; future: per-task control
         })),
         acknowledged_warnings: Array.from(acknowledgedWarnings),
+        dropped_tasks: Array.from(droppedTasks.values()),
       };
       await callsAPI.v5ResolveReview(call.id, decisions);
       onResolved();
@@ -225,44 +228,81 @@ export default function CallTopicsReviewBanner({ call, onResolved }: Props) {
         </Section>
       )}
 
-      {/* Warnings */}
-      {review.warnings.length > 0 && (
-        <Section title={`Warnings (${review.warnings.length})`} color="#7a4f00">
-          {review.warnings.map((w, i) => {
-            const acked = acknowledgedWarnings.has(i);
-            return (
-              <div key={i} style={{ ...proposalBox, opacity: acked ? 0.5 : 1 }}>
-                <div style={{ fontSize: 11, color: "#7a4f00", fontWeight: 600 }}>
-                  {w.code}
-                  {w.topic && <span style={{ color: "#5e6c84", marginLeft: 6 }}>· {w.topic}</span>}
+      {/* Warnings — deduped by task. Each task gets ONE entry showing all
+          warning codes that fired on it, with Keep/Drop actions. */}
+      {review.warnings.length > 0 && (() => {
+        // Group warnings by (topic, task) — many S1 rows on same task collapse to one
+        const grouped = new Map<string, { topic: string; task: string; codes: { code: string; idx: number; message: string }[] }>();
+        review.warnings.forEach((w, i) => {
+          const topic = (w.topic as string) || "(no topic)";
+          const task = (w.task as string) || "(topic-level)";
+          const key = `${topic}|${task}`;
+          if (!grouped.has(key)) grouped.set(key, { topic, task, codes: [] });
+          grouped.get(key)!.codes.push({ code: w.code, idx: i, message: w.message });
+        });
+        const entries = Array.from(grouped.values());
+        return (
+          <Section title={`Warnings (${entries.length} task${entries.length === 1 ? "" : "s"} flagged)`} color="#7a4f00">
+            <div style={{ fontSize: 10, color: "#5e6c84", marginBottom: 4, fontStyle: "italic" }}>
+              These are informational. Keep the task as-is, or Drop it from the final output.
+              Tasks dropped here won&apos;t appear in your call_topics table.
+            </div>
+            {entries.map((entry) => {
+              const key = `${entry.topic}|${entry.task}`;
+              const dropped = droppedTasks.has(key);
+              return (
+                <div key={key} style={{ ...proposalBox, opacity: dropped ? 0.5 : 1 }}>
+                  <div style={{ fontSize: 12, color: "#172b4d", fontWeight: 600 }}>
+                    {entry.task !== "(topic-level)" && <>{entry.task}</>}
+                    <span style={{ color: "#5e6c84", marginLeft: 6, fontWeight: 400 }}>· {entry.topic}</span>
+                  </div>
+                  <ul style={{ marginTop: 4, marginBottom: 4, paddingLeft: 18, fontSize: 11, color: "#7a4f00" }}>
+                    {entry.codes.map((c) => (
+                      <li key={c.idx} style={{ marginBottom: 2 }}>
+                        <span style={{ fontWeight: 600, fontFamily: "ui-monospace, monospace" }}>{c.code}</span> — {c.message}
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (dropped) {
+                          setDroppedTasks((prev) => {
+                            const n = new Map(prev);
+                            n.delete(key);
+                            return n;
+                          });
+                        }
+                      }}
+                      disabled={!dropped}
+                      style={pillBtn(!dropped, "#36b37e")}
+                    >
+                      ✓ Keep
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!dropped) {
+                          setDroppedTasks((prev) => {
+                            const n = new Map(prev);
+                            n.set(key, { topic_name: entry.topic, task_text: entry.task });
+                            return n;
+                          });
+                        }
+                      }}
+                      disabled={dropped}
+                      style={pillBtn(dropped, "#bf2600")}
+                    >
+                      🗑 Drop task
+                    </button>
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: "#42526e", marginTop: 2 }}>{w.message}</div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAcknowledgedWarnings((prev) => {
-                      const next = new Set(prev);
-                      next.has(i) ? next.delete(i) : next.add(i);
-                      return next;
-                    });
-                  }}
-                  style={{
-                    marginTop: 4,
-                    fontSize: 10,
-                    padding: "2px 8px",
-                    border: "1px solid #c1c7d0",
-                    borderRadius: 3,
-                    background: acked ? "#deebff" : "white",
-                    cursor: "pointer",
-                  }}
-                >
-                  {acked ? "✓ Acknowledged" : "Acknowledge"}
-                </button>
-              </div>
-            );
-          })}
-        </Section>
-      )}
+              );
+            })}
+          </Section>
+        );
+      })()}
 
       <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button

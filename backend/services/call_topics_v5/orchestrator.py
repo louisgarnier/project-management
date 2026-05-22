@@ -279,6 +279,11 @@ async def resolve_review(
 
     synthesized = payload.get("synthesized_topics") or []
     approved_new_topics = decisions.get("approved_new_topics") or []
+    # NEW: list of {topic_name, task_text} tuples flagged for drop (from warnings UI)
+    dropped_task_keys = {
+        (d.get("topic_name", "").strip().lower(), d.get("task_text", "").strip())
+        for d in (decisions.get("dropped_tasks") or [])
+    }
 
     # Apply new topic decisions → registry mutation
     name_remap: dict[str, str] = {}  # old proposed_name → final canonical name
@@ -326,6 +331,10 @@ async def resolve_review(
         for taski, tk in enumerate(topic.get("tasks") or []):
             path = f"{ti}.{taski}"
             if path in rejected_task_paths:
+                continue
+            # NEW: drop via warning UI
+            key = ((topic.get("topic_name") or "").strip().lower(), (tk.get("task") or "").strip())
+            if key in dropped_task_keys:
                 continue
             tasks_out.append(tk)
         if tasks_out:

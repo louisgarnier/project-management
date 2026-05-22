@@ -142,10 +142,16 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
       setPolling(false);
       return;
     }
+    // First poll fires after 1s, then 3s cadence — so the progress log
+    // appears within 1s of clicking Re-extract instead of waiting 3s.
+    const firstTick = setTimeout(() => onPollCall?.(), 1000);
     const timer = setInterval(() => {
       onPollCall?.();
     }, 3000);
-    return () => clearInterval(timer);
+    return () => {
+      clearTimeout(firstTick);
+      clearInterval(timer);
+    };
   }, [polling, call.extraction_status, onPollCall]);
 
   // ── Load topics from DB (after re-extract completes) ──
@@ -300,6 +306,9 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
     // Flip polling on IMMEDIATELY so the "Generating…" UI shows during the
     // ~57s LLM round-trip — don't wait for the API POST to return first.
     setPolling(true);
+    // Trigger an instant refresh so the UI re-renders + the next poll
+    // arrives quickly (avoids the 3-5s lag where the old progress log lingers).
+    onPollCall?.();
     try {
       logger.info("[CallTopicsStage] re-extracting call topics", { data: { callId: call.id } });
       await topicsAPI.extractCall(call.id);
