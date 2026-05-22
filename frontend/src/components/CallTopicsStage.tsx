@@ -1111,14 +1111,16 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                             }
                             logger.info("[CallTopicsStage] move task persisted via topics PATCH");
                           }
-                          // Safety net: re-fetch from server to ensure UI mirrors
-                          // what's truly persisted (catches any read-after-write
-                          // races or partial PATCH failures).
-                          onPollCall?.();
+                          // NOTE: no parent refetch here — that would re-send the
+                          // call prop and could re-import a stale extraction_cache
+                          // due to Supabase read-after-write inconsistency, causing
+                          // the moved task to reappear in the source until refresh.
+                          // The local setTopics is authoritative until next refresh.
                         } catch (e) {
-                          logger.error("[CallTopicsStage] move task PERSIST FAILED — rolling back UI", { data: e });
-                          // Rollback: revert to the previous topics state
-                          setTopics(topics);
+                          logger.error("[CallTopicsStage] move task persist failed", { data: e });
+                          // Don't rollback UI — user just saw the change visually.
+                          // Showing the warning toast lets them retry.
+                          setError("Move failed to persist. Refresh to see the truth.");
                         }
                       }}
                       style={menuItem}
