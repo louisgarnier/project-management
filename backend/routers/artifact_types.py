@@ -61,52 +61,75 @@ DEFAULT_NOT_DISCUSSED_CHECK_PROMPT = {
 
 
 def seed_defaults(project_id: str) -> None:
-    """Seed a new project with:
-    - Tier 1: the 4 workflow prompts (always, from backend/prompts/*.py)
-    - Tier 2: artifact_library entries where seeded_by_default=true (typically 3)
+    """Seed a new project with workflow prompts + default artifact types.
+    Failures on individual inserts are logged but do not abort the whole seed —
+    a partial project is better than none, and the user can fix gaps manually.
     """
     client = get_client()
 
-    # Tier 1 — workflow prompts (EPIC-11 pattern, unchanged)
+    # Tier 1 — workflow prompts (EPIC-11 pattern)
     for workflow_prompt in (
         DEFAULT_CALL_TOPICS_PROMPT,
         DEFAULT_PROJECT_TOPICS_PROMPT,
         DEFAULT_MERGE_VERIFICATION_PROMPT,
         DEFAULT_NOT_DISCUSSED_CHECK_PROMPT,
     ):
-        client.table("artifact_types").insert(
-            {"project_id": project_id, **workflow_prompt}
-        ).execute()
+        try:
+            client.table("artifact_types").insert(
+                {"project_id": project_id, **workflow_prompt}
+            ).execute()
+        except Exception as e:
+            db_logger.warning(
+                f"⚠️ [seed_defaults] Tier-1 insert failed ({workflow_prompt.get('name')!r}): {e}"
+            )
 
     # Tier 2 — library-backed artifact types with seeded_by_default=true
-    seeded = (
-        client.table("artifact_library")
-        .select(
-            "id, name, description, kind, prompt, template_id, llm, model, context_scope"
+    try:
+        seeded = (
+            client.table("artifact_library")
+            .select(
+                "id, name, description, kind, prompt, template_id, llm, model, context_scope"
+            )
+            .eq("seeded_by_default", True)
+            .execute()
+            .data
         )
-        .eq("seeded_by_default", True)
-        .execute()
-        .data
-    )
+    except Exception as e:
+        db_logger.warning(f"⚠️ [seed_defaults] artifact_library read failed: {e}")
+        seeded = []
+
+    inserted = 0
     for entry in seeded:
-        client.table("artifact_types").insert(
-            {
-                "project_id": project_id,
-                "name": entry["name"],
-                "prompt": entry.get("prompt"),
-                "is_default": True,
-                "category": "artifacts",
-                "kind": entry["kind"],
-                "template_id": entry.get("template_id"),
-                "library_ref_id": entry["id"],
-                "llm": entry.get("llm"),
-                "model": entry.get("model"),
-                "context_scope": entry.get("context_scope", "call"),
-            }
-        ).execute()
+        try:
+            # artifact_types CHECK may still use the legacy ('call', 'project')
+            # enum even though artifact_library accepts the Phase 2 enum.
+            # Map Phase 2 values back to 'call' for compatibility.
+            cs = entry.get("context_scope") or "call"
+            if cs in {"this_call_transcript", "all_call_transcripts"}:
+                cs = "call"
+            client.table("artifact_types").insert(
+                {
+                    "project_id": project_id,
+                    "name": entry["name"],
+                    "prompt": entry.get("prompt"),
+                    "is_default": True,
+                    "category": "artifacts",
+                    "kind": entry["kind"],
+                    "template_id": entry.get("template_id"),
+                    "library_ref_id": entry["id"],
+                    "llm": entry.get("llm"),
+                    "model": entry.get("model"),
+                    "context_scope": cs,
+                }
+            ).execute()
+            inserted += 1
+        except Exception as e:
+            db_logger.warning(
+                f"⚠️ [seed_defaults] Tier-2 insert failed ({entry.get('name')!r}): {e}"
+            )
 
     db_logger.info(
-        f"✅ [DB] Seeded project {project_id}: 4 workflow prompts + {len(seeded)} library artifacts"
+        f"✅ [DB] Seeded project {project_id}: workflow prompts attempted + {inserted}/{len(seeded)} library artifacts inserted"
     )
 
 
