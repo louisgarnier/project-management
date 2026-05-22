@@ -1,0 +1,241 @@
+[0001] with the memory boost to see how that affects performance of the actual PRD job.
+[0002] Because I think at the moment, the way that the file is set up,
+[0003] or at least the underlying report,
+[0004] and more correct me if I'm wrong,
+[0005] that this should be pretty close to what will actually need to be done in production.
+[0006] Yes, I think so.
+[0007] So, apologies, Mark.
+[0008] I had to leave early on Friday,
+[0009] so I didn't see your email until just this morning.
+[0010] So, I'm going to ask the team to run the job with the new composite that you had sent over.
+[0011] And I will have them provide the details on how long it took to run,
+[0012] how much memory was used, and we can take it from there.
+[0013] So, Mark, what was the composite that you sent over?
+[0014] So, it's the CTF, you know, public markets that we normally use, in fact,
+[0015] plus, I think there's five or six private equity and real estate portfolios
+[0016] that I think lay had loaded.
+[0017] So, it should be close to, if not, like, you know, the full CTF plus private assets.
+[0018] So, we want to run.
+[0019] And on, did you check those assets?
+[0020] I mean, do we know that if we actually loaded up, you know,
+[0021] those are the ones that we loaded up into Faxard?
+[0022] No, no, no.
+[0023] I can check with Mark, like, what composite he is using.
+[0024] But I know, like, Lee has created that one,
+[0025] which has a lot of bulk only, so he might be using the bulk one.
+[0026] So, I can send you what I sent across, but I'm pretty sure that they're the most recent.
+[0027] I think they're loaded from September of last year.
+[0028] Yes, yes, yes.
+[0029] And the market value, at least, looked, you know, reasonable.
+[0030] OK, good.
+[0031] All right, so we'll start with that, and then we can address,
+[0032] Nick, we can address the model.
+[0033] You know, once that's done, right?
+[0034] Right, I think...
+[0035] Is the model the same or do you think about it?
+[0036] The simulation?
+[0037] The simulation.
+[0038] Yeah, using, like, kind of C-Mac, linear Mac simulation.
+[0039] I know I saw you had sent over me and E-Vell a couple of days ago or last week.
+[0040] Yes, I have that.
+[0041] I'm seeing normal plus default adjustment.
+[0042] Oh, is that the pre-op stuff that you mentioned?
+[0043] Yeah.
+[0044] Then the fat tail and then linear.
+[0045] Yeah.
+[0046] The only thing that I will say is we're likely going to need to create a separate look for linear,
+[0047] because there's just different columns that go to the linear model.
+[0048] So we'll have to find the, I guess, the correct mapping, if you will, of columns,
+[0049] to make sure that we're using the same data.
+[0050] We're going to get the same data points.
+[0051] Yeah.
+[0052] But so let me, let's start with using the Monte Carlo,
+[0053] and then we can go to the linear and see how that changes performance of the...
+[0054] Is that worse?
+[0055] Yeah.
+[0056] That's not good.
+[0057] And there aren't many anyway columns, so it's not going to be something that...
+[0058] Right.
+[0059] Yes, it shouldn't be hard to really match those ones soon.
+[0060] Right.
+[0061] The one question that I have for Mark, I don't actually have it up in front of me, but let
+[0062] me see if I can...
+[0063] Oh, I do.
+[0064] Is there a reason why you're including the composite component ID and the composite component
+[0065] description in the actual column, so...
+[0066] Yeah, and I don't know if we absolutely need both of those, but we'll need something,
+[0067] I think, too, because we're going to take this data and we're going to do calculations
+[0068] off of it.
+[0069] Right.
+[0070] So we need some way to know that these certain accounts belong to this...
+[0071] Right.
+[0072] ...a visit.
+[0073] Right.
+[0074] Okay.
+[0075] Because I think, and I don't know how this would change...
+[0076] One, the efficiency of the report and two, the actual output.
+[0077] But I know in analytics data feed manager, you can have it out like append a column to
+[0078] the row that gives you the actual file path of the portfolio.
+[0079] So it's almost like adding it without it, like adding to be in the underlying PA report.
+[0080] And the reason why I would like to explore that is to see if that would help with component
+[0081] like the tile runtime.
+[0082] Yeah, I mean, that's a great idea if that's possible.
+[0083] The only reason why I say that is because I just know that...
+[0084] Especially when we're talking about speed and efficiency of these reports, the more elements
+[0085] you have in the report, the longer it takes the load regardless of how mean the data point
+[0086] is.
+[0087] And if it's going to speed it up by a couple of minutes, there's no real harm in it.
+[0088] So I guess just my question ultimately, Dr. Stewart would be, is, do we need one or the
+[0089] other or do we need both?
+[0090] Is it imperative?
+[0091] If the ultimate question there is like, what's the preference from this website as to what
+[0092] would be...
+[0093] You know, you guys will be mapping off of.
+[0094] Nick, I'll just give you my take on it.
+[0095] What we're really looking for is the basic PA file should be able to give us by portfolio
+[0096] and what we call it account.
+[0097] You know what the contribution is to the overall CTF composite.
+[0098] Now, how we get then facts that tell us which account is in which composite, like for example,
+[0099] some of them are business-line composers, some of them are sub-business-line composers.
+[0100] Mark, actually hold on a second, Mark, why are we asking facts that for that information?
+[0101] I thought that's coming from our side, right?
+[0102] Yeah, it's possible, right, that there's a better way to do this, but just in some of
+[0103] the testing that I was doing, it was the easiest way I could find to identify which account
+[0104] belongs to which business-line.
+[0105] So I see, is to have that...
+[0106] Yeah.
+[0107] But I don't think we need that because I think them...
+[0108] And none, you can correct me for more, right?
+[0109] The whole point is that we were going to have that mapping between...
+[0110] And as I was explaining to you, it means like, yeah, why do we need it from facts that we
+[0111] shouldn't?
+[0112] Because the whole point is that we were going to do that whole joining outside of facts
+[0113] that.
+[0114] So as long as we have those tables that we can join outside of facts that we don't need
+[0115] that information from facts that.
+[0116] Yeah, we'll just need some way, because I think the way that at least the PA report
+[0117] comes out, if you don't have that, you can't tell what portfolio it is.
+[0118] But yeah, there's probably something better that can be done.
+[0119] Just to clarify, if I'm trying to say joining, do you mean the high-high-high-high-high-high
+[0120] situation or do you have anything joining this test test or all those things?
+[0121] No, this is the arm.
+[0122] We're not ourselves, trust us here.
+[0123] So joining the hierarchy.
+[0124] Yes, yes.
+[0125] So that will be coming from UDM from outside.
+[0126] And it will be dynamic.
+[0127] So that means as Suf's has to keep evolving all the time, we will keep providing the
+[0128] updated, high-high-high-high-high-high-high-high situation.
+[0129] And it will be in sync with the SIMCOAP, which is coming particularly from UDM.
+[0130] And we have some prototype code for that, and I definitely have to work with Joe and
+[0131] Joe's team to make a robust quiz and these things to the team, those things of our
+[0132] former UDM that we will be pushing to factor through the learning, through the laws of
+[0133] process.
+[0134] So, Samarth, just, is it fair to say that we don't need those columns for the fact set?
+[0135] And that if we get them, if we get the contributions by account, and then we have a way through
+[0136] the hierarchy process that Anand was describing, we should be able to aggregate them by business
+[0137] line and so forth, correct?
+[0138] Yes.
+[0139] As long as we can identify which portfolios in the output, I think that's why I added those
+[0140] there.
+[0141] I'm not understanding that point.
+[0142] What do you mean which portfolio in the output?
+[0143] I mean, you're going to get from facts that you used to correct me if I'm wrong.
+[0144] What are we going to get from facts that is the contributions by portfolio slash account
+[0145] to the overall CTF?
+[0146] That's all we're getting out of facts that it's our job to then basically regroup all
+[0147] of these contributions in different combinations to get them either by business line or by
+[0148] sub-business lines or by asset class one or by the asset allocation schema that hierarchy
+[0149] would talk about.
+[0150] But that is all independent of what comes out of fact set.
+[0151] Correct.
+[0152] The column that we're talking about is just the descriptions.
+[0153] I think it's the account name or something.
+[0154] It's just a way to identify what this portfolio actually is.
+[0155] Oh, I mean the because name.
+[0156] Oh, the portfolio name.
+[0157] Not like some other account structure or something like that.
+[0158] No, it's a description of the portfolio.
+[0159] It's because we're running it using groupings.
+[0160] The naming of the grouping itself comes out.
+[0161] It's a little hard to identify.
+[0162] I don't remember exactly why, but I found that those columns were the easiest when I
+[0163] was trying to mock this up to say this is what this data actually is.
+[0164] Okay.
+[0165] So Mark, there's an actual setting in the grouping itself.
+[0166] There's the description, which is the name that you and I think of on ABC.
+[0167] You have the ability in the grouping code to turn off and have it just pull down the
+[0168] portfolio path.
+[0169] So you would get like super client risk slash on underscore ABC dot ACCT instead.
+[0170] So if you know, depending on which way you want it, we could, you know, do it one way
+[0171] or the other.
+[0172] Again, kind of up to you as to how you like it, but you don't necessarily need to have
+[0173] either of those columns in there in order to have one or the other return.
+[0174] Okay.
+[0175] Yeah.
+[0176] If there's a mic size.
+[0177] No, it does.
+[0178] I mean, if there's a more efficient way to do it from what I remember right now, that
+[0179] was just my way of identifying what these were, but if there's a better way to do it, that
+[0180] gets us to the same same result.
+[0181] Yeah.
+[0182] That's good.
+[0183] And then the other thing I think from the other side, from Swift side, we will need to
+[0184] know how to match these accounts to the hierarchy.
+[0185] So there has to be a way to also match each one of these accounts to the accounts that
+[0186] we know.
+[0187] In fact, that I'm sorry, in Swift UDM.
+[0188] Okay.
+[0189] So I guess what we can do for this particular piece of the project is we can start to work
+[0190] out little one, I'll have the team run the memory boost, get some more information on
+[0191] that, and then we can work down a line of the different versions of the models.
+[0192] And in the meantime, Mark, I can provide a couple of examples to you of like what an
+[0193] output could look like.
+[0194] I'll just, you know, I'll create like a test composite, like using, and we can like look
+[0195] at the different like outputs that can come from it.
+[0196] And, you know, you guys can let me know what you think from like a mapping perspective,
+[0197] how do you think that will work for the best?
+[0198] Yeah, I think that makes sense.
+[0199] So Mark, once you get that file, and all needs to be involved in this so that we can
+[0200] figure out how we're going to, you know, what's the easiest way to map all of this
+[0201] into our UDM hierarchy?
+[0202] Yeah, the good thing is that in the UDM hierarchy, it goes up to the account of the
+[0203] portfolio level.
+[0204] So we can easily load it up to the bottom, the quantity of the application can be loaded
+[0205] away fast.
+[0206] Yeah.
+[0207] How we were identifying accounts in, in fact, I mean, they are identified by numbers as
+[0208] well, correct Mark?
+[0209] Yeah, they have numbers.
+[0210] The difficulty, so some of the difficulty, at least that I was seeing in why I added
+[0211] some of the ideas is that we're actually running it on the CTF composite, not, you know, not
+[0212] the underling accounts.
+[0213] But we're grouping by account.
+[0214] But like a lot of it, what you see is, you know, like as far as facts that's concerned,
+[0215] it's like what you're actually running it is the CTF composite.
+[0216] So that's like that's what we'll need to identify like what the number of the grouping
+[0217] is, if that makes sense.
+[0218] Of the account in the grouping, you mean?
+[0219] Yes.
+[0220] So would that be different from the account itself, the portfolio?
+[0221] No, but like we're actually running it on is the CTF composite.
+[0222] So, you know, there's a lot of fields that it's going to, if you try to, you know, ask
+[0223] compacts that for the output, it's going to tell you this is the CTF composite.
+[0224] You know, it's not 70-40.
+[0225] So yeah, that's, that's just why I didn't like that.
+[0226] But to next point, there's probably a better way to do that without pulling in that column
+[0227] for every single holding.
+[0228] Okay.
+[0229] Okay.
+[0230] Well, like I said, we'll, I can work with Mark on this from an output perspective and
+[0231] we can get, you know, some more information on the PRB jobs, but I think this should
+[0232] also be for the most part, pretty straightforward.
+[0233] I guess piece of the process to get this up and running.
+[0234] Yeah, I think, I think we'll do the same as we did with the other working group that
+[0235] we just finished the, on the specialises.
+[0236] We'll get a weekly update on this and then if we need to get on a working group meeting,
+[0237] then we can, can be there on how it's done.
+[0238] Yeah, that sounds perfect to me.
+[0239] Okay.
+[0240] Great.
+[0241] Well, unless there's anything else, thank you for the time this morning.

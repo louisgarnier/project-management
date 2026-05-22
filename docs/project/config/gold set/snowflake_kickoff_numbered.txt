@@ -1,0 +1,278 @@
+[0001] Good morning. Good morning.
+[0002] Can just give another minute for the others to join.
+[0003] Hassan is a I know market is out of office Laura told me she may be late.
+[0004] Do you know if Anand is going to make it?
+[0005] You're on mute Hassan if you're talking.
+[0006] And we can't hear you.
+[0007] So you couldn't hear me. I was unmuting myself and answering you and now I just have to change my microphone.
+[0008] So yeah, I'm checking for Anand to see where he is.
+[0009] Okay.
+[0010] Can you hear me now?
+[0011] Yeah, we can hear you.
+[0012] Okay, thanks.
+[0013] Should we join shortly?
+[0014] Okay, well, I guess we can probably kick off the discussion.
+[0015] So, yeah, as discussed and as part of the different working groups we're setting up and that we aim to activate in parallel one of the others depending of teams availabilities.
+[0016] I guess today the idea is to discuss the next steps and what we'd want to prioritize in terms of onboarding the snowflake data shares.
+[0017] So we have a hard on the call. Thanks for joining and Joe as well.
+[0018] And I guess, yep, Charles and Nick.
+[0019] So I don't know if there is anything we wanted to start off in terms of requirements or to give an overview of the current situation.
+[0020] I mean, let me go ahead and just step in here real quick.
+[0021] This should be a pretty quick call today just because we aren't very far along in the process.
+[0022] So I don't envision this being too in the weeds.
+[0023] At the end of the day, what Charlie and I are going to be looking for guidance from SWIP on is going to be how the data needs to be input into snowflake, what the table setup needs to be for the various different files.
+[0024] And as you guys provide the data elements that need to be or the structure rather of those files, then Charlie and I will work alongside our product owners at snowflake to our product owners that for the snowflake shares at fact set to get those files over to you.
+[0025] And if there's any questions or issues we can have another call, but that would be where I would start is we just need to know what the structure requirements will be for SWIP to input these into their snowflake tables.
+[0026] Hey, thanks for the context here.
+[0027] So, Nick, personally, I have only seen one file that was last year.
+[0028] I'm not sure probably August or July.
+[0029] If we have new set of files, can you send it over a bit?
+[0030] I'm not sure.
+[0031] They can probably share with me.
+[0032] Yeah.
+[0033] Yeah.
+[0034] Yeah.
+[0035] So for hot, I guess I'll just interrupt you there.
+[0036] We have not really set up files yet.
+[0037] So, like those haven't been decided on finalized, like really to any sort of really any degree.
+[0038] We're still working on building the workflows and those files.
+[0039] And so that's why what I was trying to get at beginning is, you know, the, however you guys needed to be structured and set up is how we would like to try and set it up from the start.
+[0040] And if we run into any issues where we can have another conversation on what the best path forward will be.
+[0041] All right.
+[0042] Let me kind of jump in here for a second.
+[0043] So, how we, what we have today is we have three main work streams that we're working towards, right?
+[0044] Right.
+[0045] So we have, we have the arm, the stress test.
+[0046] And then so-called the SO7, right?
+[0047] Right.
+[0048] And they are different data clearly requirements and data load requirements potentially.
+[0049] And also in terms of when that data is going to be delivered on a daily versus on a monthly basis.
+[0050] So the stress test will be monthly.
+[0051] And then the arm and the SO7 will be daily.
+[0052] There will be different processes from your end in terms of generating these that probably will not go in one shot.
+[0053] And those you'll not be res, you'll not be sending these this data as, as, I don't know, I mean, that's what I'm expecting is that when the job is finished for the arm, it will be, you know, it will be, you know, the data will be loaded.
+[0054] And then when the data is finished for the SO, for the EDS plus, let's put it this way, that data will be loaded.
+[0055] So timing wise is not going to be just like, yeah, one, you know, everything will be there and then you start downloading.
+[0056] So there will be timing differences between when these different jobs will finish.
+[0057] And, but these are the three major elements, I would assume, of the data share structure that we should be thinking about.
+[0058] Is that the start from there? Is that accurate?
+[0059] Yeah, exactly.
+[0060] And so what I'm saying, Hassan, is that from a actually loading into Snowflake perspective,
+[0061] we can do a bunch of different file manipulations on our end to load it into facts that, or I'm sorry, to load it into Snowflake, how Swift meets it to be loaded.
+[0062] So that way, any aggregation data transformations that you guys need on your side, it will be ready to go.
+[0063] And so what I was trying to say is that, you know, for the ARM or EDS plus or, you know, distress testing, if there's a specific format that it needs to be in, then we should know about that now.
+[0064] So that way, when Charlie says the files, we can go ahead and make sure that those files are set up to set up to or as close to your specifications as needed.
+[0065] And if there's an adjustment that we have to make from a file set up perspective, we can try and make that.
+[0066] Yeah, so, so, all right. And that's why I'm saying, all right, we may not know the final structure for the SO7, but we probably have a good idea for the ARM and the stress tests now.
+[0067] Right.
+[0068] So does it make sense for us to at least stop talking about those two?
+[0069] And this way we can make some headway on our side in terms of building what is needed and give you the feedback that will help you then as you are building these reports, help you kind of align with what our expectations are.
+[0070] And then the only one remaining would be the SO7, which I think what we spent some time on, I think that's what FOD was referred to from last time.
+[0071] And we can probably then, you know, start talking about what is anticipated, what are the anticipated changes that need to be done for SO7 as well.
+[0072] And then we can talk about that as well.
+[0073] So I think breaking down the problem like this should be, should make it easier for FOD as well to kind of understand what we're really, you know, we're trying to develop.
+[0074] And what is what you should have some expectations.
+[0075] And I think that's the kind of thing I'm trying to give FOD picture of what to expect and how, you know, how that data is going to stop flowing in his direction, basically.
+[0076] Yeah.
+[0077] Go ahead.
+[0078] Yeah.
+[0079] I was saying that the same things are like for this kickoff meeting, we wanted to discuss all different big chunks of work that will be coming to complete this whole working group.
+[0080] So for the, the meeting point of view, we wanted to discuss high level.
+[0081] What are the big pieces as you mentioned, say this arm words, justice work, SO7 work, all those kinds of things, how the things will flow.
+[0082] I don't know whether FOD needs any kind of security and crypto.
+[0083] I don't know all the things that we from snowflake on a few.
+[0084] All those that we wanted to discuss, like the big building blocks.
+[0085] And then based on what we have achieved so far, we'll start into the testing phase operationalization, the nation's taken of things.
+[0086] So for Louis and me, like we put this working group for further purpose that like, let's understand a big building blocks.
+[0087] First we can plan those tasks, resource those parameters, timelines, those kind of tasks and proceed accordingly.
+[0088] So I agree with you.
+[0089] So I thought behind that, it would be a good shape for arm and it's just test.
+[0090] And we may have to work more on this as well.
+[0091] But there may be like other pieces as well, which I'm not aware of.
+[0092] Which is, are you, are you also suggesting for at least arm and stress test, we should start receiving test file or data.
+[0093] At least in a snowflake in pre-prob environment.
+[0094] So you can start looking at that perspective and not Excel or CSV's.
+[0095] Yes, yes.
+[0096] Okay.
+[0097] All right. Yeah. And then from my perspective, I can just share the information with Nick and Charles about our environment.
+[0098] I mean, they should already have that for a long time.
+[0099] But if not, I can just share the environment again.
+[0100] And at least start looking at the test files.
+[0101] And then if you and Hassan need more changes, that's how we can start communicating a state of Excel or CSV.
+[0102] And one more thing, like, father, you mentioned like a few months back that what about the retention policies?
+[0103] What about the kind of a storage concerns?
+[0104] Who will be paying what and how things will work?
+[0105] So I want all your questions that you have open in a few months back.
+[0106] I want this to be answered.
+[0107] And so whatever the fact that snowflake environment is, are you happy with this supporting this project for a long time basis?
+[0108] Sure. I have to look at the SOW. We probably covered all of these in SOW.
+[0109] But I can go back to it and then just email my questions to Louis to start with.
+[0110] Okay.
+[0111] Okay.
+[0112] Okay. So then I guess from the facts that side we can start producing as soon as they're ready, we can start producing test files.
+[0113] And for how I can provide any feedback.
+[0114] Yep.
+[0115] So I will.
+[0116] So as soon as we have something to work with for how do we can let you know?
+[0117] And then if we need to set up another call, we can.
+[0118] Yeah. So Louis, sorry, Nick, I will just send you my data.
+[0119] I mean, how and where you should be sharing your information.
+[0120] So I'll send the SOW.
+[0121] Organization account ID and everything else along with that line.
+[0122] Cool.
+[0123] Now, because this is testing, in production is will be totally different because we need to environments at JDR available and all that.
+[0124] At least for testing, I'll send the information and we can go from there and start receiving test files.
+[0125] So just take me that email me whenever you have some test files to take a look at it.
+[0126] So I can expect the same form us and make sure we communicate that.
+[0127] Yes, we are seeing it and what we are seeing right now.
+[0128] Okay.
+[0129] Sounds good to me.
+[0130] So just from my own clarification, when you say test files, are we.
+[0131] Is facts supposed to be delivering that information into a snowflake environment or actual test files that Fahad is going to have to load into snowflake just to be clear.
+[0132] My expectation is Nick will be loading those test files into the environment and be in the enable the environment for us on you on an and reporting team to take a look at it.
+[0133] I'm not loading the files. The files will be loaded by Nick and Charles or whoever from their site.
+[0134] I'll be enabling the connection that you can look at that test data.
+[0135] Okay.
+[0136] And those will be in the form of tables and so on.
+[0137] All right. Thank you.
+[0138] I just wanted to.
+[0139] I know that's the case.
+[0140] Absolutely.
+[0141] Clearification.
+[0142] Yes.
+[0143] Yeah.
+[0144] Yeah.
+[0145] And second thing I thought I mentioned to you that like we shared like Mark shared one of the active structures that because we are testing the world for an all.
+[0146] The things that I have to work with those team to get the final.
+[0147] You do a mystery structure for these things.
+[0148] We do have some of our done on that field that will be our final.
+[0149] So this will be like testing our work for the first and then we'll flow through with the like and then we can sign up and all those things.
+[0150] I have a really dumb question. Do we as a group here agree on the scope of the different work streams that Louis stood up.
+[0151] And the reason I come to ask that is because I'm a little bit of Twilight Zone right now and maybe it cannot understanding.
+[0152] Whenever we talk about the snowflake data share onboarding work stream.
+[0153] What's been defined as that scope is purely a technical.
+[0154] Enable that right so it's with providing over information to facts that.
+[0155] Facts that configuring it as such we produce new some dummy file or whatever that might be to prove that the thing works to the different environments and then this work stream completes.
+[0156] And then where it comes like so seven right we start talking about okay we'll get enable the seven stuff.
+[0157] Well that's in that work stream that has the actual files get worked and pushed through then that's never that enabled and what happened through through the data shares.
+[0158] Each other almost on track job and that is what we put the key of meeting so far the years of working group and Louis will provide like the very defined excel sheet what is the scope of this working group.
+[0159] What task and sub task they will be doing and we can also try to assign some timeline based on availability of these also from both the site and various teams of swim because many people are overlapping the same working groups.
+[0160] So we have to align those things so and then the scoping and the sub tasking and timeline will be available so definitely book this meeting but you know I think that was on a top.
+[0161] You thought you were pretty much.
+[0162] So I think Joe is asking from our from Swift side.
+[0163] You know what is expect what is the working group scope from Swift's perspective Joe is that correct.
+[0164] Well so right now we're 16 minutes into this call we heard from facts that we heard from swive and then I go back to the project plan that we put forth for this particular work stream.
+[0165] It doesn't feel like we're really talking like what it was always set forth so I want to make sure that we're talking about as releases work stream what is that we wanted to move forward with and if that is not actually the scope of what it is that we need to do and we collect it we say hey this work stream here shouldn't just be a technical
+[0166] you know enablement of it instead of should also be you know aligning on what those field definition should be what this table definition should be how this data should be structured all that stuff great then we can talk about that too.
+[0167] But I just want to align on you know do we collectively agree and I know facts that even seen the definition of this of this thing or if there's going based upon a title of the right.
+[0168] Yeah no I think yes so first of all this is a kick off meeting the second thing is that facts that still doesn't have some of the stuff that we will eventually need to load into snowflake has not been completely defined so I separated this into two categories one which I think we're ready with which is the arm and the stress does and this S O seven that is still work in progress.
+[0169] So we can definitely start talking about you know all the details that are needed in terms of the definitions and what is going to be loaded into snowflake for the arm and the snow and the stress does the S O seven is when it becomes available and ready then then that's when that discussion will be had.
+[0170] As far as the work stream scope from Swift's perspective.
+[0171] I cannot imagine it will just be an enablement right there's going to be some work that also would you know will help define the different you know the different data you know definitions that we need to load and what is coming through from facts that and what is how it's going to be represented in the data structure perspective and on.
+[0172] Is that how you see it too. Yes yes and that's why I want this kick off like if I discuss this question that for the point of view what subcast you want to group into this category we bundle this other big scope of like snowflake data she has but it may include for example.
+[0173] From as a teleponder to like the normal structure that for our and like see you have created similarly for our maybe that kind of work that we need to think what kind of a normal structure that you guys.
+[0174] Was wanted to recommend so that we can provide that that structure to to fact that team so that they once they push out the data in their fact that environment they they create that kind of structure.
+[0175] Let me share my screen real quick so we should the wrong to the same page so this is the project plan.
+[0176] I'm not going to go beyond this level okay and so we have the S.O. seven right which we're talking about here.
+[0177] We have stress test which we're talking about here. We have arm which we're talking about here. We have what we're talking about here which is the fact that snowflake data share onboarding here.
+[0178] Right so I'm going to stop there at just these first four so I'm hearing is that your guys's perspective is that arm and stress test should really be sub pieces in here.
+[0179] Is that what we're saying and it should not be a technical.
+[0180] No station so Joe no this will be a technical implementation but fact that has to build the files for the arm and stress test which will ultimately that go into the fact that snowflake data sharing on.
+[0181] Yeah so.
+[0182] From my perspective this particular meeting is solely about the technical onboarding of those files into fact that after an industry snowflake excuse me.
+[0183] I saw an on and the rest of the swim team will talk with fact that about the data need that go into the arm stress test S.O. seven in other working groups.
+[0184] Yeah.
+[0185] So ultimately this working group for the fact that snowflake data share onboarding is really just to get an idea of what's with needs from fact that in order to start pushing test files to.
+[0186] A snowflake environment or swim.
+[0187] Awesome so if I then summarize that you're more in the camp of this is more of a technical input.
+[0188] Enabling it.
+[0189] Correct.
+[0190] Okay yeah that's what I believe this is as well.
+[0191] Do we do.
+[0192] So like one thing so like for example like when you have arm or what is this.
+[0193] So the extraction of these in which format not the format.
+[0194] The snowflake table structure.
+[0195] How you will design that it should be based on your architecture should be based on subs and the climate.
+[0196] Yeah go ahead.
+[0197] Yeah we want to do tell us the data types for each field the headers for each field.
+[0198] We can set up a like a JSON format file for each extract that gets loaded to snowflake but I think it's going to be helpful if we meet with all of you and say.
+[0199] Hey you know these fields need to be formatted as a float versus a string.
+[0200] And what the exact header should be so that we're not going back and forth trying to adjust that during the implementation phase is that we just know that up front while we build things.
+[0201] Okay and do like in which of I think you want to capture that in the snowflake working group or in arm or like which of I think we should take off this design.
+[0202] So I would expect it is an arm piece it would be done in arm.
+[0203] Make this a stress test piece it be done in stress test and it's that's a seven be done in episode seven.
+[0204] Okay.
+[0205] Okay then please take like you capture that part so that you can assign these tasks to the electric robot in the shooting like working group.
+[0206] Sorry.
+[0207] So like the design that was such a designer and all will happen in different working group.
+[0208] Yeah.
+[0209] Yeah.
+[0210] Other than in the data shooting group.
+[0211] I'm fine with that.
+[0212] No, no, no, no.
+[0213] I appreciate otherwise we're stuck.
+[0214] Yeah.
+[0215] Thank you Joe for that.
+[0216] Yeah.
+[0217] That's a good clarification.
+[0218] I appreciate that Joe.
+[0219] I think we're.
+[0220] Yeah.
+[0221] I mean if that makes it easier then then that's fine by us and this way the data share you know working group will just be as you said is an in the technical enablement and then the other working groups will really kind of give the full strong.
+[0222] The full structure you know that would go into these databases.
+[0223] Okay.
+[0224] Also when we complete the key of meetings and the scoping of all the working groups we will sit together again as a team to make sure that everything is in the same required group which we should be or in case any change we can do the modification that I'm doing that to see a holistic view from
+[0225] the work.
+[0226] Yeah.
+[0227] I'd also just say like.
+[0228] You know and obviously this is stuff that will that will work through but.
+[0229] Knowing exactly what we need for a requirement standpoint I think is going to help.
+[0230] Move all three of these work streams and do a more efficient manner.
+[0231] I've just a few people on our side that have worked on different clients snowflake implementations and they said a common denominator and things that trip up their projects are having to add new fields or not having the full list or requirements.
+[0232] Well building out the snowflake share just given that it's two different systems talking to each other so trying to add things later in the game.
+[0233] Definitely has has caused some issues so I think.
+[0234] You know as we work through these as long as we make sure we have 100% of the requirements ironed out and that there's clear communication between what's needed from swim side.
+[0235] I think that'll be helpful and obviously we'll work through that in all these working groups but just something I wanted to float out there.
+[0236] What do you expect your requirements to be that you need you need back set on us to kind of start.
+[0237] Be determining so that you know it works seamlessly.
+[0238] So how's I mean again some kind of a test file so without looking at data I cannot even tell you actually I cannot even tell you the column names or the data types because column names technically should be coming from you.
+[0239] Data types is something we can work on but I need to look at the data first to tell you what kind of data this column and that column should be having so we need to have some kind of test files sent to us so we can decide that.
+[0240] And then snowflake implementation the sharing should be easy and straightforward from our site unless we need a lot of changes on those items so I've already shared with Louis our details on the account he can send it over in the email to Nick and Charles.
+[0241] So that's the technical enablement that we can start right now but everything else is like once we see some test data then we can talk about the column names and the data types if that's all needed and again if not sure if fact that is open up to it or not but if you look at the table and you see this table is very large and it should be split into two or three tables something we need to open into Charles and Nick then at that point in time.
+[0242] I need to see something to react to.
+[0243] So this was one of the issues that we discussed last year about the normalization and on right how does that should really be addressed here or should it be addressed in the other working groups.
+[0244] So that's why the joy is that humanity that he wanted is to be addressed in different working groups.
+[0245] So say for example for FOS 7 and 2 will be in FOS 7 working group for arm it will be in FOS in the arms working group.
+[0246] We will add a task of data to design and all those things in that working group.
+[0247] So does that mean for hard needs to be involved when we get to that?
+[0248] Yes we have to that stage come that once our business requirement and fact that bad job and all those things are coming to do that stage that time we will involve FOS team so that they can design in which shape and format it should be stored in all.
+[0249] Why do we need to wait until we have all the batch jobs and all that.
+[0250] I mean I think once we have the file ready for testing it makes sense to me that that's when we should get.
+[0251] Yes yes that's what I mean.
+[0252] We will engage them in different working groups that how they want the output data should be stored.
+[0253] Okay.
+[0254] Charlie does that make sense to you.
+[0255] In terms of just like once we have a test file and we kind of talk about the data types and data column names and everything that's when we get in the fat engaged and then we figure out for the for the arm and for the stress test that might be
+[0256] you know pretty straightforward but when we start talk about S07 and the whole question of how many data how many tables we need to supply and how we normalize the data.
+[0257] It'd be a little bit more involved I assume right.
+[0258] Yes.
+[0259] And that's what we did have when we were doing the S07 we created some kind of template such as which is more likely covering most of the item is not all.
+[0260] And for us team has helped us to normalize that data to how they want to be stored in the snowflake.
+[0261] We have achieved majority portion for S07 it's not complete but for arm and other things we still have to work with them.
+[0262] Which we will like in the arm of working group and the other only working group.
+[0263] Yes, generally that does make sense.
+[0264] I think even just outside of like a snowflake implementation that's how we've always done it is you get a representative account and you start generating a sample file so that folks on the IT side over the client can start actually building out the architecture for how that files can be consumed.
+[0265] Yep.
+[0266] All right.
+[0267] Okay and so we'll work on the data structure design for each of those three working groups and get sample data ready before then we engage for hard for the next time.
+[0268] Yep.
+[0269] And yeah like Bob said I have the account he sent me the account details all forward that over to you guys Charlie and Nick.
+[0270] Sounds good.
+[0271] Okay.
+[0272] Was there anything else we wanted to cover we have a follow we have the next call starting.
+[0273] I guess we can jump on that one.
+[0274] Yep.
+[0275] Okay.
+[0276] Thanks everybody.
+[0277] Thank you.
+[0278] Thank you.

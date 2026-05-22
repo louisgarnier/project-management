@@ -1,0 +1,476 @@
+{
+  "gold_set_version": "0.1.0",
+  "created_at": "2026-05-22",
+  "purpose": "Bootstrap gold set for call topics extraction pipeline evaluation. Layer 1 of the gold set (3 transcripts covering 3 distinct call types). Used to evaluate pipeline against ground truth for topic recall, citation validity, and naming stability.",
+  "annotation_notes": [
+    "Topics in this gold set reflect ONLY what is grounded in each transcript. Topics from the user's working tracker that come from manual augmentation, cross-call synthesis, or external sources are explicitly excluded — the pipeline must not invent topics that are not in the transcript it is processing.",
+    "Citations are line ranges into the numbered transcript files (arm_kickoff_05112026_numbered.txt, snowflake_kickoff_numbered.txt, factset_05182026_numbered.txt). Pipeline output must resolve these line ranges to byte-identical transcript text.",
+    "Owner field is best-effort and non-blocking for pipeline evaluation. Pipeline failures on owner attribution do not fail the gold set evaluation.",
+    "Importance levels are subjective but reflect the user's operational priorities."
+  ],
+  "transcripts": [
+    {
+      "transcript_id": "arm_kickoff_05112026",
+      "transcript_file": "arm_kickoff_05112026_numbered.txt",
+      "project": "SWIB/ARM",
+      "call_type": "kickoff",
+      "dimensions": {
+        "vocab_density": "high",
+        "vocab_examples": ["CTF composite", "PRD job", "Monte Carlo simulation", "linear MAC", "fat tail", "UDM hierarchy", "PA report", "analytics data feed manager"],
+        "speakers_estimated": 5,
+        "speakers_named": ["Mark", "Anand", "Samarth", "Nick", "Louis"],
+        "duration_class": "medium",
+        "registry_state": "empty_at_start",
+        "structural_features": ["multi-stakeholder technical discussion", "frequent topic transitions", "decisions made in-call"]
+      },
+      "expected_topics": [
+        {
+          "topic_name": "Loading ARM load files to FactSet and mapping to Account/Composites",
+          "importance": "high",
+          "evidence_line_ranges": [[1, 33], [34, 60], [61, 95]],
+          "expected_tasks": [
+            {
+              "task_summary": "Send current account hierarchy for FactSet to load",
+              "must_have_keywords": ["hierarchy", "FactSet"],
+              "owner_hint": "Mark",
+              "status_hint": "done"
+            },
+            {
+              "task_summary": "Confirm ARM composite (public + private) runs end-to-end with memory boost",
+              "must_have_keywords": ["composite", "memory boost"],
+              "owner_hint": "FactSet",
+              "status_hint": "on going"
+            },
+            {
+              "task_summary": "Determine which risk model the ARM run will use (Monte Carlo / linear / fat-tail)",
+              "must_have_keywords": ["risk model", "Monte Carlo", "linear"],
+              "owner_hint": "FactSet",
+              "status_hint": "open"
+            },
+            {
+              "task_summary": "Decide on inclusion of composite component ID and description columns in PA report",
+              "must_have_keywords": ["composite component", "PA report", "column"],
+              "owner_hint": "Mark / Nick",
+              "status_hint": "open"
+            }
+          ],
+          "minimum_task_count": 3,
+          "minimum_citation_count": 4
+        },
+        {
+          "topic_name": "Creating new hierarchies for ARM using UDM",
+          "importance": "high",
+          "evidence_line_ranges": [[96, 150], [183, 228]],
+          "expected_tasks": [
+            {
+              "task_summary": "Build query to extract Asset Class, Business Line and Asset Allocation hierarchies from UDM",
+              "must_have_keywords": ["hierarchy", "UDM"],
+              "owner_hint": "Anand / Joe",
+              "status_hint": "to start"
+            },
+            {
+              "task_summary": "Match accounts in FactSet output to SWIB UDM hierarchy",
+              "must_have_keywords": ["match", "account", "UDM"],
+              "owner_hint": "Mark / SWIB",
+              "status_hint": "open"
+            }
+          ],
+          "minimum_task_count": 2,
+          "minimum_citation_count": 3
+        },
+        {
+          "topic_name": "FactSet to provide an initial output in agreed format",
+          "importance": "high",
+          "evidence_line_ranges": [[150, 182], [192, 205]],
+          "expected_tasks": [
+            {
+              "task_summary": "Mark to provide examples of output (test composite) for SWIB review",
+              "must_have_keywords": ["example", "output", "test composite"],
+              "owner_hint": "Mark",
+              "status_hint": "open"
+            }
+          ],
+          "minimum_task_count": 1,
+          "minimum_citation_count": 2
+        },
+        {
+          "topic_name": "ARM working group cadence",
+          "importance": "medium",
+          "evidence_line_ranges": [[234, 241]],
+          "expected_tasks": [
+            {
+              "task_summary": "Weekly update on ARM working group + ad-hoc working group meeting if needed",
+              "must_have_keywords": ["weekly", "working group"],
+              "owner_hint": "Louis",
+              "status_hint": "open"
+            }
+          ],
+          "minimum_task_count": 1,
+          "minimum_citation_count": 2,
+          "note": "Secondary topic identified during gold set annotation. Often missed by v4 because short and end-of-call. Test of pipeline ability to extract meta/governance topics."
+        }
+      ],
+      "topics_explicitly_excluded": [
+        {
+          "topic": "Extract ARM output from FactSet to FS Snowflake based on SWIB DB architecture",
+          "reason": "Not discussed in this transcript. Covered in snowflake_kickoff transcript."
+        },
+        {
+          "topic": "FactSet to create the data structure in their snowflake environments",
+          "reason": "Not discussed in this transcript. Covered in snowflake_kickoff transcript."
+        },
+        {
+          "topic": "Data share to SWIB Snowflake",
+          "reason": "Not discussed in this transcript. Covered in snowflake_kickoff transcript."
+        }
+      ]
+    },
+    {
+      "transcript_id": "snowflake_data_share_kickoff",
+      "transcript_file": "snowflake_kickoff_numbered.txt",
+      "project": "SWIB/Snowflake",
+      "call_type": "kickoff_with_scope_debate",
+      "dimensions": {
+        "vocab_density": "medium-high",
+        "vocab_examples": ["Snowflake data share", "ARM", "S07", "stress test", "EDS+", "JSON format", "data normalization", "SOW", "JDR", "pre-prod environment"],
+        "speakers_estimated": 6,
+        "speakers_named": ["Hassan", "Fahad", "Anand", "Joe", "Nick", "Charlie", "Louis"],
+        "duration_class": "medium",
+        "registry_state": "partial",
+        "structural_features": ["scope clarification debate", "meta-discussion about working group boundaries", "decisions about WG split"]
+      },
+      "expected_topics": [
+        {
+          "topic_name": "Working group scope alignment",
+          "importance": "high",
+          "evidence_line_ranges": [[150, 225]],
+          "expected_tasks": [
+            {
+              "task_summary": "Align on context of this WG as technical enablement only; data structure design happens in per-stream working groups (ARM, Stress Test, S07)",
+              "must_have_keywords": ["scope", "technical enablement", "working group"],
+              "owner_hint": "TBD / all stakeholders",
+              "status_hint": "resolved in-call"
+            }
+          ],
+          "minimum_task_count": 1,
+          "minimum_citation_count": 3,
+          "note": "Critical operational decision. This topic is meta (about the WG itself) and often missed by v4. Pipeline must extract this — failure to do so loses the most important outcome of the call."
+        },
+        {
+          "topic_name": "S07 data requirements",
+          "importance": "high",
+          "evidence_line_ranges": [[42, 75], [168, 169], [256, 261]],
+          "expected_tasks": [
+            {
+              "task_summary": "S07 working group finalizes table structure and normalization requirements",
+              "must_have_keywords": ["S07", "normalization", "structure"],
+              "owner_hint": "TBD",
+              "status_hint": "open"
+            },
+            {
+              "task_summary": "FactSet prepares S07 test files once requirements are defined",
+              "must_have_keywords": ["S07", "test files"],
+              "owner_hint": "Nick",
+              "status_hint": "open"
+            }
+          ],
+          "minimum_task_count": 1,
+          "minimum_citation_count": 2
+        },
+        {
+          "topic_name": "Stress test data requirements",
+          "importance": "high",
+          "evidence_line_ranges": [[42, 75], [66, 69], [192, 210]],
+          "expected_tasks": [
+            {
+              "task_summary": "Stress test working group defines required file structure",
+              "must_have_keywords": ["stress test", "structure"],
+              "owner_hint": "TBD",
+              "status_hint": "open"
+            },
+            {
+              "task_summary": "FactSet creates test files for stress test data",
+              "must_have_keywords": ["stress test", "test files"],
+              "owner_hint": "Nick",
+              "status_hint": "open"
+            }
+          ],
+          "minimum_task_count": 1,
+          "minimum_citation_count": 2
+        },
+        {
+          "topic_name": "ARM data requirements",
+          "importance": "high",
+          "evidence_line_ranges": [[42, 75], [66, 69], [192, 210]],
+          "expected_tasks": [
+            {
+              "task_summary": "ARM working group defines column names, data types, and normalization requirements",
+              "must_have_keywords": ["ARM", "column", "normalization"],
+              "owner_hint": "TBD",
+              "status_hint": "open"
+            },
+            {
+              "task_summary": "FactSet produces ARM test files for SWIB review",
+              "must_have_keywords": ["ARM", "test files"],
+              "owner_hint": "Nick",
+              "status_hint": "open"
+            }
+          ],
+          "minimum_task_count": 1,
+          "minimum_citation_count": 2
+        },
+        {
+          "topic_name": "Snowflake data share onboarding",
+          "importance": "medium-high",
+          "evidence_line_ranges": [[19, 40], [96, 149], [240, 270], [102, 109]],
+          "expected_tasks": [
+            {
+              "task_summary": "Share Snowflake account details (SOW, organization account ID, environment info) from Fahad to Nick and Charles",
+              "must_have_keywords": ["Snowflake", "account", "environment"],
+              "owner_hint": "Fahad",
+              "status_hint": "done"
+            },
+            {
+              "task_summary": "Nick and Charles to load test files into Snowflake environment for SWIB review",
+              "must_have_keywords": ["test files", "Snowflake", "load"],
+              "owner_hint": "Nick / Charles",
+              "status_hint": "open"
+            },
+            {
+              "task_summary": "Fahad to review SOW and email open questions on retention policies, storage concerns, and cost allocation to Louis",
+              "must_have_keywords": ["SOW", "retention", "storage"],
+              "owner_hint": "Fahad",
+              "status_hint": "open",
+              "note": "Sub-task captured in Snowflake onboarding topic per gold set decision (not standalone topic). Brief but explicit action item in transcript lines 102-109."
+            }
+          ],
+          "minimum_task_count": 2,
+          "minimum_citation_count": 3
+        }
+      ],
+      "topics_explicitly_excluded": [
+        {
+          "topic": "Confirm FactSet region strategy",
+          "reason": "Not discussed in this transcript. Manually added by user to their working tracker but not transcript-grounded. Pipeline must not invent this topic."
+        }
+      ]
+    },
+    {
+      "transcript_id": "factset_05182026",
+      "transcript_file": "factset_05182026_numbered.txt",
+      "project": "SWIB/FactSet umbrella",
+      "call_type": "weekly_umbrella_sync",
+      "dimensions": {
+        "vocab_density": "high",
+        "vocab_examples": ["S07", "ARM", "stress test", "PA file", "factor grouping", "Monte Carlo", "Bar model", "Mac model", "CLO", "CMBS", "ABS", "Greeks", "effective duration", "coverage check"],
+        "speakers_estimated": 5,
+        "speakers_named": ["Louis", "Hassan", "Nick", "Charlie", "Anand"],
+        "duration_class": "medium",
+        "registry_state": "populated_from_prior_calls",
+        "structural_features": ["tour-of-working-groups format", "status updates per WG", "deep-dive on S07 mid-call", "shorter mentions for other WGs"]
+      },
+      "expected_topics": [
+        {
+          "topic_name": "Working group structure and cadence",
+          "importance": "medium",
+          "evidence_line_ranges": [[1, 10], [214, 253]],
+          "expected_tasks": [
+            {
+              "task_summary": "Four working groups now formally kicked off (S07, stress test, Snowflake onboarding, ARM); weekly umbrella sync established",
+              "must_have_keywords": ["working group", "weekly", "kicked off"],
+              "owner_hint": "Louis",
+              "status_hint": "open"
+            },
+            {
+              "task_summary": "S07 confirmed as highest priority work stream with weekly cadence; others on rolling basis",
+              "must_have_keywords": ["S07", "priority", "cadence"],
+              "owner_hint": "Hassan",
+              "status_hint": "open"
+            }
+          ],
+          "minimum_task_count": 1,
+          "minimum_citation_count": 2
+        },
+        {
+          "topic_name": "WG - Snowflake data shares and environments",
+          "importance": "low",
+          "evidence_line_ranges": [[4, 7]],
+          "expected_tasks": [
+            {
+              "task_summary": "Snowflake data share onboarding kickoff completed",
+              "must_have_keywords": ["Snowflake", "kickoff"],
+              "owner_hint": "Louis",
+              "status_hint": "done"
+            }
+          ],
+          "minimum_task_count": 1,
+          "minimum_citation_count": 1,
+          "note": "Very brief mention in this call (just a reference that kickoff occurred). Pipeline must extract this topic even from minimal evidence — test of recall on low-salience topics."
+        },
+        {
+          "topic_name": "WG - Aggregated Risk Model (ARM)",
+          "importance": "medium",
+          "evidence_line_ranges": [[24, 31], [233, 242]],
+          "expected_tasks": [
+            {
+              "task_summary": "FactSet has run ARM test job but output file is too large for email; Nick working on alternate delivery method",
+              "must_have_keywords": ["ARM", "file", "Nick"],
+              "owner_hint": "Nick",
+              "status_hint": "on going"
+            },
+            {
+              "task_summary": "Once file delivered, SWIB to begin review and provide feedback",
+              "must_have_keywords": ["SWIB", "review", "feedback"],
+              "owner_hint": "SWIB",
+              "status_hint": "open"
+            }
+          ],
+          "minimum_task_count": 1,
+          "minimum_citation_count": 2
+        },
+        {
+          "topic_name": "WG - Stress test and scenario analysis build",
+          "importance": "medium",
+          "evidence_line_ranges": [[33, 56], [226, 228]],
+          "expected_tasks": [
+            {
+              "task_summary": "Mark sent three PA files representing the full set; Charlie combined those three into one doc",
+              "must_have_keywords": ["PA files", "combined", "doc"],
+              "owner_hint": "Charlie",
+              "status_hint": "done"
+            },
+            {
+              "task_summary": "Mark to review each report to confirm correct stress test scenarios; waiting on Mark's review of combined doc",
+              "must_have_keywords": ["Mark", "review", "stress test"],
+              "owner_hint": "Mark",
+              "status_hint": "open"
+            }
+          ],
+          "minimum_task_count": 2,
+          "minimum_citation_count": 2
+        },
+        {
+          "topic_name": "WG - S07 PA build",
+          "importance": "high",
+          "evidence_line_ranges": [[58, 202], [255, 282]],
+          "expected_tasks": [
+            {
+              "task_summary": "Mark sent a sample composite with mixed asset types for running through all reports",
+              "must_have_keywords": ["composite", "asset types", "reports"],
+              "owner_hint": "Mark",
+              "status_hint": "done"
+            },
+            {
+              "task_summary": "Assess what fields in current S07 spec are needed vs should change (CLO/CMBS/ABS structural data, options Greeks, factor grouping approach)",
+              "must_have_keywords": ["S07", "fields", "rationalization"],
+              "owner_hint": "SWIB / FactSet joint",
+              "status_hint": "open"
+            },
+            {
+              "task_summary": "FactSet to provide coverage check on data elements (e.g. effective duration alternatives)",
+              "must_have_keywords": ["coverage check", "data"],
+              "owner_hint": "Nick / Charlie",
+              "status_hint": "open"
+            },
+            {
+              "task_summary": "Discuss factor grouping structure to confirm agreement",
+              "must_have_keywords": ["factor grouping"],
+              "owner_hint": "Mark / FactSet / SWIB",
+              "status_hint": "open"
+            },
+            {
+              "task_summary": "S07 is ~75% of what SWIB wants; 25% reserved for FactSet-suggested changes and additional data extraction",
+              "must_have_keywords": ["75%", "S07"],
+              "owner_hint": "Hassan",
+              "status_hint": "open"
+            }
+          ],
+          "minimum_task_count": 3,
+          "minimum_citation_count": 5,
+          "note": "Largest topic in this call by transcript volume. Tests pipeline ability to extract multiple tasks from a long, multi-turn discussion."
+        },
+        {
+          "topic_name": "WG - BAU and monitoring",
+          "importance": "low",
+          "evidence_line_ranges": [[214, 216]],
+          "expected_tasks": [
+            {
+              "task_summary": "BAU working group to be initiated later, after other work streams have built momentum",
+              "must_have_keywords": ["BAU", "later"],
+              "owner_hint": "Louis",
+              "status_hint": "pending"
+            }
+          ],
+          "minimum_task_count": 1,
+          "minimum_citation_count": 1,
+          "note": "Very brief mention (just a deferral). Tests pipeline behavior on low-salience topics. May be missed by v4 — extraction of this topic is a positive signal."
+        }
+      ],
+      "topics_explicitly_excluded": [
+        {
+          "topic": "Project tracking — Smartsheet vs FactSet implementation tracker",
+          "reason": "Not discussed in this transcript. Manually added by user to working tracker but not transcript-grounded."
+        },
+        {
+          "topic": "Monte Carlo Mac memory failure (Closed)",
+          "reason": "Not discussed in this transcript. Carry-over from prior call or manual addition. Pipeline must not invent this topic."
+        }
+      ]
+    }
+  ],
+  "evaluation_criteria": {
+    "topic_recall": {
+      "definition": "Fraction of expected_topics that appear in pipeline output (matched by canonical name or close semantic match)",
+      "target": ">= 0.95",
+      "weight": "primary metric"
+    },
+    "topic_precision": {
+      "definition": "Fraction of pipeline-output topics that match an expected_topic (or are reasonable but absent from gold set)",
+      "target": ">= 0.85",
+      "weight": "secondary metric",
+      "note": "Topics in topics_explicitly_excluded count as false positives if extracted by the pipeline."
+    },
+    "task_recall": {
+      "definition": "For each correctly-matched topic, fraction of expected_tasks that are represented in pipeline output (matched by must_have_keywords)",
+      "target": ">= 0.80",
+      "weight": "secondary metric"
+    },
+    "citation_validity": {
+      "definition": "Fraction of citations in pipeline output that match transcript text byte-for-byte",
+      "target": "1.00",
+      "weight": "must-pass metric",
+      "note": "Failure here indicates the span-based citation resolution (Stage 4) is broken."
+    },
+    "citation_coverage": {
+      "definition": "For each topic, citations cover the expected evidence_line_ranges (any overlap counts)",
+      "target": ">= 0.90",
+      "weight": "secondary metric"
+    },
+    "naming_stability": {
+      "definition": "Across 5 re-runs of the same transcript, same topics get same canonical names",
+      "target": "1.00",
+      "weight": "must-pass metric"
+    },
+    "no_hallucination": {
+      "definition": "Topics in topics_explicitly_excluded must NOT appear in pipeline output",
+      "target": "0 hallucinated topics",
+      "weight": "must-pass metric"
+    }
+  },
+  "growth_plan": {
+    "current_layer": "Layer 1 — bootstrap with 3 transcripts covering 3 call types",
+    "next_additions": [
+      {
+        "trigger": "After Stage 6 (clustering + registry) is built",
+        "target_transcript": "Boulevard_Charles_Livon (NWM working session) — tests recall on tangent-heavy conversations and NWM-domain vocabulary",
+        "dimensions_to_cover": ["NWM vocabulary (SMF, SimCorp specifics)", "many tangents and digressions", "different speaker set"]
+      },
+      {
+        "trigger": "After Stage 8 (task synthesis) is built",
+        "target_transcript": "A second Factset weekly umbrella sync — tests cross-call topic naming stability on the same recurring topics (S07, ARM, Stress Test, Snowflake)",
+        "dimensions_to_cover": ["registry stability across calls", "same canonical topic names used"]
+      }
+    ],
+    "growth_principle": "Each new transcript added when a new failure mode is observed in production or when a new pipeline stage requires testing on a previously-uncovered dimension. Gold set co-evolves with the pipeline — not pre-built exhaustively."
+  }
+}

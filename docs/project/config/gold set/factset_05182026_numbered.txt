@@ -1,0 +1,297 @@
+[0001] Okay, so I guess it's more or less the same people as the previous call.
+[0002] I guess this will be so we'll keep a half an hour call now for the weekly updates on
+[0003] the general working groups.
+[0004] So yeah, we just had the kickoff for the the facts net facts that data share onboarding.
+[0005] So yeah, as mentioned, so now we actually have four four working groups that have kicked
+[0006] off.
+[0007] So the S07 the stress test, the snowflake onboarding and arm.
+[0008] So the key priority as discussed is S07.
+[0009] So that is ongoing.
+[0010] I don't see Mark.
+[0011] Yeah, Mark isn't is an on today.
+[0012] So Nick, I don't know if you have any updates on that.
+[0013] I guess you caught up with him last Wednesday.
+[0014] Yeah.
+[0015] Yeah, I mean, we caught up with Mark and there wasn't really much to say.
+[0016] We don't really have much of an update.
+[0017] We talked through some various different scenarios, but at the end of the day, you know,
+[0018] Charlie's built out test documents that can be, you know, productionalized for a test
+[0019] upload to snowflake at any point in time.
+[0020] It's really just a matter of getting the rest of the discussions on the swim side to finalize
+[0021] what those files will look like once they're, you know, ready for output.
+[0022] So that would be the only update that I had from last week.
+[0023] Okay.
+[0024] So on the arm, for example, this mark have already the file that's file.
+[0025] That he does not have and that's because I can't.
+[0026] I don't have a way to get into him at this moment.
+[0027] I'm still trying to figure that out because the file is too big.
+[0028] So stay tuned.
+[0029] I've been trying to get access to a on our side that will allow me to do it.
+[0030] So give me a little bit of time, but I have a file for him.
+[0031] So I'm trying to get to him.
+[0032] Okay.
+[0033] And then for the stress test, I think there were still the questions about how the file
+[0034] that structure is going to look like with regards to the, did you get the business
+[0035] line composite list and everything and the PA is set up already.
+[0036] I think so, Charlie.
+[0037] I can't remember where we left off on that.
+[0038] Do we have the composites and the files?
+[0039] We have the composite, but when you say like the files, I like the PA documents.
+[0040] Right.
+[0041] Right.
+[0042] But even just like when you say the PA documents is for stress testing, I think all we've
+[0043] really seen is like the scenarios, right?
+[0044] Is that what we're.
+[0045] No, I think the mark is not here, but I know that he said he has three different files
+[0046] that he sent you away.
+[0047] Three different PAs that he sent you away that represent the full.
+[0048] Oh, yeah.
+[0049] So I set up a doc that combines those three files and asked him to just review.
+[0050] All the reports inside there to make sure that each report is using the correct stress
+[0051] test scenarios.
+[0052] I haven't heard that from yet.
+[0053] Okay.
+[0054] So I can set him another note on that thread and just see where things stand.
+[0055] But there is essentially what there is now is just one doc that captures all three of
+[0056] those great files that he's snobbered.
+[0057] All right.
+[0058] And then the SO7, what's the, where are you with Mark on those discussions?
+[0059] Yeah.
+[0060] So that is, again, that's now been combined into one doc.
+[0061] There's three sections inside the doc where the reports are repeated.
+[0062] So you kind of follows the structure of SO1 being, and I might mix this up, but let's
+[0063] just call SO1 being collapsed with the Mac model.
+[0064] So two being collapsed with the bar a model and then SO3 being expanded with the Mac model.
+[0065] And then Mark sent over a, I think he sent over a parrot-bound composite that has a good
+[0066] list of, or a mix of different asset types that we can run through all these reports,
+[0067] just to make sure that the output looks good.
+[0068] So I think that's kind of the next step.
+[0069] Okay.
+[0070] Great.
+[0071] And so when, when will we be able to review these, I guess, test outputs, validate the,
+[0072] do you curacy?
+[0073] No, no, I mean, I don't think it's any time soon because I think one thing for the SO7,
+[0074] have we, and then this is, Charlie, I don't know where you are with Mark in terms of determining
+[0075] now the columns that we want to include, because as you know, there's the, the factor grouping,
+[0076] there was one question about that, which is a major question.
+[0077] How are we going to do that?
+[0078] I think you, you guys, Nick, you had indicated that there may be a solution from fact sets
+[0079] and to try to solve that factor grouping issue and the, and the, you know, the continuous
+[0080] update, then also what type of, what type of parameters that we will be looking for,
+[0081] what type of risk parameters or characteristics that we would be looking for.
+[0082] Has that been, Charlie, have you looked through that as well, you know, based on the SO7 that
+[0083] we provided and kind of looked at and see, all right, that's good, but maybe you need,
+[0084] you may need this, you may need to add this, you may need to take out some of these old
+[0085] ones, put new ones.
+[0086] Has that something, has you done, have you done any of that to try to optimize some of
+[0087] the columns there that we had, you know, set up to do for the SO7?
+[0088] Yeah, I mean, I've looked at what's inside the reports, ultimately, is going to be up
+[0089] to SWIP to tell me what fields are needed and what are not needed, because everything in
+[0090] there at this point is a unique field, right?
+[0091] So from a pure requirement standpoint, what I'm, I don't know if it's going to be Mark
+[0092] or if it's someone else, but I've taken those reports kind of as it is.
+[0093] Okay, so you have only taken as it is, and you have, we haven't done the assessment of
+[0094] what, you know, what makes sense and what doesn't make sense yet.
+[0095] So that's the next step that we need to take an end.
+[0096] Right, in terms of what makes sense is like, again, I think that's, we can obviously, in
+[0097] terms of what makes sense is kind of more, a lot of stuff to SWIP side, in my opinion.
+[0098] Yeah, no, I agree with you.
+[0099] It is on our side.
+[0100] However, we may be, for example, looking at something that you say, look, there is a
+[0101] better way to do this.
+[0102] There's a, you know, a new metric that you need to look, the main look at this.
+[0103] So that's the discussion we wanted to have with you guys, because we split up the problem
+[0104] into different categories.
+[0105] We talked about things that we call like, fully, another characteristics.
+[0106] And those portfolio characteristics, how we get that data, how much of that data we
+[0107] can get through facts that, how reliable that data is in facts that is going to be a question
+[0108] whether we need to include that data or not, for example.
+[0109] So it's not every data that we can say, yeah, give me that data.
+[0110] And if you say this, that data is, may not be complete, maybe, you know, maybe if there's
+[0111] a better, you know, metric that you may want to look at.
+[0112] So that's the discussion you're going to start having with Mark and us to basically
+[0113] rationalize the scope of the, you know, different metrics that we want to include in addition
+[0114] completely to the questions about factors and in addition to the questions about stress
+[0115] tests, what stress tests and scenarios we would want to include.
+[0116] We gave you a list right now, right?
+[0117] And whether that, you know, you say, listen, if you start adding all of this stuff, these
+[0118] jobs are not going to finish, right?
+[0119] Or we will have to redesign this if you want all of this stuff, we're going to have to
+[0120] redesign, you know, the PAs because now you're asking for a lot more that we need to break
+[0121] this process into different, you know, tasks or something like that.
+[0122] So that's the kind of discussion that we will need to have.
+[0123] And, you know, so once you and Mark are ready for that, then we're happy to kind of jump
+[0124] in on some of these weekly calls that you have so we can start going through these columns.
+[0125] Does that make sense?
+[0126] Yep.
+[0127] So it is on his Mark back in tomorrow.
+[0128] Should be.
+[0129] Okay.
+[0130] Because we can have some of those discussions with him in terms of like, you know, what
+[0131] data is available and like we can do, you know, a generic coverage check on it on any column
+[0132] that we get on.
+[0133] It's absolutely wonderful.
+[0134] Yeah.
+[0135] That's what I'm expecting.
+[0136] But I think Sean should also be included in that discussion.
+[0137] Okay.
+[0138] So, Luke, make sure that Sean is on these working groups.
+[0139] Yeah.
+[0140] She's on the S07 working groups.
+[0141] Okay.
+[0142] Yeah.
+[0143] Yeah.
+[0144] I mean, I guess like what I would say is from like an actual like.
+[0145] Like.
+[0146] We can provide a coverage check in terms of like what data elements, but at the end of the
+[0147] day, like we need to know like what you're ultimately like trying to get out of a file.
+[0148] So like, no, no, I get that.
+[0149] I'm going to like use like a, just a, a plain example here of, you know, if you say, well,
+[0150] we want this, you know, effective duration column because we're trying to do XYZ with
+[0151] it.
+[0152] But as it turns out, you know, effective duration is, you know, they, we're not getting a great,
+[0153] you know, return in terms of the coverage on it.
+[0154] Like we can give you a handful of like options to do, but, you know, we have, you know, a
+[0155] couple dozen different duration calculations and facts.
+[0156] So at that point, we would want to tell us which one to swap out for the fact that's
+[0157] exactly the discussion we want to have Nick.
+[0158] That's exactly the kind of discussion we want to have.
+[0159] So we put out what we thought would be, you know, the things we want.
+[0160] As you said, effective durations.
+[0161] I don't know, weighted average life, if it's available, all of these things we've kind
+[0162] of, I think we included in there.
+[0163] And I think when we go through, some of them would be very straightforward and we don't
+[0164] need to spend a lot of time on some, we will probably have to spend some more time on.
+[0165] You know, I think the discussion on the factors is an important one that I think, you know,
+[0166] we need to have a, you know, a deeper discussion in terms of making sure that we're confident
+[0167] that we agree on the grouping structure that we want.
+[0168] And I think we have defined the grouping structure that we want and Mark should have
+[0169] provided you that on the stress sets and the scenarios.
+[0170] I think we've defined it as well, but we want to make sure that that is, you know, we want
+[0171] to kind of finalize that as well and check that off.
+[0172] In terms of other risk metrics that you've just indicated now, as we saw talking about
+[0173] other types of assets, you know, we may not have included some important elements that
+[0174] may become available.
+[0175] For example, you know, CLOs, I mean, do you have any, any, you know, structural data,
+[0176] for example, for CLOs that we can extract?
+[0177] That wasn't in the SO7, but if it is something that you have for some of these CLOs that
+[0178] might be public, you know, with public Q-Sips, you know, is the facts that provide some of
+[0179] the structural, you know, details of CLOs or CMBSs, for example.
+[0180] Does that make sense?
+[0181] So that's the kind of stuff that is not in the SO7, but when we saw building that, you
+[0182] know, when we saw it, when we get to that stage, now you've got the files, you've got
+[0183] the kind of preliminary SO7, you know, look that we have, the bulk of the work for SO7
+[0184] for us is really now to agree on.
+[0185] All right, here's, here are the columns that we really want, and here's what you, as you
+[0186] said, here are some of the suggestions.
+[0187] I'm going to ask you, what can we get out of, you know, for CMBS, public, CMBS, you know,
+[0188] CMS with public tickers, for example, what information do you have available from, you
+[0189] know, that we can, we can get from facts that, similarly for CLOs, similarly for ABSs,
+[0190] right?
+[0191] You know, when it comes to options, I think that's why I won't show on on this.
+[0192] There's a lot of options that we, details that we don't have today, EDS, we want to
+[0193] have, extract that information, and we've hinted at some of that in, I don't know if
+[0194] it's in the SO7 in the subsequent, you know, exchange that we did that we wanted the Greeks,
+[0195] we wanted the, you know, what type of Greeks, you know, that you guys can provide, and so
+[0196] forth and so on.
+[0197] Does that make sense?
+[0198] Yeah, I think so.
+[0199] So, we'll work with Mark and Sean on on this, and we can start providing some details based
+[0200] on the questions that you guys bring out, but we'll have a discussion with Mark and
+[0201] Sean on tomorrow about it, and go from there.
+[0202] Thank you.
+[0203] And so, Hassan, we agree that we continue with, for this coverage, check of data that
+[0204] FACSAD can provide, and then having SWIP to confirm the final specific calculations,
+[0205] et cetera.
+[0206] So, we do focus on SO7, and then we'll get to stress testing and arm.
+[0207] At least for different work extremes, right?
+[0208] So, yeah, we have to align different ones, too, based on the, these rules availability
+[0209] of that talk, and they're providing those things.
+[0210] So, we come back to the timeline part, once we get along with all the working groups and
+[0211] all the scoping part and everything, because they're very overlapping these rules in
+[0212] there.
+[0213] Yeah.
+[0214] Because I guess with FACSAD, the calls, so the different working groups that we're going
+[0215] to kick off, apart from BAU, that will come down blind when everything is built, so it's
+[0216] not for now.
+[0217] The four calls have been kicked off.
+[0218] So, I guess it's a matter of, yeah.
+[0219] What's the priority?
+[0220] For now, we have a weekly call to discuss SO7.
+[0221] SO7 is clearly the highest priority, because that's the one that needs a lot of the work,
+[0222] I think, for, we talked about the RAM.
+[0223] The RAM, we're waiting for the file, so once the file is ready, then we can look at that,
+[0224] and then we can make the call then.
+[0225] I'm sorry, the arm, I should say.
+[0226] And then the stress tests, as was indicated, right?
+[0227] There's some work that's progressed, and then once that becomes available to Mark,
+[0228] then he can take a look at that.
+[0229] But we don't have weekly meetings for those other work streams until we have built some
+[0230] kind of a momentum there, and then we can have a working group update.
+[0231] We'll use this meeting here, the weekly meetings to kind of touch on all of these different
+[0232] on the progress on each one of them.
+[0233] Okay, it's just that, for, let's take arm, for example, by next week, what would we
+[0234] expect?
+[0235] If we have no catch-up, there's no real pending task here, so we probably won't have an update
+[0236] on that by next week.
+[0237] Yeah, so what we're waiting for from Nick is the file.
+[0238] Yep.
+[0239] All right.
+[0240] So once we have that file, then we can get the, we can get, we can start the process
+[0241] from our end and give the feedback, and then we'll have clarity in terms of, you know,
+[0242] what the next step, sorry.
+[0243] And yeah, I, I, I, when I also anticipate because there are many working groups with
+[0244] the, to, to, whether it's going on, it's possible that people, and because of the overlapping
+[0245] team member, it's possible that, that people will get test work on one of those team for
+[0246] the whole week.
+[0247] Yeah, that's fine.
+[0248] So you can get it right.
+[0249] Right.
+[0250] And I think that's not what I'm saying is that this form is for exact, exactly for this.
+[0251] This is the form that kind of brings in, brings it, brings together all the progress being
+[0252] made on all the different working groups and what, if any bottlenecks, you know, are happening
+[0253] or anything like that, so we can address them.
+[0254] Yep.
+[0255] But just to answer your question, Louie, I think for me, the SO7, we are now at a point
+[0256] where when Mark comes back, you know, we are going to start giving facts that, you know,
+[0257] we're going to start looking at what we gave facts for SO7.
+[0258] We're going to start sending questions to facts that about what I just highlighted
+[0259] a minute ago.
+[0260] Is this possible?
+[0261] Can we, what else can we get for this type of asset types?
+[0262] And then category, and then category by category, start really addressing them, some factors
+[0263] to stress test scenarios, you know, some of the characteristics with different asset types
+[0264] and so forth.
+[0265] And we will just tackle them one by one until we can, until we get through, you know, until
+[0266] we finish off basically SO7 and then, and then, you know, basically, you know, we,
+[0267] and then we, you know, we start getting some, you know, some test files that we can start
+[0268] looking at the numbers and so forth.
+[0269] Sounds good.
+[0270] Charlie or Nick, any, does that make sense to you guys or?
+[0271] Yeah.
+[0272] Yeah.
+[0273] Does that make sense on our end?
+[0274] Okay, great.
+[0275] Great.
+[0276] And I mean, I just want to say that the SO7, I would say is about, if I have to, as
+[0277] it is, about maybe 75% is what we really want.
+[0278] I'm leaving the 25% for things that you may say, hey, you know, this may not be needed,
+[0279] you know, changes that we might want to make or additional requirements that we may
+[0280] want to have, as I mentioned earlier, you know, seeing if we can extract some additional
+[0281] data, characteristic data is basically for different asset types.
+[0282] If fact that provides that data.
+[0283] Okay.
+[0284] We'll keep that in mind.
+[0285] Thank you.
+[0286] Anything else to discuss today?
+[0287] Nope.
+[0288] Not on my ass, Louis.
+[0289] Nope.
+[0290] I'm good.
+[0291] All right.
+[0292] Great.
+[0293] Thank you.
+[0294] Thank you.
+[0295] Thanks everybody.
+[0296] Thank you.
+[0297] Thank you.
