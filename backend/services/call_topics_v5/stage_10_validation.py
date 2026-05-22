@@ -88,11 +88,27 @@ def validate(
 
     # H3: orphan atomic units
     if orphans:
+        # Enrich with the actual text + speaker + line range so the user can decide
+        orphan_details = []
+        for uid in orphans:
+            u = by_uid.get(uid, {})
+            orphan_details.append({
+                "unit_id": uid,
+                "type": u.get("type"),
+                "text": u.get("text"),
+                "owner": u.get("owner"),
+                "lines": u.get("evidence_lines"),
+                "citation": u.get("citation", "")[:200],
+            })
         hard_failures.append({
             "code": "H3_orphan_units",
             "severity": "hard",
-            "message": f"{len(orphans)} atomic units not assigned to any topic",
-            "details": {"orphan_unit_ids": orphans},
+            "message": (
+                f"Stage 5 (clustering) did not assign {len(orphans)} atomic unit(s) to any topic. "
+                f"This content will be LOST from the final output unless you re-run Stage 5 or "
+                f"manually accept the loss."
+            ),
+            "details": {"orphan_units": orphan_details},
         })
 
     seen_topic_names: dict[str, int] = {}
@@ -165,12 +181,24 @@ def validate(
             # H1: ≥ 2 citations
             if task.get("citations_below_min"):
                 cit_count = len(task.get("citations") or [])
+                first_quote = ""
+                if task.get("citations"):
+                    q = (task["citations"][0].get("quote") or "")
+                    first_quote = q[:160] + ("…" if len(q) > 160 else "")
                 hard_failures.append({
                     "code": "H1_too_few_citations",
                     "severity": "hard",
                     "topic": tname,
                     "task": task.get("task"),
-                    "message": f"Task has only {cit_count} citation(s) (need ≥ 2)",
+                    "task_owner": task.get("owner"),
+                    "citation_count": cit_count,
+                    "first_citation_preview": first_quote,
+                    "message": (
+                        f"Task \"{task.get('task')}\" in topic \"{tname}\" has only {cit_count} "
+                        f"verbatim citation (need ≥ 2). Likely cause: the topic had too few atomic "
+                        f"units for Stage 7 to cite. You can accept anyway (the task is probably "
+                        f"correct), drop the task, or re-run extraction."
+                    ),
                 })
 
             # H2: off-transcript citations (already filtered in Stage 8 — but double-check)
@@ -212,7 +240,13 @@ def validate(
                                 "task": task.get("task"),
                                 "speaker": spk,
                                 "gap_lines": gap,
-                                "message": f"≥2 citations from same speaker ({spk!r}) within {gap} lines — weak evidence",
+                                "message": (
+                                    f"Task \"{task.get('task')}\" has ≥2 citations but both come "
+                                    f"from {spk!r} {gap} line(s) apart. Evidence may be weak: one "
+                                    f"person speaking continuously isn't a stronger signal than a "
+                                    f"single citation. Acknowledge if you accept it; otherwise "
+                                    f"consider editing or dropping the task."
+                                ),
                             })
                             break
 
@@ -228,7 +262,13 @@ def validate(
                     "topic": tname,
                     "task": task.get("task"),
                     "confidence": conf_score,
-                    "message": f"Single task in topic at boundary confidence {conf_score} — review carefully",
+                    "message": (
+                        f"Topic \"{tname}\" has only 1 task and its confidence is {conf_score:.2f} "
+                        f"(borderline). Confidence is computed from 5 signals (units count, distinct "
+                        f"speakers, owner clarity, citation count, registry presence). Low score "
+                        f"usually means: new topic + few atomic units + unclear owner. "
+                        f"Consider whether this topic deserves its own bucket or should be merged."
+                    ),
                 })
 
     # H6: duplicate topic names

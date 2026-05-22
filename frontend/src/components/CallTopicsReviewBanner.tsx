@@ -154,17 +154,58 @@ export default function CallTopicsReviewBanner({ call, onResolved }: Props) {
 
       {/* Hard failure escalations */}
       {hardFailures.length > 0 && (
-        <Section title="Hard validation failures (escalated)" color="#ae2a19">
-          {hardFailures.map((a, i) => (
-            <div key={i} style={proposalBox}>
-              <div style={{ fontSize: 11, color: "#ae2a19", fontWeight: 600 }}>
-                {a.failure?.code}
+        <Section title={`Hard validation failures (${hardFailures.length} — escalated)`} color="#ae2a19">
+          {hardFailures.map((a, i) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const f = a.failure as any;
+            const code = f?.code as string;
+            const isOrphan = code === "H3_orphan_units";
+            const isFewCit = code === "H1_too_few_citations";
+            return (
+              <div key={i} style={proposalBox}>
+                <div style={{ fontSize: 11, color: "#ae2a19", fontWeight: 700 }}>
+                  {code}
+                </div>
+                <div style={{ fontSize: 11, color: "#42526e", marginTop: 4, lineHeight: 1.5 }}>
+                  {f?.message}
+                </div>
+
+                {/* H3 — show the actual orphan units */}
+                {isOrphan && f?.details?.orphan_units && (
+                  <ul style={{ marginTop: 6, marginBottom: 0, paddingLeft: 18, fontSize: 11, color: "#5e6c84" }}>
+                    {(f.details.orphan_units as Array<{ unit_id: string; type: string; text: string; owner: string; lines: number[]; citation: string }>).map((u) => (
+                      <li key={u.unit_id} style={{ marginBottom: 4 }}>
+                        <span style={{ fontFamily: "ui-monospace, SFMono-Regular, monospace", color: "#974f0c" }}>
+                          {u.type}
+                        </span>{" — "}
+                        <span style={{ color: "#172b4d" }}>{u.text}</span>
+                        <div style={{ fontSize: 10, color: "#97a0af", marginTop: 2 }}>
+                          {u.owner} · lines {u.lines?.[0]}-{u.lines?.[1]}: <em>&ldquo;{u.citation}&rdquo;</em>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {/* H1 — task name + topic + preview of the 1 citation */}
+                {isFewCit && (
+                  <div style={{ marginTop: 6, fontSize: 11, color: "#5e6c84" }}>
+                    Topic: <strong>{f?.topic}</strong> · Task: <strong>{f?.task}</strong>
+                    {f?.first_citation_preview && (
+                      <div style={{ marginTop: 4, fontStyle: "italic", color: "#42526e" }}>
+                        Only citation: &ldquo;{f.first_citation_preview}&rdquo;
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <div style={{ fontSize: 11, color: "#42526e", marginTop: 2 }}>
-                {a.failure?.message}
-              </div>
-            </div>
-          ))}
+            );
+          })}
+          <div style={{ fontSize: 10, color: "#5e6c84", marginTop: 4, fontStyle: "italic" }}>
+            Apply &amp; Continue will accept these failures and let the run complete with the
+            data as-is. To fix properly, you&apos;d need to re-run extraction or manually edit
+            the topics after they appear in the table.
+          </div>
         </Section>
       )}
 
