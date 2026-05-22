@@ -19,6 +19,12 @@ logger = logging.getLogger("calltracker.call_topics_v5.stage_0")
 # Matches "[NNNN] text" at the start of a line. The four digits are zero-padded.
 _NUMBERED_LINE_RE = re.compile(r"^\[(\d{4})\]\s*(.*)$")
 
+# Sentence splitter for raw transcripts: splits on ". ", "? ", "! "
+# (also handles ".\n", ".\t" etc.) — preserves the punctuation at the end of
+# each sentence. Edge case: "Mr. Smith" splits, but that's acceptable for
+# our line-addressable model.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÀ-Ý\"'(])")
+
 
 class Line(TypedDict):
     idx: str   # "0001"..."NNNN" zero-padded
@@ -62,10 +68,34 @@ def ingest_transcript(raw: str) -> IngestResult:
             if candidate not in used_idx:
                 return candidate
 
-    for raw_line in raw.splitlines():
-        stripped = raw_line.strip()
-        if not stripped:
-            continue
+    # Detect blob-style transcripts: long input with very few line breaks
+    # (e.g. an ASR dump). In that case, split by sentence so the LLM has
+    # addressable units. Triggered only when there are NO [NNNN] markers
+    # (pre-numbered transcripts override this heuristic).
+    has_numbered_markers = bool(_NUMBERED_LINE_RE.search(raw))
+    avg_line_len = (len(raw) / max(1, raw.count("\n") + 1))
+    is_blob = (not has_numbered_markers) and avg_line_len > 200
+
+    if is_blob:
+        logger.info(
+            "[Stage 0] blob detected (avg_line_len=%.0f, no [NNNN] markers) — splitting by sentence",
+            avg_line_len,
+        )
+        # Split each natural line further into sentences
+        raw_iter = []
+        for raw_line in raw.splitlines():
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            sentences = _SENTENCE_SPLIT_RE.split(stripped)
+            for s in sentences:
+                s = s.strip()
+                if s:
+                    raw_iter.append(s)
+    else:
+        raw_iter = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+
+    for stripped in raw_iter:
         m = _NUMBERED_LINE_RE.match(stripped)
         if m:
             idx, text = m.group(1), m.group(2)
