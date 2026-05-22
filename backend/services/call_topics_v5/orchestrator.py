@@ -102,6 +102,11 @@ async def run_pipeline(
         s2 = await extract_atomic_units(ingested, ctx["project_metadata"]["context"], llm=llm, model=model)
         payload["stages"]["2"] = {"units_count": len(s2["units"]), "rejected": s2["rejected"]}
         await _emit(f"Stage 2: extracted {len(s2['units'])} atomic units ({len(s2['rejected'])} rejected)")
+        if s2["rejected"]:
+            for r in s2["rejected"][:5]:
+                await _emit(f"  ✗ rejected: {r}")
+            if len(s2["rejected"]) > 5:
+                await _emit(f"  … +{len(s2['rejected']) - 5} more")
 
         # ── Stage 3 ──
         await _emit("Stage 3: adversarial recall pass (LLM)…")
@@ -125,6 +130,11 @@ async def run_pipeline(
             "rejected": s5["rejected"],
         }
         await _emit(f"Stage 5: {len(s5['clusters'])} topics ({len(s5['orphans'])} orphan units)")
+        if s5["rejected"]:
+            for r in s5["rejected"][:5]:
+                await _emit(f"  ✗ cluster rejected: {r}")
+        if s5["orphans"]:
+            await _emit(f"  ⓘ orphan unit_ids: {', '.join(s5['orphans'][:10])}" + (" …" if len(s5["orphans"]) > 10 else ""))
 
         # ── Stage 6 ──
         await _emit("Stage 6: reconciling with topic registry…")
@@ -145,6 +155,13 @@ async def run_pipeline(
             "total_tasks": sum(len(t.get("tasks") or []) for t in synthesized),
         }
         await _emit(f"Stage 7: synthesized {len(synthesized)} topics with {payload['stages']['7']['total_tasks']} tasks total")
+        # Surface per-topic rejections (Stage 7 schema/citation validation drops)
+        for t in synthesized:
+            rej = t.get("rejected") or []
+            if rej:
+                await _emit(f"  ✗ {t.get('topic_name')!r}: {len(rej)} task(s) rejected")
+                for r in rej[:3]:
+                    await _emit(f"      {r}")
 
         # ── Stage 8 ──
         await _emit("Stage 8: attaching task-level citations…")
@@ -182,6 +199,49 @@ async def run_pipeline(
             f"{report['new_topic_proposals_count']} new proposals, {report['low_confidence_tasks_count']} low-conf → "
             f"clean={report['clean']}"
         )
+
+        # ── Orphan auto-rescue ──
+        # Any unit not clustered by Stage 5 becomes its own task under an
+        # 'Uncategorized' synthetic topic. Nothing lost. The user can rename
+        # / redispatch from the call_topics UI after the pipeline finishes.
+        orphan_units = [u for u in atomic_pool if u.get("unit_id") in set(s5["orphans"])]
+        if orphan_units:
+            await _emit(f"Auto-rescue: {len(orphan_units)} orphan unit(s) → 'Uncategorized' topic")
+            rescued_tasks = []
+            for u in orphan_units:
+                if not u.get("citation_valid"):
+                    continue
+                ev = u.get("evidence_lines") or [0, 0]
+                rescued_tasks.append({
+                    "task": (u.get("text") or "(uncategorized)")[:120],
+                    "next_step": "",
+                    "owner": u.get("owner") or "unassigned",
+                    "status": "open",
+                    "key_terms": [],
+                    "open_questions": [],
+                    "decisions": [],
+                    "evidence_unit_ids": [u.get("unit_id")],
+                    "citations": [{
+                        "speaker": u.get("owner") or "",
+                        "quote": u.get("citation") or "",
+                        "lines": f"{int(ev[0]):04d}-{int(ev[1]):04d}" if len(ev) == 2 else "",
+                        "unit_id": u.get("unit_id"),
+                    }],
+                    "citations_below_min": True,  # only 1 citation by construction
+                    "confidence": {
+                        "score": 0.3,  # low — single unit, no clustering signal
+                        "signals": {"orphan_rescued": True},
+                    },
+                })
+            if rescued_tasks:
+                with_conf.append({
+                    "topic_name": "Uncategorized",
+                    "importance": "low",
+                    "new_topic": True,
+                    "provisional": True,
+                    "registry_id": None,
+                    "tasks": rescued_tasks,
+                })
 
         # Persist all internal stages
         payload["synthesized_topics"] = with_conf

@@ -86,9 +86,10 @@ def validate(
     hard_failures: list[dict] = []
     soft_warnings: list[dict] = []
 
-    # H3: orphan atomic units
+    # H3 → demoted to soft warning: orphans are AUTO-RESCUED into an
+    # "Uncategorized" topic at Stage 12 serialization time. Nothing is lost.
+    # The user can rename / redispatch from the call_topics table after.
     if orphans:
-        # Enrich with the actual text + speaker + line range so the user can decide
         orphan_details = []
         for uid in orphans:
             u = by_uid.get(uid, {})
@@ -100,13 +101,13 @@ def validate(
                 "lines": u.get("evidence_lines"),
                 "citation": u.get("citation", "")[:200],
             })
-        hard_failures.append({
-            "code": "H3_orphan_units",
-            "severity": "hard",
+        soft_warnings.append({
+            "code": "S5_orphan_units_auto_rescued",
+            "severity": "soft",
             "message": (
-                f"Stage 5 (clustering) did not assign {len(orphans)} atomic unit(s) to any topic. "
-                f"This content will be LOST from the final output unless you re-run Stage 5 or "
-                f"manually accept the loss."
+                f"{len(orphans)} atomic unit(s) not clustered by Stage 5 — auto-rescued into "
+                f"an 'Uncategorized' topic. Review in the call_topics table; rename or move "
+                f"tasks as needed."
             ),
             "details": {"orphan_units": orphan_details},
         })
@@ -170,7 +171,7 @@ def validate(
                             "topic": tname,
                             "window_lines": window_size,
                             "n_units": len(topic_units),
-                            "message": f"All {len(topic_units)} evidence units fall within a {window_size}-line window — narrow basis",
+                            "message": f"{len(topic_units)} units within a {window_size}-line window (narrow basis)",
                         })
 
         # Per-task checks
@@ -232,21 +233,15 @@ def validate(
                     ranges_sorted = sorted(ranges)
                     for a, b in zip(ranges_sorted, ranges_sorted[1:]):
                         gap = b[0] - a[1]
-                        if gap <= SOFT_WARNING_THRESHOLDS["same_speaker_max_line_distance"]:
+                        if abs(gap) <= SOFT_WARNING_THRESHOLDS["same_speaker_max_line_distance"]:
                             soft_warnings.append({
                                 "code": "S1_same_speaker_adjacent_citations",
                                 "severity": "soft",
                                 "topic": tname,
                                 "task": task.get("task"),
                                 "speaker": spk,
-                                "gap_lines": gap,
-                                "message": (
-                                    f"Task \"{task.get('task')}\" has ≥2 citations but both come "
-                                    f"from {spk!r} {gap} line(s) apart. Evidence may be weak: one "
-                                    f"person speaking continuously isn't a stronger signal than a "
-                                    f"single citation. Acknowledge if you accept it; otherwise "
-                                    f"consider editing or dropping the task."
-                                ),
+                                "gap_lines": abs(gap),
+                                "message": f"Both citations from {spk!r}, {abs(gap)} line(s) apart",
                             })
                             break
 
@@ -262,13 +257,7 @@ def validate(
                     "topic": tname,
                     "task": task.get("task"),
                     "confidence": conf_score,
-                    "message": (
-                        f"Topic \"{tname}\" has only 1 task and its confidence is {conf_score:.2f} "
-                        f"(borderline). Confidence is computed from 5 signals (units count, distinct "
-                        f"speakers, owner clarity, citation count, registry presence). Low score "
-                        f"usually means: new topic + few atomic units + unclear owner. "
-                        f"Consider whether this topic deserves its own bucket or should be merged."
-                    ),
+                    "message": f"Single-task topic at borderline confidence {conf_score:.2f}",
                 })
 
     # H6: duplicate topic names

@@ -77,10 +77,14 @@ def test_validation_clean_path():
     assert report["clean"] is True
 
 
-def test_validation_hard_failure_orphans():
+def test_orphans_now_soft_warning_auto_rescued():
+    """H3 (orphan units) downgraded to S5 (soft warning) — orchestrator
+    auto-rescues orphans into an 'Uncategorized' topic at Stage 12, so the
+    content is never lost. No hard failure required."""
     topics = []
     report = validate(topics, [], orphans=["u_0099"])
-    assert any(hf["code"] == "H3_orphan_units" for hf in report["hard_failures"])
+    assert all(hf["code"] != "H3_orphan_units" for hf in report["hard_failures"])
+    assert any(sw["code"] == "S5_orphan_units_auto_rescued" for sw in report["soft_warnings"])
 
 
 def test_validation_hard_failure_excluded_topic():
