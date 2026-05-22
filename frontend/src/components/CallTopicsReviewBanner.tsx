@@ -212,19 +212,61 @@ export default function CallTopicsReviewBanner({ call, onResolved }: Props) {
         </Section>
       )}
 
-      {/* Confidence review */}
+      {/* Confidence review — same Keep/Drop affordance as warnings */}
       {review.confidence_review.length > 0 && (
-        <Section title="Confidence review (low-confidence tasks)" color="#974f0c">
-          {review.confidence_review.map((r, i) => (
-            <div key={i} style={proposalBox}>
-              <div style={{ fontSize: 12, color: "#172b4d" }}>
-                <strong>{r.topic_name}</strong> · {r.task_text}
-                <span style={{ marginLeft: 8, color: "#974f0c", fontWeight: 600 }}>
-                  conf {r.score.toFixed(2)}
-                </span>
+        <Section title={`Confidence review (${review.confidence_review.length} low-confidence task${review.confidence_review.length === 1 ? "" : "s"})`} color="#974f0c">
+          <div style={{ fontSize: 10, color: "#5e6c84", marginBottom: 4, fontStyle: "italic" }}>
+            Confidence &lt; 0.5. Keep the task as-is, or Drop it from the final output.
+          </div>
+          {review.confidence_review.map((r, i) => {
+            const key = `${r.topic_name}|${r.task_text}`;
+            const dropped = droppedTasks.has(key);
+            return (
+              <div key={i} style={{ ...proposalBox, opacity: dropped ? 0.5 : 1 }}>
+                <div style={{ fontSize: 12, color: "#172b4d", fontWeight: 600 }}>
+                  {r.task_text}
+                  <span style={{ color: "#5e6c84", marginLeft: 6, fontWeight: 400 }}>· {r.topic_name}</span>
+                  <span style={{ marginLeft: 8, color: "#974f0c", fontWeight: 600, fontSize: 11 }}>
+                    conf {r.score.toFixed(2)}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (dropped) {
+                        setDroppedTasks((prev) => {
+                          const n = new Map(prev);
+                          n.delete(key);
+                          return n;
+                        });
+                      }
+                    }}
+                    disabled={!dropped}
+                    style={pillBtn(!dropped, "#36b37e")}
+                  >
+                    ✓ Keep
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!dropped) {
+                        setDroppedTasks((prev) => {
+                          const n = new Map(prev);
+                          n.set(key, { topic_name: r.topic_name, task_text: r.task_text });
+                          return n;
+                        });
+                      }
+                    }}
+                    disabled={dropped}
+                    style={pillBtn(dropped, "#bf2600")}
+                  >
+                    🗑 Drop task
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </Section>
       )}
 
