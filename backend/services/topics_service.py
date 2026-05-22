@@ -930,7 +930,32 @@ async def run_extraction_background(call_id: str) -> None:
     Called via FastAPI BackgroundTasks so the HTTP response returns immediately.
 
     Streams per-step progress to calls.extract_call_progress via ProgressLogger.
+
+    EPIC-17 cutover: when env CALL_TOPICS_V5_ENABLED=true, delegate to the v5
+    13-stage pipeline. Otherwise legacy v4 single-shot path.
     """
+    import os as _os
+    if _os.environ.get("CALL_TOPICS_V5_ENABLED", "").lower() in {"1", "true", "yes"}:
+        from backend.services.call_topics_v5.orchestrator import run_pipeline as _v5_run
+        from backend.services.topic_verification import ProgressLogger as _PL
+        db = get_client()
+        try:
+            db.table("calls").update({"extract_call_progress": None}).eq("id", call_id).execute()
+        except Exception:
+            pass
+        plog = _PL(db, call_id, "extract_call_progress")
+        await plog.start()
+        try:
+            await plog.log("EPIC-17 v5 pipeline ENABLED — 13-stage extraction")
+            await _v5_run(call_id, progress=plog.log)
+        except Exception as e:
+            await plog.log(f"❌ v5 pipeline failed: {type(e).__name__}: {e}")
+            logger.exception("[v5] failed for call %s: %s", call_id, e)
+        finally:
+            await plog.stop()
+        return
+
+    # Legacy v4 path below
     from backend.services.topic_verification import ProgressLogger
     db = get_client()
     # Clear the progress field at start (last run's log shouldn't bleed in).

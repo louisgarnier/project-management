@@ -5,6 +5,7 @@ from backend.middleware.logging_middleware import log_requests
 from backend.routers import (
     artifact_types,
     artifacts,
+    call_topics_v5,
     calls,
     files,
     library,
@@ -63,6 +64,7 @@ app.include_router(calls.router)
 app.include_router(files.router)
 app.include_router(artifact_types.router)
 app.include_router(artifacts.router)
+app.include_router(call_topics_v5.router)
 app.include_router(topics.router)
 app.include_router(library.router)
 app.include_router(settings.router)
