@@ -733,8 +733,9 @@ async def _run_verify_new_background(call_id: str) -> None:
 
             # ── Step 3: pre-filter outcome ──
             if not qualified_topics:
+                from backend.services.topic_verification import compute_confidence as _conf, format_confidence_log_line as _conf_log
                 await plog.log(f"  ✓ Topic \"{c['name']}\": no existing topic qualified mechanically → verdict=truly_new (no LLM call needed)")
-                return {
+                stub = {
                     "verdict": "truly_new",
                     "final_verdict": "truly_new",
                     "matched_topic_id": None,
@@ -748,6 +749,9 @@ async def _run_verify_new_background(call_id: str) -> None:
                     "lexical_precheck": {k: v for k, v in pre.items() if not k.startswith("_")},
                     "mechanical_skip": True,
                 }
+                stub["confidence"] = _conf(stub)
+                await plog.log(f"      [{c['name']}] {_conf_log(stub['confidence'])}")
+                return stub
 
             # ── Layer 2: LLM judgment (only on qualified candidates) ──
             await plog.log(f"  → Topic \"{c['name']}\": Layer 2 (LLM judgment) — sending top {len(qualified_topics)} qualified candidate(s) to LLM…")

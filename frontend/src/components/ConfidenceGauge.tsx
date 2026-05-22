@@ -121,7 +121,23 @@ type Props = {
 };
 
 export default function ConfidenceGauge({ result }: Props) {
-  const conf = computeConfidence(result);
+  // Prefer backend-computed confidence (authoritative + already in DB).
+  // Fall back to local recomputation for legacy results without it.
+  const backendConf = result?.confidence;
+  const conf: ConfidenceLevel | null = backendConf
+    ? {
+        pct: backendConf.pct,
+        label: backendConf.label,
+        color: backendConf.color,
+        bg:
+          backendConf.label === "High"
+            ? "#e3fcef"
+            : backendConf.label === "Moderate"
+              ? "#fff4e6"
+              : "#fff1f0",
+        rationale: backendConf.rationale.map((r) => r.step),
+      }
+    : computeConfidence(result);
   if (!conf) return null;
 
   // Directional label: what is the % confidence FOR?
@@ -183,6 +199,28 @@ export default function ConfidenceGauge({ result }: Props) {
       <div style={{ marginTop: 3, color: conf.color, opacity: 0.85, fontSize: 10 }}>
         {conf.rationale.join(" · ")}
       </div>
+      {backendConf && backendConf.rationale.length > 0 && (
+        <details style={{ marginTop: 4, fontSize: 10 }}>
+          <summary style={{ cursor: "pointer", color: conf.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em" }}>
+            Derivation ({backendConf.rationale.length} step{backendConf.rationale.length === 1 ? "" : "s"})
+          </summary>
+          <table style={{ marginTop: 4, borderCollapse: "collapse", color: conf.color, opacity: 0.92, fontSize: 10 }}>
+            <tbody>
+              {backendConf.rationale.map((r, i) => (
+                <tr key={i}>
+                  <td style={{ paddingRight: 8, verticalAlign: "top", color: "#5e6c84" }}>{r.step}</td>
+                  <td style={{ paddingRight: 8, verticalAlign: "top", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", whiteSpace: "nowrap" }}>
+                    {r.op === "base" ? `= ${r.value}` : r.op === "× multiplier" ? `× ${r.value}` : r.op === "+ bonus" ? `+ ${r.value}` : r.op === "− penalty" ? `− ${r.value}` : `${r.op} ${r.value}`}
+                  </td>
+                  <td style={{ verticalAlign: "top", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontWeight: 600 }}>
+                    → {r.running}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
       {conf.pct < 50 && (
         <div style={{ marginTop: 3, color: conf.color, fontSize: 10, fontWeight: 600 }}>
           → Strong signal to review/override manually

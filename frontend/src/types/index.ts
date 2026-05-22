@@ -403,9 +403,16 @@ export interface PerTopicEvaluation {
   reason: string;
 }
 
+export interface ConfidenceBreakdown {
+  pct: number;
+  label: "High" | "Moderate" | "Low";
+  color: string;
+  rationale: { step: string; op: string; value: number; running: number }[];
+}
+
 export interface VerifyNewResult {
   verdict: VerifyNewVerdict;
-  final_verdict?: VerifyNewVerdict;  // new prompt field (mirror of verdict)
+  final_verdict?: VerifyNewVerdict;
   matched_topic_id: string | null;
   matched_topic_name: string | null;
   merge_reasoning?: string;
@@ -417,6 +424,7 @@ export interface VerifyNewResult {
   failed_citations?: string[];
   lexical_precheck?: LexicalPrecheck;
   sanity_flag?: SanityFlag;
+  confidence?: ConfidenceBreakdown;  // computed backend-side, persisted on result
 }
 
 export type VerifyNotDiscussedVerdict = "not_discussed" | "actually_discussed";

@@ -369,6 +369,131 @@ def check_reasoning_references_tasks(
     return failures
 
 
+def compute_confidence(result: dict) -> dict:
+    """Compute the 0-100 confidence score for a verify_new_topic result,
+    along with a step-by-step breakdown of how it was derived.
+
+    Returns: {pct, label, color, rationale: [{step, delta_or_op, value}]}
+    The rationale is a list of {step, op, value, running} entries that
+    can be displayed in the UI or logged as a single line.
+    """
+    rationale: list[dict] = []
+    running: float = 0
+
+    # ── Base score ──
+    mechanical_skip = result.get("mechanical_skip") is True
+    verdict = result.get("verdict") or result.get("final_verdict")
+    needs_review = bool(result.get("needs_manual_review"))
+    if mechanical_skip:
+        running = 95
+        rationale.append({"step": "Mechanical pre-filter skipped LLM (0 qualified)", "op": "base", "value": 95, "running": 95})
+    elif needs_review:
+        running = 40
+        rationale.append({"step": "Flagged for manual review (needs_manual_review=true)", "op": "base", "value": 40, "running": 40})
+    elif verdict == "truly_new":
+        running = 85
+        rationale.append({"step": "LLM verdict: truly_new", "op": "base", "value": 85, "running": 85})
+    elif verdict == "should_be_merged_with":
+        running = 85
+        rationale.append({"step": "LLM verdict: should_be_merged_with", "op": "base", "value": 85, "running": 85})
+    else:
+        running = 60
+        rationale.append({"step": "LLM verdict: undecided", "op": "base", "value": 60, "running": 60})
+
+    # ── Citation verify pass rate ──
+    citations = result.get("citations") or []
+    verdict_cits = [c for c in citations if (c.get("for") or "verdict") == "verdict"]
+    if verdict_cits:
+        failed = len(result.get("failed_citations") or [])
+        verified = max(len(verdict_cits) - failed, 0)
+        rate = verified / len(verdict_cits)
+        multiplier = 0.7 + 0.3 * rate
+        new_running = running * multiplier
+        rationale.append({
+            "step": f"{verified}/{len(verdict_cits)} citation(s) verified verbatim ({int(rate * 100)}%)",
+            "op": "× multiplier",
+            "value": round(multiplier, 2),
+            "running": round(new_running, 1),
+        })
+        running = new_running
+
+    # ── Sanity flag penalty ──
+    sanity_flag = result.get("sanity_flag")
+    if sanity_flag:
+        running -= 15
+        rationale.append({
+            "step": f"Sanity flag: {sanity_flag}",
+            "op": "− penalty",
+            "value": 15,
+            "running": round(running, 1),
+        })
+
+    # ── Pre-filter target score nudge ──
+    matched_id = result.get("matched_topic_id")
+    precheck = result.get("lexical_precheck") or {}
+    if verdict == "should_be_merged_with" and matched_id:
+        scored = precheck.get("scored_topics") or []
+        target = next((s for s in scored if s.get("topic_id") == matched_id), None)
+        if target:
+            score = target.get("combined_score", 0)
+            if score >= 0.5:
+                running += 5
+                rationale.append({
+                    "step": f"Strong mechanical signal on target (combined_score={score})",
+                    "op": "+ bonus",
+                    "value": 5,
+                    "running": round(running, 1),
+                })
+            elif score < 0.15:
+                running -= 10
+                rationale.append({
+                    "step": f"Weak mechanical signal on target (combined_score={score} below threshold)",
+                    "op": "− penalty",
+                    "value": 10,
+                    "running": round(running, 1),
+                })
+
+    # ── Task-fit YES count ──
+    evals = result.get("evaluations") or []
+    yes_count = sum(1 for e in evals if e.get("task_fit") == "yes")
+    if verdict == "should_be_merged_with" and yes_count > 0:
+        running += 5
+        rationale.append({
+            "step": f"{yes_count} task-fit evaluation(s) confirmed YES",
+            "op": "+ bonus",
+            "value": 5,
+            "running": round(running, 1),
+        })
+
+    # ── Clamp + label ──
+    pct = max(0, min(100, round(running)))
+    if pct >= 80:
+        label, color = "High", "#006644"
+    elif pct >= 50:
+        label, color = "Moderate", "#974f0c"
+    else:
+        label, color = "Low", "#ae2a19"
+    return {"pct": pct, "label": label, "color": color, "rationale": rationale}
+
+
+def format_confidence_log_line(conf: dict) -> str:
+    """One-liner derivation for the progress log."""
+    parts = []
+    for r in conf["rationale"]:
+        op = r["op"]
+        val = r["value"]
+        running = r["running"]
+        if op == "base":
+            parts.append(f"base {val}")
+        elif "multiplier" in op:
+            parts.append(f"×{val} → {running}")
+        elif "+ bonus" in op:
+            parts.append(f"+{val} → {running}")
+        elif "− penalty" in op:
+            parts.append(f"−{val} → {running}")
+    return f"Confidence: {' '.join(parts)} = {conf['pct']}% ({conf['label']})"
+
+
 def sanity_check_llm_vs_lexical(llm_result: dict, precheck: dict) -> str | None:
     """Compare LLM verdict to mechanical scoring. Flag string if they disagree.
 
@@ -607,6 +732,10 @@ async def run_verify_new(
                     if flag:
                         final["sanity_flag"] = flag
                         await _log(f"      [{name}] ⚠ sanity flag: {flag} — LLM verdict disagrees with mechanical scoring")
+
+            # Compute + persist + log the confidence breakdown
+            final["confidence"] = compute_confidence(final)
+            await _log(f"      [{name}] {format_confidence_log_line(final['confidence'])}")
             return final
         logger.warning("⚠️ [verify_new] citation verify failed on attempt %d: %s", attempt, failures)
         await _log(f"      [{name}] attempt {attempt}: {len(failures)} of {len(cits)} quote(s) NOT found in the transcripts — retrying")
@@ -638,6 +767,9 @@ async def run_verify_new(
         flag = sanity_check_llm_vs_lexical(final, precheck)
         if flag:
             final["sanity_flag"] = flag
+    # Confidence on the manual-review fallback path too
+    final["confidence"] = compute_confidence(final)
+    await _log(f"      [{name}] {format_confidence_log_line(final['confidence'])}")
     return final
 
 

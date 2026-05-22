@@ -53,22 +53,62 @@ EXAMPLE — CORRECT merge:
   identify environments). SAME WORK STREAM (provisioning access).
 
 ──────────────────────────────────────────────────────────────────────
+DATA SHAPE — v4 task-centric (the INPUT you receive)
+──────────────────────────────────────────────────────────────────────
+Both the candidate and each existing project topic come in this shape:
+
+    {
+      "topic_id": ..., "name": ..., "summary": ...,
+      "tasks": [
+        {
+          "task": "...",           // 1. task description
+          "next_step": "...",      //    + next action (optional)
+          "owner": "...",          //    + owner (optional)
+          "status": "open|...",    //    + status
+          "key_terms": [...],      // 2. terms anchoring THIS task
+          "open_questions": [...], // 3. uncertainties under THIS task
+          "decisions": [...],      // 4. commitments under THIS task
+          "citations": [...]       // 5. verbatim quotes anchoring it
+        }, ...
+      ]
+    }
+
+ALL five per-task dimensions are signals. Use ALL of them. A single
+dimension is insufficient to decide task_fit; you must weigh the
+combined picture.
+
+──────────────────────────────────────────────────────────────────────
 PROCESS (mandatory, follow in order)
 ──────────────────────────────────────────────────────────────────────
-1. For each existing project topic (up to the 5 most relevant by
-   key_terms/subject overlap), do a task-fit evaluation:
-     a. Read the existing topic's TASKS, OPEN_QUESTIONS, DECISIONS.
-     b. Read the candidate's TASKS, OPEN_QUESTIONS, DECISIONS.
-     c. Decide: task_fit = "yes" or "no".
-     d. State a one-sentence reason anchored in CONCRETE task content
-        (not platform/vendor names). Example: "no — candidate is about
-        access provisioning; this topic is about data aggregation logic".
-2. After evaluating, pick the outcome:
+1. For each existing project topic (up to 5 most relevant), compare its
+   tasks[] AGAINST the candidate's tasks[] across all 5 dimensions:
+
+     (a) TASK TEXT — does any candidate task describe the same concrete
+         action as an existing task? (verbs, objects, deliverables)
+     (b) KEY_TERMS — do any candidate task's key_terms overlap with an
+         existing task's key_terms (beyond shared platform/vendor names)?
+     (c) OPEN_QUESTIONS — do candidate task OQ extend / resolve / mirror
+         existing task OQ?
+     (d) DECISIONS — do candidate task decisions extend, refine, or
+         contradict existing task decisions on the same subject?
+     (e) CITATIONS — do candidate task citations quote the same speakers
+         saying related things to what existing task citations quoted?
+
+   Then decide task_fit = "yes" or "no" for THE WHOLE existing topic
+   (across all its tasks vs all candidate tasks).
+
+2. State a one-sentence reason anchored in CONCRETE content. Reference
+   AT LEAST TWO of the 5 dimensions (e.g. "yes — candidate task 'check
+   EDS+ schema' matches existing task 'verify schema mapping' [task
+   text]; both cite Alice on the same exchange about EDS+ [citations]").
+   Reasons that only invoke platform/vendor name overlap will be rejected.
+
+3. After evaluating, pick the outcome:
    - Exactly one existing topic has task_fit = "yes" → propose merge.
-   - Multiple "yes" → pick the one with strongest task overlap, list
-     others as also-considered.
+   - Multiple "yes" → pick the one with strongest task overlap.
    - Zero "yes" → final_verdict = "truly_new".
-3. For a merge: supply AT LEAST TWO verbatim citations from past
+
+4. For a merge: supply AT LEAST TWO verbatim citations from past
    transcripts that confirm the SAME work (not just same platform) was
    discussed before. Single citations or citations about adjacent
    (different) work are insufficient → downgrade to truly_new instead.
