@@ -38,7 +38,7 @@ class ProgressLogger:
         await plog.stop()   # final flush + stop flusher
     """
 
-    def __init__(self, db, call_id: str, cache_field: str, flush_interval_s: float = 2.0):
+    def __init__(self, db, call_id: str, cache_field: str, flush_interval_s: float = 0.5):
         self._db = db
         self._call_id = call_id
         self._cache_field = cache_field
@@ -52,6 +52,13 @@ class ProgressLogger:
         async with self._lock:
             self._entries.append({"ts": _dt.datetime.utcnow().isoformat() + "Z", "msg": msg})
         logger.info(f"📥 [progress:{self._cache_field}] {msg}")
+        # Force immediate flush for snappier UI — run sync DB write in a
+        # thread so we don't block the event loop. The flusher_loop still
+        # runs for safety net but most updates ship instantly.
+        try:
+            await asyncio.to_thread(self._flush_sync)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"⚠️ [progress] immediate flush failed: {e}")
 
     def entries_snapshot(self) -> list[dict]:
         """Return a copy of all accumulated entries (used in final cache write)."""
