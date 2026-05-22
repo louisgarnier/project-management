@@ -39,8 +39,23 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
   const alreadyExtracted =
     call.extraction_status === "done" && !!(call.extraction_cache?.length);
 
+  // EPIC-17 task-identity fix: backfill missing task_ids at load time so
+  // React's stable key strategy works even on legacy extraction_cache rows
+  // (v5 builds before stage_12 stamped UUIDs). Without this, multiple tasks
+  // moved into the same topic collide on undefined task_id keys and the
+  // uncontrolled <input> rows share their DOM-cached values across rows.
+  const ensureTaskIds = (ts: TopicData[]): TopicData[] =>
+    ts.map((t) => ({
+      ...t,
+      tasks: (t.tasks ?? []).map((task) =>
+        task.task_id && task.task_id.trim()
+          ? task
+          : { ...task, task_id: crypto.randomUUID() },
+      ),
+    }));
+
   const [topics, setTopics] = useState<TopicData[]>(() =>
-    alreadyExtracted ? (call.extraction_cache ?? []) : []
+    alreadyExtracted ? ensureTaskIds(call.extraction_cache ?? []) : []
   );
   const [libraryPrompts, setLibraryPrompts] = useState<LibraryEntry[]>([]);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(
@@ -103,8 +118,22 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
         setExtracted(true);
         refresh();
       } else {
-        setTopics(call.extraction_cache);
+        const stamped = ensureTaskIds(call.extraction_cache);
+        setTopics(stamped);
         setExtracted(true);
+        // If any task_id was minted client-side, persist back so the next
+        // read sees stable identifiers (otherwise React keys flip every load
+        // and uncontrolled inputs lose their state).
+        const anyMinted = stamped.some(
+          (t, i) =>
+            (t.tasks ?? []).some((task, j) => task.task_id !== (call.extraction_cache?.[i]?.tasks?.[j]?.task_id ?? "")),
+        );
+        if (anyMinted) {
+          logger.info("[CallTopicsStage] backfilled missing task_ids — persisting");
+          callsAPI.patchExtractionCache(call.id, stamped).catch((e) =>
+            logger.error("[CallTopicsStage] task_id backfill persist failed", { data: e }),
+          );
+        }
       }
     }
     if (call.extraction_status === "failed" && !extracted) {
@@ -159,7 +188,7 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
     setLoading(true);
     try {
       const data = await topicsAPI.listForCall(call.id);
-      setTopics(data);
+      setTopics(ensureTaskIds(data));
     } catch (e: unknown) {
       logger.error("[CallTopicsStage] topics load failed", { data: e });
     } finally {

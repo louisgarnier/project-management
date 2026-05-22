@@ -8,12 +8,14 @@ new `confidence` field.
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import TypedDict
 
 logger = logging.getLogger("calltracker.call_topics_v5.stage_12")
 
 
 class V4Task(TypedDict, total=False):
+    task_id: str  # stable UUID — required for stable React keys + move-task identity
     task: str
     next_step: str
     owner: str
@@ -31,17 +33,28 @@ class V4Topic(TypedDict, total=False):
     tasks: list[V4Task]
 
 
+def _stamp_id(existing: object) -> str:
+    """Keep an existing task_id when present + non-empty; otherwise mint a fresh UUID."""
+    if isinstance(existing, str) and existing.strip():
+        return existing
+    return str(uuid.uuid4())
+
+
 def serialize_to_v4(synthesized_topics: list[dict]) -> list[V4Topic]:
     """Map v5 internal shape → v4-compatible JSON.
 
     Note: tasks keep their full per-task structure. confidence is additive
-    (existing v4 consumers ignore unknown fields).
+    (existing v4 consumers ignore unknown fields). task_id is stamped per task —
+    required for stable React keys + move-task identity in the UI (without it
+    the frontend renders all tasks with the same DOM key and uncontrolled
+    <input> rows share values across rows after a move).
     """
     out: list[V4Topic] = []
     for topic in synthesized_topics:
         v4_tasks: list[V4Task] = []
         for task in (topic.get("tasks") or []):
             v4_tasks.append({
+                "task_id": _stamp_id(task.get("task_id")),
                 "task": task.get("task") or "",
                 "next_step": task.get("next_step") or "",
                 "owner": task.get("owner") or "unassigned",
