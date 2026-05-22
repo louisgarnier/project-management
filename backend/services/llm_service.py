@@ -19,24 +19,30 @@ async def call_llm_raw(
     max_tokens: int = 4096,
     *,
     model: str | None = None,
+    temperature: float | None = None,
 ) -> str:
     """
     Call any supported LLM with an explicit system prompt and user message.
     Returns the raw text response (no transcript/task wrapping).
     llm must be one of: "groq", "deepseek", "claude", "openai", "openrouter".
-    For llm="openrouter", `model` is required (OpenRouter model slug, e.g. "anthropic/claude-sonnet-4.6").
+    For llm="openrouter", `model` is required (OpenRouter model slug).
+    temperature: when set, forces sampling temperature (use 0 for deterministic
+    output — EPIC-17 v5 pipeline requires this). None = model default.
     """
     if llm == "claude":
         client = anthropic.AsyncAnthropic()
         for attempt in range(_MAX_RETRIES + 1):
             try:
                 logger.info(f"🤖 [Claude] Calling LLM (attempt {attempt + 1})")
-                message = await client.messages.create(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=max_tokens,
-                    system=system,
-                    messages=[{"role": "user", "content": user_message}],
-                )
+                claude_kwargs: dict = {
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": max_tokens,
+                    "system": system,
+                    "messages": [{"role": "user", "content": user_message}],
+                }
+                if temperature is not None:
+                    claude_kwargs["temperature"] = temperature
+                message = await client.messages.create(**claude_kwargs)
                 content = message.content[0].text
                 logger.info(
                     f"✅ [Claude] Done — "
@@ -82,14 +88,17 @@ async def call_llm_raw(
                 logger.info(
                     f"🤖 [{cfg['provider']}] Calling LLM (attempt {attempt + 1})"
                 )
-                response = await client_oa.chat.completions.create(
-                    model=cfg["model"],
-                    max_tokens=max_tokens,
-                    messages=[
+                oa_kwargs: dict = {
+                    "model": cfg["model"],
+                    "max_tokens": max_tokens,
+                    "messages": [
                         {"role": "system", "content": system},
                         {"role": "user", "content": user_message},
                     ],
-                )
+                }
+                if temperature is not None:
+                    oa_kwargs["temperature"] = temperature
+                response = await client_oa.chat.completions.create(**oa_kwargs)
                 content = response.choices[0].message.content or ""
                 logger.info(
                     f"✅ [{cfg['provider']}] Done — "
@@ -120,14 +129,17 @@ async def call_llm_raw(
                 logger.info(
                     f"🤖 [OpenRouter/{model}] Calling LLM (attempt {attempt + 1})"
                 )
-                response = await client_oa.chat.completions.create(
-                    model=model,
-                    max_tokens=max_tokens,
-                    messages=[
+                or_kwargs: dict = {
+                    "model": model,
+                    "max_tokens": max_tokens,
+                    "messages": [
                         {"role": "system", "content": system},
                         {"role": "user", "content": user_message},
                     ],
-                )
+                }
+                if temperature is not None:
+                    or_kwargs["temperature"] = temperature
+                response = await client_oa.chat.completions.create(**or_kwargs)
                 content = response.choices[0].message.content or ""
                 logger.info(
                     f"✅ [OpenRouter/{model}] Done — "
