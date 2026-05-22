@@ -1057,10 +1057,12 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                           setTaskMoveSubmenuOpen(false);
                           return;
                         }
-                        // ATOMIC: build the full next state in one pass so we
-                        // don't lose the source-filter when the dest-append
-                        // setState reads stale `topics`. Single setTopics +
-                        // single persistExtractionCache call.
+                        // Close the menu IMMEDIATELY so it doesn't interfere
+                        // with subsequent renders.
+                        setMenu(null);
+                        setTaskMoveSubmenuOpen(false);
+
+                        // ATOMIC: build the full next state in one pass.
                         const nextTopics = topics.map((tt, i) => {
                           if (i === menu.ti) {
                             return {
@@ -1078,16 +1080,25 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                           }
                           return tt;
                         });
+                        logger.info("[CallTopicsStage] move task", {
+                          data: {
+                            from: `${menu.ti}.${menu.rowIdx}`,
+                            to: `${idx}.${(nextTopics[idx].tasks ?? []).length - 1}`,
+                            task_id: taskToMove.task_id,
+                            task_label: taskToMove.task,
+                            source_remaining: nextTopics[menu.ti].tasks?.length,
+                            dest_count: nextTopics[idx].tasks?.length,
+                          },
+                        });
                         setTopics(nextTopics);
-                        // Persist via the appropriate path. At call_topics
-                        // stage neither topic has a DB id → extraction_cache.
+
                         const sourceId = sourceTopic.id ?? sourceTopic.topic_id;
                         const destId = t.id ?? t.topic_id;
-                        if (!sourceId && !destId) {
-                          await persistExtractionCache(nextTopics);
-                        } else {
-                          // Later-stage path: two PATCHes (one per topic).
-                          try {
+                        try {
+                          if (!sourceId && !destId) {
+                            await persistExtractionCache(nextTopics);
+                            logger.info("[CallTopicsStage] move task persisted via extraction_cache PATCH");
+                          } else {
                             if (sourceId) {
                               await topicsAPI.patch(sourceId, {
                                 tasks: nextTopics[menu.ti].tasks,
@@ -1098,12 +1109,17 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                                 tasks: nextTopics[idx].tasks,
                               });
                             }
-                          } catch (e) {
-                            logger.error("[CallTopicsStage] move task failed", { data: e });
+                            logger.info("[CallTopicsStage] move task persisted via topics PATCH");
                           }
+                          // Safety net: re-fetch from server to ensure UI mirrors
+                          // what's truly persisted (catches any read-after-write
+                          // races or partial PATCH failures).
+                          onPollCall?.();
+                        } catch (e) {
+                          logger.error("[CallTopicsStage] move task PERSIST FAILED — rolling back UI", { data: e });
+                          // Rollback: revert to the previous topics state
+                          setTopics(topics);
                         }
-                        setMenu(null);
-                        setTaskMoveSubmenuOpen(false);
                       }}
                       style={menuItem}
                     >
