@@ -14,6 +14,7 @@ import type {
 } from "@/types";
 import KeyTermChips from "./KeyTermChips";
 import EvidenceRefPopover from "./EvidenceRefPopover";
+import CallTopicsReviewBanner from "./CallTopicsReviewBanner";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -504,6 +505,17 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
           )}
         </div>
       </div>
+
+      {/* ── EPIC-17 v5 pipeline review banner (Stage 11) ── */}
+      {call.call_topics_v5_state === "awaiting_review" && (
+        <CallTopicsReviewBanner
+          call={call}
+          onResolved={() => {
+            // Refresh parent so post-Stage-12 extraction_cache is loaded
+            onPollCall?.();
+          }}
+        />
+      )}
 
       {/* ── Error banner ── */}
       {error && (

@@ -34,6 +34,9 @@ export interface Call {
   // EPIC-16: live progress log written by run_extraction_background.
   // Shape: { __progress__: [{ts, msg}, ...] }
   extract_call_progress?: { __progress__?: { ts: string; msg: string }[] } | null;
+  // EPIC-17: v5 pipeline state machine + payload.
+  call_topics_v5_state?: "idle" | "running" | "awaiting_review" | "done" | "failed" | null;
+  call_topics_v5_payload?: CallTopicsV5Payload | null;
   pending_topics: TopicData[] | null;
   merge_cache: TopicData[] | null;
   merge_status: "idle" | "processing" | "done" | "failed";
@@ -401,6 +404,54 @@ export interface PerTopicEvaluation {
   topic_name: string;
   task_fit: "yes" | "no";
   reason: string;
+}
+
+// EPIC-17 v5 pipeline shapes
+export interface NewTopicProposal {
+  proposed_name: string;
+  unit_ids: string[];
+  suggested_match_id: string | null;
+  suggested_match_name: string | null;
+  lexical_similarity_to_existing: number;
+  importance: string;
+}
+
+export interface ApprovalNeeded {
+  type: "new_topic" | "hard_failure_escalation";
+  proposal?: NewTopicProposal;
+  failure?: { code: string; severity: string; message: string; [k: string]: unknown };
+}
+
+export interface ConfidenceReviewItem {
+  task_text: string;
+  topic_name: string;
+  score: number;
+}
+
+export interface SoftWarning {
+  code: string;
+  severity: string;
+  topic?: string;
+  task?: string;
+  message: string;
+  [k: string]: unknown;
+}
+
+export interface ReviewPayload {
+  approvals_needed: ApprovalNeeded[];
+  confidence_review: ConfidenceReviewItem[];
+  warnings: SoftWarning[];
+}
+
+export interface CallTopicsV5Payload {
+  started_at?: string;
+  completed_at?: string;
+  stages?: Record<string, unknown>;
+  model_used?: string;
+  params?: { temperature?: number };
+  review_payload?: ReviewPayload;
+  v4_output?: TopicData[];
+  error?: string;
 }
 
 export interface ConfidenceBreakdown {

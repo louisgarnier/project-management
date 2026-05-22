@@ -79,6 +79,18 @@ export const callsAPI = {
       body: JSON.stringify(data),
     }),
   getCall: (callId: string) => proxyFetch<Call>(`/api/calls/${callId}`),
+  // EPIC-17 v5 pipeline endpoints
+  v5Run: (callId: string) =>
+    proxyFetch<{ state: string; call_id: string }>(`/api/calls/${callId}/call-topics-v5/run`, { method: "POST" }),
+  v5State: (callId: string) =>
+    proxyFetch<{ state: string; payload: import("@/types").CallTopicsV5Payload | null }>(
+      `/api/calls/${callId}/call-topics-v5/state`,
+    ),
+  v5ResolveReview: (callId: string, decisions: object) =>
+    proxyFetch<{ state: string; v4_output_topic_count: number }>(
+      `/api/calls/${callId}/call-topics-v5/resolve-review`,
+      { method: "POST", body: JSON.stringify(decisions) },
+    ),
   patchExtractionCache: (callId: string, topics: TopicData[]) =>
     proxyFetch<{ updated: boolean; count: number }>(
       `/api/calls/${callId}/extraction-cache`,
