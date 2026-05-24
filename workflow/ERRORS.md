@@ -54,6 +54,10 @@
 | ERR-001 | INTEGRATION | Frontend API client missing `/api` prefix on backend paths | Resolved | 2026-04-09 | EPIC-2 |
 | ERR-002 | DEPENDENCY | Tailwind v4 installed but configured with v3 syntax | Resolved | 2026-04-09 | EPIC-2 |
 | ERR-003 | INFRA | Transcription server fails on first run — venv never created | Resolved | 2026-04-09 | EPIC-4 |
+| ERR-004 | UI | Frontend bucket-move action relied on local React state without backend persistence | Resolved | (see Prevention Rules) | EPIC-9 |
+| ERR-005 | UI | Spinner nested behind prop-derived boolean — race hides it during re-extract | Resolved | 2026-05-19 | EPIC-15 |
+| ERR-006 | DATA | New SYSTEM_LIBRARY entry uses obsolete `context_scope: "call"` — startup seed fails | Resolved | 2026-05-21 | EPIC-15 |
+| ERR-007 | LOGIC | `ingest_transcript()` returns `lines` as `list[{idx,text}]` — Pass 1 consumer treated it as dict, crashed at `.items()` | Resolved | 2026-05-24 | EPIC-18 |
 
 ---
 
@@ -194,6 +198,32 @@ Updated `run_transcription.sh` to auto-create the venv and install deps on first
 
 ---
 
+### ERR-007: `ingest_transcript()` returns `lines` as `list[{idx,text}]` — Pass 1 consumer treated it as dict
+
+**Date:** 2026-05-24
+**Epic:** EPIC-18
+
+**Symptom:** Pass 1's `_build_verify_new_prompt` + `run_verify_canonical_match` + `_transcript_body` called `.items()` / `.values()` on the `lines` field of `ingest_transcript()` output. Real input crashed with `AttributeError: 'list' object has no attribute 'items'`. Caught by Task 17 fixture test author who had to add a reshape workaround in the test helper.
+
+**Root cause:** `backend/services/call_topics_v5/stage_0_ingest.py` returns:
+```python
+{
+  "lines": list[Line],          # list of {"idx": str, "text": str}
+  "by_idx": dict[str, Line],    # secondary dict for O(1) lookup
+  "line_count": int,
+  "format_detected": str,
+}
+```
+Pass 1 wiring code (EPIC-18 Tasks 13 + 14) assumed `lines` was a dict — likely confused by `by_idx` being adjacent and dict-shaped. The bug survived its own tests because the test helpers happened to preprocess via the same wrong shape.
+
+**Fix Applied** (commit `dcea73d`)
+Iterated `lines` as a list across 3 sites in `topic_verification.py` (lines 110, 495, 733). Removed reshape workaround from fixture helper. All 19 + 6 affected tests pass.
+
+**Prevention Rule**
+> 🔒 **RULE ERR-007:** When consuming `ingest_transcript()` output, ALWAYS use `lines` as `list[{idx, text}]`. For O(1) lookup by idx, use the secondary `by_idx` dict. Never assume the two are interchangeable. Run the consumer once on a real ingested transcript before merging — test helpers can mask shape mismatches if they also reshape the input.
+
+---
+
 ## 🔒 Prevention Rules Summary
 | Rule ID | Applies To | Rule |
 |---|---|---|
@@ -203,6 +233,7 @@ Updated `run_transcription.sh` to auto-create the venv and install deps on first
 | ERR-004 | Any frontend bucket-move action (promote/demote/reclassify) | Must persist to backend — never rely on React local state alone |
 | ERR-005 | Any "work-in-progress" UI element (spinner, skeleton) | Spinner branch must be the FIRST ternary, taking priority over prop-derived booleans — never nest behind `!extracted` / `!ready` / etc. |
 | ERR-006 | `backend/library/seed.py` new SYSTEM_LIBRARY entries | Use Phase 2 enum for `context_scope` (`this_call_transcript` / `all_call_transcripts` / etc.) — never `"call"` or `"project"` (rejected by DB CHECK). |
+| ERR-007 | Any consumer of `ingest_transcript()` output | Treat `lines` as `list[{idx, text}]`; use `by_idx` (dict) for O(1) lookup. Run consumer on real ingested transcript before merging — test helpers can mask shape mismatches. |
 
 ---
 

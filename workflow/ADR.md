@@ -13,6 +13,66 @@
 |---|---|---|---|---|
 | ADR-001 | Upgrade Next.js from 14 to 15 | Accepted | 2026-04-09 | EPIC-1 |
 | ADR-002 | Use Supabase Storage for Call Context Files | Accepted | 2026-04-10 | EPIC-4 |
+| ADR-003 | Unified project_topic_state view as single source of truth | Accepted | 2026-05-24 | EPIC-18 |
+| ADR-004 | Line-number citation pattern for all cross-call verification (Pass 1) | Accepted | 2026-05-24 | EPIC-18 |
+
+---
+
+## ADR-003 — Unified `project_topic_state` view as single source of truth
+
+**Date:** 2026-05-24
+**Epic:** EPIC-18
+**Status:** Accepted
+
+### Context
+Two independent read paths existed for "what topics exist in this project":
+- v5 Stage 1 (clustering) queried `topic_registry` table — names + descriptions only
+- Pass 1 (`_get_previous_topics`) queried `topics` + `topic_updates` — full structural payload
+
+These paths diverged: a topic could exist in `project_topics` but not be approved into the registry, leading Stage 5 to invent a near-duplicate name that Pass 1 had to reconcile. Wrong-canonical assignments silently corrupted state. Three separate similarity scoring implementations layered on top compounded the inconsistency.
+
+### Decision
+Create a Postgres view `project_topic_state` (migration 034) that joins `topics` + latest `topic_updates` per topic. Both v5 Stage 1 and Pass 1 consume this view through a single `backend/services/project_topic_state.py::get_project_topic_state()` API. `topic_registry` table is retained for now (Stage 6 still writes to it); future cleanup epic can sunset the table.
+
+### Consequences
+- One read shape across the system; no drift possible between consumers
+- Stage 5 now sees the FULL structural payload (key_terms + tasks per topic) — enables V5-CORE behavior
+- Adding/removing fields requires editing the view definition + the service (one path, not three)
+- `topic_registry` table becomes write-only legacy until a future cleanup epic deprecates it
+
+### Alternatives considered
+- **Table merge** (collapse `topic_registry` into a column on `topics`): bigger migration cost; chose view for incremental safety.
+- **Per-consumer caching**: would mask divergence rather than fix it.
+
+---
+
+## ADR-004 — Line-number citation pattern for Pass 1 verification
+
+**Date:** 2026-05-24
+**Epic:** EPIC-18
+**Status:** Accepted
+
+### Context
+Pass 1's original citation contract asked the LLM to copy-paste verbatim quotes from past transcripts. The verifier ran `quote in body` strict-substring check. DeepSeek v3.2 paraphrased quotes (collapsed repeated filler, normalized punctuation, etc.) and failed verification 6/6 times on the user's 2026-05-23 same-transcript test. The architecture asked the LLM to do mechanical work (verbatim copying) it can't reliably do.
+
+v5 (EPIC-17) had solved this for extraction by inverting responsibility: LLM emits line numbers (`evidence_lines: [start, end]`), code resolves to verbatim text via `stage_0_ingest.resolve_lines()`. Citations are byte-perfect by construction.
+
+### Decision
+Port v5's line-number pattern to Pass 1. The LLM emits `{"call_id": "<uuid>", "evidence_lines": [start, end]}` per citation. New `verify_evidence_lines()` validates with a bounds check (in-range, non-inverted). `resolve_evidence_lines()` returns verbatim text by line lookup. The LLM never reproduces transcript text in its output.
+
+Pass 2 (`verify_not_discussed`) and Pass 3 (`extract_updates`) retain the legacy `verify_citations` string-match path — out of scope for EPIC-18, to be migrated in a future epic.
+
+### Consequences
+- Pass 1 is model-agnostic: works with DeepSeek (cost-efficient dev) and Opus (prod-quality)
+- LLM context simpler: line-numbered transcripts (`0001  <text>` per line) are easier to reason about
+- Cached `verify_new_cache` blobs from the old schema are unreadable — addressed by STREAM 5 migration script (one-shot reprocess)
+- Pass 2/3 still architecturally broken on same failure mode until follow-up epic
+- Similarity scoring also unified (ADR-003 sister change) — Stage 6 + Pass 1 share `backend/services/topic_similarity.py`
+
+### Alternatives considered
+- **Swap to Opus for Pass 1 only**: would fix verbatim quoting at runtime cost; chose structural fix because it works for any model.
+- **Fuzzy-match verifier**: would mask the model problem and create false positives.
+- **Atomic-unit-ID citations** (cite by v5 unit_id instead of line range): cleaner but requires v5 to have been run on every past call, which isn't true for legacy data.
 
 ---
 

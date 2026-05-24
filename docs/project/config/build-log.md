@@ -1,5 +1,81 @@
 # Build Log — Call Tracker
 
+### 2026-05-24 — EPIC-18: Call Topics (v5) + Pass 1 Reliability Rework (code-complete / pending manual smoke test)
+
+**Goal:** Make Pass 1 (verify_new) and v5 call_topics reliable on same-transcript regression test. Triggered by 2026-05-23 test that showed 6/6 citation failures, 1 LLM crash, 1 false-negative, and 1 mega-topic on identical input.
+
+**Design + plan:**
+- `docs/project/config/2026-05-24-call-topics-and-pass1-reliability-design.md`
+- `docs/project/config/2026-05-24-call-topics-and-pass1-reliability-plan.md`
+
+**STREAM 0 — Unified data layer (Tasks 1-4):**
+- Migration 034: `project_topic_state` Postgres view joining `topics` + latest `topic_updates` (commit `d8704cf`)
+- New `backend/services/project_topic_state.py` — single read API consumed by both v5 Stage 1 and Pass 1 (`c22ffc7`)
+- Stage 1 cutover — extends RegistryEntry with key_terms + tasks (`0eca6c5`)
+- `_get_previous_topics` cutover — preserves legacy keys for frontend back-compat (`e51952f`)
+
+**STREAM 1 — v5 extraction changes (Tasks 5-9):**
+- `backend/scripts/measure_v5_drift.py` + 5 helper unit tests — drift baseline measurement, real LLM run deferred to user (`27536d8`)
+- Stage 5 cluster prompt now receives FULL structured registry (key_terms + tasks per topic), not just names — V5-CORE (`80475e9`)
+- Integration test confirms structured registry reaches LLM end-to-end (`aa75e7a`)
+- `projects.context` wired into Stage 2 + Stage 5 system prompts via `build_*_system_prompt(project_context)` helpers — V5-CONTEXT (`8081489`)
+- Removed hardcoded `model="deepseek/deepseek-v3.2"` defaults from Stages 2/3/5/7; orchestrator routes via project config — S1.4 (`9f49b2f`)
+
+**STREAM 3 — Pass 1 test fixtures (Tasks 10, 17):**
+- 5 hand-authored fixtures (same_transcript_dup, true_new, mega_topic, wrong_canonical, naming_drift) + loader test (`0f01803`)
+- Per-fixture tests with mocked LLM driving `run_verify_new` and `run_verify_canonical_match` (`38b160f`)
+
+**STREAM 2 — Pass 1 reliability (Tasks 11-16):**
+- `verify_evidence_lines` + `resolve_evidence_lines` line-range verifier (legacy `verify_citations` kept for Pass 2/3) — S2.1 foundation (`85945c0`)
+- Pass 1 prompt rewrites citation contract: `evidence_lines: [start, end]` instead of `quote`; `extraction_grounded` check deleted (RC4) (`6413f02`)
+- `_build_verify_new_prompt` + `run_verify_new` consume ingested transcripts; router ingests past transcripts before passing in — S2.1 end-to-end (`977dfec`)
+- New `VERIFY_CANONICAL_MATCH_PROMPT` + `run_verify_canonical_match()`; router routes candidates by canonical-vs-new (via `topic_match_groups`) — S2.2 P1-BIDIRECTIONAL (`272d255`)
+- `backend/services/topic_similarity.py` — single source of truth; Stage 6 + Pass 1 import shared (3 impls → 1) — S2.3 (`39eab64`)
+- Wrap-detection branch recovers from `{result/data/response/judgement/judgment/output: {...}}` wrappers before retry — S2.3 hardening (`2c8426e`)
+- **Critical bug fix:** `topic_verification.py` was treating `ingest_transcript()` output's `lines` as a dict but it's a `list[{idx, text}]` — caught by Task 17 fixture helper, fixed at 3 sites (`dcea73d`). See ERR-004.
+
+**STREAM 4 — Verification asymmetry UX (Task 19):**
+- `compute_confidence` emits `auto_accept_eligible` (truly_new at ≥75% + no review flags); frontend renders compact "✓ Auto-accepted" with "Override: merge instead" escape hatch (`0a20861`)
+- New `Pass1Verdict` TS union covers all 5 verdict states (truly_new, should_be_merged_with, confirmed_match, wrong_canonical_actually_new, wrong_canonical_belongs_elsewhere)
+
+**STREAM 5 — Migration (Task 20):**
+- `backend/scripts/repopulate_verify_new_cache.py` — one-shot reset for stale cached results; runbook at `docs/project/config/2026-05-24-epic-18-migration-runbook.md` (`f755bdf`)
+
+**Decisions taken (defaults from plan):**
+- D1: view (not table merge)
+- D2: raw text `projects.context` injection
+- D3: Pass 1 review screen subsumes Stage 11 for new verdicts
+- D4: 75% threshold for auto-accept
+- D5: P1-RETRIEVAL (S2.4) deferred — gating on Task 18 smoke results
+- D6: one-shot reprocess (vs versioned cache)
+
+**Out of scope (deferred to future epic):**
+- Pass 2 (`verify_not_discussed`) — still uses legacy free-form quote contract
+- Pass 3 (`extract_updates`) — same; chronology problem unaddressed
+- Retroactive topic split/merge UX
+- P1-RETRIEVAL (top-K + K focused calls refactor) — only if Task 18 shows insufficient reliability
+
+**Commits (14):** Migration 034 (d8704cf) → service (c22ffc7) → Stage 1 cutover (0eca6c5) → _get_previous_topics cutover (e51952f) → drift script (27536d8) → V5-CORE prompt (80475e9) → orchestrator integration (aa75e7a) → V5-CONTEXT wiring (8081489) → DeepSeek defaults removal (9f49b2f) → fixtures (0f01803) → citation verifier (85945c0) → Pass 1 prompt (6413f02) → Pass 1 orchestration (977dfec) → bidirectional (272d255) → similarity unification (39eab64) → wrap recovery (2c8426e) → fixture tests (38b160f) → ingest shape bug fix (dcea73d) → asymmetry UX (0a20861) → migration script (f755bdf).
+
+**Tests:** Final state 396 backend passed + 13 skipped + 1 pre-existing failure in test_artifacts.py (unrelated event-loop issue, predates EPIC-18). Frontend tsc + lint clean.
+
+**Migration 034:** APPLIED in DB (user ran it manually). Migration 034 + cache reset are the only manual steps required.
+
+**Manual smoke pending (Task 18):** User reset call B verify_new_cache → re-open → confirm:
+- ≥4/5 candidates verdicted at confidence ≥75% (vs 1/5 before)
+- 0 citation verification failures (vs 6/6 before)
+- No "ungrounded items" warnings
+- Mega-topic case either no longer occurs (V5-CORE worked) or surfaces multi-target signal cleanly
+- Topic 5 false-negative (RPA & Factor Details → truly_new when should merge) — re-evaluate now that noise is removed
+
+**Known follow-ups:**
+- Pass 2 + Pass 3 still architecturally broken on same DeepSeek/citation issue — future epic
+- `topic_registry` table no longer read by Stage 1 (writes still active in Stage 6); future cleanup can sunset the table
+- Re-run drift baseline after smoke to measure V5-CORE delta vs baseline (script ready at `backend/scripts/measure_v5_drift.py`)
+- Frontend rendering of new `wrong_canonical_*` verdict labels is type-safe but visual treatment may need iteration once real cases surface
+
+---
+
 ### 2026-05-20 — EPIC-16: Project Updates RAG Rework (in progress / pending manual validation)
 
 **Goal:** Replace auto-LLM merge in `project_updates` with 3 user-driven, citation-grounded verification passes against raw transcripts.

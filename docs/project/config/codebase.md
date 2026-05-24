@@ -1,6 +1,52 @@
 # Codebase Map — Call Tracker
 > Updated after every story. Read this before touching any existing module.
-> Last updated: EPIC-6 / Multi-LLM (2026-04-12)
+> Last updated: EPIC-18 / Pass 1 Reliability Rework (2026-05-24)
+
+---
+
+## EPIC-18 additions (2026-05-24)
+
+**Unified data layer:**
+- `backend/database/migrations/034_unified_project_topic_state.sql` — Postgres view joining `topics` + latest `topic_updates`
+- `backend/services/project_topic_state.py` — `get_project_topic_state(project_id)` single read API consumed by v5 Stage 1 + Pass 1
+- `backend/tests/test_project_topic_state.py` — 3 tests
+
+**Unified similarity scoring:**
+- `backend/services/topic_similarity.py` — `effective_token_set`, `compute_idf`, `weighted_jaccard`, `weighted_jaccard_tokens`. Consumed by Stage 6 and Pass 1 (replaces 3 divergent impls)
+- `backend/tests/test_topic_similarity.py` — 5 tests
+
+**v5 drift baseline:**
+- `backend/scripts/measure_v5_drift.py` — measures Stage 2/5/7 drift on identical input
+- `backend/tests/call_topics_v5/test_drift_baseline.py` — 5 helper unit tests
+
+**Pass 1 line-number citation flow:**
+- `backend/services/citation_verify.py` — added `verify_evidence_lines()` + `resolve_evidence_lines()` alongside legacy `verify_citations()` (Pass 2/3 still use legacy)
+- `backend/tests/test_citation_verify.py` — 16 tests
+- `backend/prompts/verify_new_topic.py` — citation contract switched to `evidence_lines: [start, end]`; `extraction_grounded` removed; added `VERIFY_CANONICAL_MATCH_PROMPT` for canonical-match verification (S2.2)
+- `backend/services/topic_verification.py` — `_build_verify_new_prompt` + `run_verify_new` consume ingested transcripts; new `run_verify_canonical_match()` for S2.2 P1-BIDIRECTIONAL; `compute_confidence` emits `auto_accept_eligible`; wrap-detection branch for common LLM response wrappers
+- `backend/routers/topics.py::_run_verify_new_background` — ingests past transcripts; routes candidates to verify_new vs verify_canonical_match via `topic_match_groups` lookup
+
+**Pass 1 test fixtures:**
+- `backend/tests/fixtures/pass1/*.json` — 5 scenario fixtures (same_transcript_dup, true_new, mega_topic, wrong_canonical, naming_drift)
+- `backend/tests/test_pass1_fixtures.py` — loader + 5 fixture-driven tests with mocked LLM
+
+**Frontend:**
+- `frontend/src/types/index.ts` — `ConfidenceBreakdown.auto_accept_eligible?` + `Pass1Verdict` union (5 verdict states)
+- `frontend/src/components/ProjectUpdatesStage.tsx` — conditional auto-accept rendering + "Override: merge instead" escape hatch
+
+**v5 changes:**
+- `backend/services/call_topics_v5/stage_1_context.py` — consumes `project_topic_state` (carries `key_terms` + `tasks` per RegistryEntry)
+- `backend/services/call_topics_v5/stage_2_atomic.py` — accepts `project_context` kwarg
+- `backend/services/call_topics_v5/stage_5_cluster.py` — accepts `project_context` kwarg; receives structured registry; hardcoded model default removed
+- `backend/services/call_topics_v5/stage_3_recall.py`, `stage_7_synthesis.py` — hardcoded model defaults removed
+- `backend/services/call_topics_v5/stage_6_reconcile.py` — uses shared `topic_similarity` for jaccard
+- `backend/services/call_topics_v5/orchestrator.py` — passes `project_context` to Stage 2 + Stage 5
+- `backend/prompts/call_topics_v5_atomic.py` — `build_atomic_system_prompt(project_context)` helper
+- `backend/prompts/call_topics_v5_cluster.py` — `build_cluster_system_prompt(project_context)` helper; richer registry rendering (key_terms + existing tasks per topic)
+
+**Migration:**
+- `backend/scripts/repopulate_verify_new_cache.py` — one-shot reset for stale `verify_new_cache` blobs
+- `docs/project/config/2026-05-24-epic-18-migration-runbook.md` — manual steps
 
 ---
 
