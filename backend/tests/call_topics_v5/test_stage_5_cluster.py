@@ -5,10 +5,13 @@ EPIC-18 V5-CORE — Tests for structured registry rendering in cluster prompt.
 
 import asyncio
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from backend.prompts.call_topics_v5_cluster import build_cluster_user_message
 from backend.services.call_topics_v5 import stage_5_cluster as S5
+from backend.services.call_topics_v5.stage_5_cluster import cluster_topics
 
 
 def _units(n: int) -> list[dict]:
@@ -113,3 +116,27 @@ def test_registry_topic_with_no_tasks_or_key_terms():
     assert "An old topic" in msg
     # No "Existing tasks:" header since there are none
     assert "Existing tasks:" not in msg
+
+
+def _fake_llm_response(clusters):
+    return json.dumps(clusters)
+
+
+@pytest.mark.asyncio
+@patch("backend.services.call_topics_v5.stage_5_cluster.call_llm_raw", new_callable=AsyncMock)
+async def test_cluster_topics_passes_structured_registry_to_llm(mock_llm):
+    """EPIC-18: Stage 5 forwards full registry structure (key_terms + tasks) to LLM."""
+    mock_llm.return_value = _fake_llm_response([
+        {"topic_name": "ARM", "unit_ids": ["u_0001"], "new_topic": False, "importance": "high"}
+    ])
+    units = [{"unit_id": "u_0001", "type": "task", "text": "Test LMAC vs Monte Carlo"}]
+    registry = [{
+        "name": "ARM", "key_terms": ["LMAC", "Monte Carlo"],
+        "tasks": [{"task": "Investigate Monte Carlo job memory failure", "owner": "Mark"}]
+    }]
+    await cluster_topics(units, registry, llm="openrouter", model="deepseek/deepseek-v3.2")
+    # Capture the user message passed to the LLM (args.args is positional args tuple)
+    # call_llm_raw signature: (system_prompt, user_message, llm, *, max_tokens, model, temperature)
+    user_msg = mock_llm.call_args.args[1]
+    assert "Key terms: LMAC, Monte Carlo" in user_msg
+    assert "Investigate Monte Carlo job memory failure (Mark)" in user_msg
