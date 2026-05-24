@@ -686,7 +686,12 @@ async def _run_verify_new_background(call_id: str) -> None:
         # transcript is what produced the candidate — it doesn't help answer
         # "was this raised before?". Exclude it.
         past_calls = [c for c in calls if c["id"] != call_id]
-        transcripts = {c["id"]: (c.get("transcript") or "") for c in past_calls if c.get("transcript")}
+        from backend.services.call_topics_v5.stage_0_ingest import ingest_transcript
+        transcripts = {
+            c["id"]: ingest_transcript(c.get("transcript") or "")
+            for c in past_calls
+            if c.get("transcript")
+        }
         # Map call UUID → human-readable label for log messages.
         call_label = {c["id"]: f"Call {i+1}" for i, c in enumerate(calls)}
         past_labels = ", ".join(call_label[c["id"]] for c in past_calls)

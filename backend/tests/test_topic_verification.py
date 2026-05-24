@@ -11,9 +11,19 @@ def _llm_returns(payload):
     return AsyncMock(return_value=payload)
 
 
+def _ingested(text: str) -> dict:
+    """Build a minimal ingested dict from a raw string (matches Stage 0 output shape)."""
+    lines = text.split("\n") if text else []
+    return {
+        "line_count": len(lines),
+        "lines": {str(i + 1).zfill(4): line for i, line in enumerate(lines)},
+    }
+
+
 def test_run_verify_new_truly_new(monkeypatch):
-    """Happy path: LLM returns truly_new with one verified citation."""
-    transcripts = {"call-1": "We talked about onboarding redesign."}
+    """Happy path: LLM returns truly_new with one verified citation (EPIC-18: ingested transcripts)."""
+    # EPIC-18: transcripts are now ingested dicts
+    transcripts = {"call-1": _ingested("We talked about onboarding redesign.")}
     project_topics = []
     candidate = {
         "name": "Customer onboarding redesign",
@@ -26,10 +36,8 @@ def test_run_verify_new_truly_new(monkeypatch):
         "verdict": "truly_new",
         "matched_topic_id": None,
         "matched_topic_name": None,
-        "extraction_grounded": True,
-        "ungrounded_items": [],
         "citations": [
-            {"call_id": "call-1", "lines": "1-1", "quote": "onboarding redesign", "for": "extraction"}
+            {"call_id": "call-1", "evidence_lines": [1, 1], "for": "extraction"}
         ],
     }
     monkeypatch.setattr(tv, "_call_llm", _llm_returns(llm_result))
@@ -41,16 +49,15 @@ def test_run_verify_new_truly_new(monkeypatch):
 
 
 def test_run_verify_new_retries_then_flags_manual_review(monkeypatch):
-    """When LLM citations fail post-verify twice, return needs_manual_review=True."""
-    transcripts = {"call-1": "real body text."}
+    """When LLM citations fail post-verify twice, return needs_manual_review=True (EPIC-18)."""
+    # EPIC-18: transcripts are now ingested dicts; evidence_lines out of range → fail
+    transcripts = {"call-1": _ingested("real body text.")}
     candidate = {"name": "Foo", "key_terms": ["foo"]}
     llm_result_bad = {
         "verdict": "truly_new",
         "matched_topic_id": None,
         "matched_topic_name": None,
-        "extraction_grounded": True,
-        "ungrounded_items": [],
-        "citations": [{"call_id": "call-1", "lines": "1-1", "quote": "FABRICATED", "for": "extraction"}],
+        "citations": [{"call_id": "call-1", "evidence_lines": [999, 999], "for": "extraction"}],
     }
     mock_llm = AsyncMock(side_effect=[llm_result_bad, llm_result_bad])
     monkeypatch.setattr(tv, "_call_llm", mock_llm)
@@ -80,13 +87,14 @@ def test_idf_weighted_jaccard_downweights_common_terms():
 
 def test_lexical_precheck_returns_mechanical_verdict_when_zero_qualify():
     """If no existing topic scores above threshold, verdict_hint='mechanical_truly_new'
-    and qualified_topic_ids is empty (LLM should be skipped)."""
+    and qualified_topic_ids is empty (LLM should be skipped). EPIC-18: accepts ingested dicts."""
     from backend.services.topic_verification import lexical_precheck
     candidate = {"name": "Brand new thing", "key_terms": ["fresh", "unique"], "tasks": []}
     project_topics = [
         {"topic_id": "t1", "name": "Old topic", "key_terms": ["unrelated"], "tasks": []},
     ]
-    transcripts = {"call-1": "talking about completely unrelated stuff"}
+    # EPIC-18: ingested dict format
+    transcripts = {"call-1": _ingested("talking about completely unrelated stuff")}
     out = lexical_precheck(candidate, project_topics, transcripts)
     assert out["qualified_topic_ids"] == []
     assert out["verdict_hint"] == "mechanical_truly_new"
@@ -258,3 +266,33 @@ def test_run_extract_topic_updates_returns_snapshot_and_trail(monkeypatch):
     assert out["needs_manual_review"] is False
     assert len(out["extracted_snapshot"]["tasks"]) == 1
     assert len(out["evidence_trail"]) == 2
+
+
+# ── EPIC-18: New prompt builder tests ───────────────────────────────────────
+
+
+def test_prompt_includes_line_numbered_transcripts():
+    """EPIC-18: _build_verify_new_prompt formats ingested transcripts with line numbers."""
+    from backend.services.topic_verification import _build_verify_new_prompt
+    candidate = {"topic_id": "c-1", "name": "X", "tasks": []}
+    transcripts = {
+        "call-a": {
+            "line_count": 2,
+            "lines": {"0001": "Hello world", "0002": "Second line"},
+        }
+    }
+    msg = _build_verify_new_prompt(candidate, [], transcripts)
+    assert "--- CALL call-a (2 lines) ---" in msg
+    assert "0001  Hello world" in msg
+    assert "0002  Second line" in msg
+
+
+def test_prompt_handles_empty_project_topics():
+    """EPIC-18: _build_verify_new_prompt works with no existing project topics."""
+    from backend.services.topic_verification import _build_verify_new_prompt
+    candidate = {"topic_id": "c-1", "name": "Test", "tasks": [{"task": "do x"}]}
+    transcripts = {"call-a": {"line_count": 1, "lines": {"0001": "x"}}}
+    msg = _build_verify_new_prompt(candidate, [], transcripts)
+    assert "EXISTING PROJECT TOPICS:" in msg
+    assert "CANDIDATE NEW TOPIC:" in msg
+    assert "do x" in msg

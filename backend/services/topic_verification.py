@@ -10,7 +10,7 @@ import re as _re
 from backend.prompts.verify_new_topic import VERIFY_NEW_TOPIC_PROMPT
 from backend.prompts.verify_not_discussed import VERIFY_NOT_DISCUSSED_PROMPT
 from backend.prompts.extract_topic_updates import EXTRACT_TOPIC_UPDATES_PROMPT
-from backend.services.citation_verify import verify_citations, find_quote_lines
+from backend.services.citation_verify import verify_citations, find_quote_lines, verify_evidence_lines
 
 logger = logging.getLogger("calltracker.topic_verification")
 
@@ -148,6 +148,15 @@ def effective_token_set(topic_or_candidate: dict) -> set[str]:
     return tokens
 
 
+def _transcript_body(transcript_or_ingested) -> str:
+    """EPIC-18: accept either a raw string (legacy) or an ingested dict {line_count, lines}.
+    Returns plain text suitable for term-count / lexical scoring.
+    """
+    if isinstance(transcript_or_ingested, dict):
+        return " ".join(transcript_or_ingested.get("lines", {}).values())
+    return transcript_or_ingested or ""
+
+
 def _count_term_occurrences(text: str, terms: list[str]) -> dict[str, int]:
     """Whole-word case-insensitive count of each term in text."""
     if not text or not terms:
@@ -234,7 +243,8 @@ def score_existing_topic(
 
     rare_tokens = [t for t in cand_tokens if idf.get(t, 1.0) >= rare_idf_threshold]
     total_mentions = 0
-    for body in transcripts.values():
+    for transcript_val in transcripts.values():
+        body = _transcript_body(transcript_val)
         if not body:
             continue
         total_mentions += sum(_count_term_occurrences(body, rare_tokens).values())
@@ -291,8 +301,9 @@ def lexical_precheck(
 
     # Back-compat transcript hits (used by older UI elements)
     transcript_hits: dict[str, dict] = {}
-    for cid, body in transcripts.items():
-        by_term = _count_term_occurrences(body or "", candidate_terms)
+    for cid, transcript_val in transcripts.items():
+        body = _transcript_body(transcript_val)
+        by_term = _count_term_occurrences(body, candidate_terms)
         transcript_hits[cid] = {"total": sum(by_term.values()), "by_term": by_term}
 
     if not qualified_ids:
@@ -543,15 +554,12 @@ def _looks_like_platform_term(term: str) -> bool:
 def _build_verify_new_prompt(
     candidate: dict,
     project_topics: list[dict],
-    transcripts: dict[str, str],
+    transcripts: dict[str, dict],  # EPIC-18: now {call_id: ingested_dict}, not {call_id: raw_str}
     precheck: dict | None = None,
 ) -> str:
-    transcripts_block = "\n\n".join(
-        f"--- CALL {cid} ---\n{body}" for cid, body in transcripts.items()
-    )
-    # v4 task-centric: each TASK carries its own key_terms / open_questions /
-    # decisions / citations. The LLM compares per-task. Topic-level fields are
-    # NOT sent — they're empty in v4 and would only confuse the LLM.
+    """EPIC-18: transcripts are now ingested (line-numbered) dicts from v5 Stage 0.
+    LLM sees `0001  <text>` line-prefixed format and cites by line range.
+    """
     def _shape_topic_for_llm(t: dict) -> dict:
         return {
             "topic_id": t.get("topic_id"),
@@ -559,34 +567,24 @@ def _build_verify_new_prompt(
             "summary": t.get("summary") or "",
             "tasks": t.get("tasks") or [],
         }
-
-    project_topics_block = json.dumps(
-        [_shape_topic_for_llm(t) for t in project_topics],
-        indent=2,
+    transcripts_block = "\n\n".join(
+        f"--- CALL {cid} ({ing['line_count']} lines) ---\n"
+        + "\n".join(f"{idx}  {text}" for idx, text in ing.get("lines", {}).items())
+        for cid, ing in transcripts.items()
     )
+    project_topics_block = json.dumps([_shape_topic_for_llm(t) for t in project_topics], indent=2)
     candidate_block = json.dumps(_shape_topic_for_llm(candidate), indent=2)
     precheck_block = ""
     if precheck:
         precheck_block = (
             "\n\nLEXICAL PRE-CHECK (deterministic, fyi — your own analysis should be primary):\n"
             f"{json.dumps(precheck, indent=2)}\n"
-            "Use this only as a hint. The candidate was extracted from the CURRENT call; "
-            "the transcripts below are PAST calls only. Decide based on whether the topic "
-            "was actually discussed before."
         )
     return (
         f"{VERIFY_NEW_TOPIC_PROMPT}\n\n"
-        f"CANDIDATE NEW TOPIC (v4 task-centric — each task carries its OWN "
-        f"key_terms, open_questions, decisions, citations. Compare PER-TASK, "
-        f"not by topic-level flat unions. __legacy_topic_level appears only "
-        f"when the row predates v4 and lacks per-task fields.):\n"
-        f"{candidate_block}\n\n"
-        f"EXISTING PROJECT TOPICS (same v4 shape — compare per-task to assess "
-        f"work-continuity. If a candidate task fits naturally into the task "
-        f"list of an existing topic, it's a duplicate. Topic-level legacy "
-        f"fields, if present, are a fallback signal only.):\n"
-        f"{project_topics_block}\n\n"
-        f"PAST TRANSCRIPTS (calls N-1, ..., 1 — NOT the current call N):\n{transcripts_block}"
+        f"CANDIDATE NEW TOPIC:\n{candidate_block}\n\n"
+        f"EXISTING PROJECT TOPICS:\n{project_topics_block}\n\n"
+        f"PAST TRANSCRIPTS (line-numbered):\n{transcripts_block}"
         f"{precheck_block}"
     )
 
@@ -594,7 +592,7 @@ def _build_verify_new_prompt(
 async def run_verify_new(
     candidate: dict,
     project_topics: list[dict],
-    transcripts: dict[str, str],
+    transcripts: dict[str, dict],  # EPIC-18: ingested dicts {call_id: {line_count, lines}}
     *,
     llm: str,
     model: str | None,
@@ -640,8 +638,6 @@ async def run_verify_new(
                     "matched_topic_name": matched.get("topic_name"),
                     "merge_reasoning": matched.get("reason", ""),
                     "citations": [],
-                    "extraction_grounded": True,
-                    "ungrounded_items": [],
                 }
             else:
                 result = {
@@ -652,8 +648,6 @@ async def run_verify_new(
                     "matched_topic_name": None,
                     "merge_reasoning": "No existing topic had task_fit=yes." if yes_count == 0 else f"{yes_count} topics had task_fit=yes (ambiguous) — defaulting to truly_new.",
                     "citations": [],
-                    "extraction_grounded": True,
-                    "ungrounded_items": [],
                 }
         if not isinstance(result, dict):
             logger.warning("⚠️ [verify_new] LLM returned non-dict on attempt %d", attempt)
@@ -672,14 +666,10 @@ async def run_verify_new(
                 if e.get("task_fit") == "yes":
                     await _log(f"          ✓ \"{e.get('topic_name', '?')}\": {e.get('reason', '?')}")
         cits = result.get("citations") or []
-        for c in cits:
-            if not c.get("lines"):
-                body = transcripts.get(c.get("call_id"), "")
-                computed = find_quote_lines(c.get("quote", ""), body)
-                if computed:
-                    c["lines"] = computed
-        await _log(f"      [{name}] attempt {attempt}: LLM responded with {len(cits)} supporting quote(s) — checking each one is actually in the transcript")
-        ok, failures = verify_citations(cits, transcripts)
+        # EPIC-18: evidence_lines are required from the LLM directly (no backfill).
+        # verify_evidence_lines checks line-range bounds against ingested dicts.
+        await _log(f"      [{name}] attempt {attempt}: LLM responded with {len(cits)} supporting citation(s) — checking evidence_lines bounds")
+        ok, failures = verify_evidence_lines(cits, transcripts)
         if ok:
             await _log(f"      [{name}] all {len(cits)} quote(s) found in the transcripts ✓")
             final = {**result, "needs_manual_review": False}
@@ -760,8 +750,6 @@ async def run_verify_new(
         "matched_topic_name": None,
         "evaluations": result if isinstance(result, list) else [],
         "citations": [],
-        "extraction_grounded": False,
-        "ungrounded_items": [],
         "merge_reasoning": "LLM returned a non-dict response on both attempts — defaulting to truly_new pending manual review.",
     }
     final = {
