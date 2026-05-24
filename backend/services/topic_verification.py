@@ -543,6 +543,15 @@ async def run_verify_new(
     for attempt in (1, 2):
         await _log(f"      [{name}] attempt {attempt}: asking LLM (task-fit framing — would candidate's tasks belong on any existing topic's task list?) over {len(project_topics)} existing topic(s), referencing {len(transcripts)} past transcript(s)")
         result = await _call_llm(prompt, llm, model=model)
+        # EPIC-18 S2.3: some models wrap the verdict in an outer key.
+        # Detect common wrappers and unwrap before the bare-list check.
+        if isinstance(result, dict) and "evaluations" not in result and "verdict" not in result and "final_verdict" not in result:
+            for k in ("result", "data", "response", "judgement", "judgment", "output"):
+                inner = result.get(k)
+                if isinstance(inner, dict) and ("verdict" in inner or "final_verdict" in inner or "evaluations" in inner):
+                    await _log(f"      [{name}] attempt {attempt}: LLM wrapped response under '{k}' key — unwrapping")
+                    result = inner
+                    break
         # Recovery: some LLMs (e.g. deepseek) return ONLY the evaluations
         # array instead of the wrapping dict. Detect that shape and wrap it
         # — defaults to truly_new with the evaluations preserved.

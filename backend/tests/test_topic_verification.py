@@ -372,3 +372,51 @@ async def test_run_verify_canonical_match_failed_citations(monkeypatch):
     )
     assert out["needs_manual_review"] is True
     assert "failed_citations" in out
+
+
+@pytest.mark.asyncio
+async def test_run_verify_new_recovers_wrapped_response(monkeypatch):
+    """EPIC-18 S2.3: Pass 1 unwraps common LLM wrapper patterns."""
+    from backend.services.topic_verification import run_verify_new
+    async def fake_llm(*a, **kw):
+        return {"result": {
+            "verdict": "truly_new",
+            "final_verdict": "truly_new",
+            "matched_topic_id": None,
+            "matched_topic_name": None,
+            "evaluations": [],
+            "citations": [],
+            "merge_reasoning": "No fit.",
+        }}
+    monkeypatch.setattr("backend.services.topic_verification._call_llm", fake_llm)
+    out = await run_verify_new(
+        candidate={"name": "C", "tasks": []},
+        project_topics=[],
+        transcripts={},
+        llm="x", model="y",
+    )
+    assert out["verdict"] == "truly_new"
+    assert out["needs_manual_review"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_verify_new_recovers_response_under_data_key(monkeypatch):
+    """Alternate wrapper key — 'data' instead of 'result'."""
+    from backend.services.topic_verification import run_verify_new
+    async def fake_llm(*a, **kw):
+        return {"data": {
+            "verdict": "truly_new",
+            "final_verdict": "truly_new",
+            "matched_topic_id": None,
+            "evaluations": [],
+            "citations": [],
+            "merge_reasoning": "No fit.",
+        }}
+    monkeypatch.setattr("backend.services.topic_verification._call_llm", fake_llm)
+    out = await run_verify_new(
+        candidate={"name": "C", "tasks": []},
+        project_topics=[],
+        transcripts={},
+        llm="x", model="y",
+    )
+    assert out["verdict"] == "truly_new"
