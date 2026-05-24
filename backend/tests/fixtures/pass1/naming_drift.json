@@ -1,0 +1,33 @@
+{
+  "scenario": "naming_drift",
+  "description": "Candidate matches an existing topic semantically but uses different naming. Pass 1 should still propose merge.",
+  "candidate": {
+    "topic_id": "cand-005",
+    "name": "Onboarding Charlie",
+    "summary": "",
+    "tasks": [
+      {"task": "Talk Charlie through current project items before next client call", "owner": "Nick", "key_terms": ["Charlie", "onboarding"]},
+      {"task": "Confirm Monday 11am works for Charlie", "owner": "Hassan", "key_terms": ["Charlie", "schedule"]}
+    ]
+  },
+  "project_topics": [
+    {
+      "topic_id": "proj-team",
+      "name": "Project Team & Scheduling",
+      "summary": "Onboarding new team members and weekly call cadence",
+      "key_terms": ["Charlie", "schedule", "kickoff"],
+      "tasks": [
+        {"task": "Track Charlie as assigned resource", "owner": "Hassan"},
+        {"task": "Confirm weekly call schedule with Charlie", "owner": "Hassan"}
+      ]
+    }
+  ],
+  "past_transcripts": {
+    "call-a-uuid-0001": "0001  Charlie is joining the project.\n0002  Confirm weekly call schedule with Charlie for Monday 11am."
+  },
+  "expected_verdict": {
+    "verdict": "should_be_merged_with",
+    "matched_topic_id": "proj-team",
+    "min_confidence": 70
+  }
+}

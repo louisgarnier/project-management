@@ -1,0 +1,59 @@
+{
+  "scenario": "mega_topic",
+  "description": "Candidate is a mega-topic blending tasks that actually belong on multiple existing topics (v5 over-clustered). Pass 1 should ideally surface the best single match or signal ambiguity.",
+  "candidate": {
+    "topic_id": "cand-003",
+    "name": "Project Scope & Goals",
+    "summary": "",
+    "tasks": [
+      {"task": "Aggregate CTF contributions in Snowflake", "key_terms": ["CTF", "Snowflake"]},
+      {"task": "Show factor contributions and attributions", "key_terms": ["factor", "attribution"]},
+      {"task": "Analyze CTF contributions by account and business line", "key_terms": ["CTF", "business line"]},
+      {"task": "Test LMAC vs Monte Carlo Mac on fixed income portfolio", "key_terms": ["LMAC", "Monte Carlo"]},
+      {"task": "Investigate Monte Carlo Mac job memory failure", "key_terms": ["Monte Carlo", "memory"]},
+      {"task": "Schedule kickoff with Charlie", "key_terms": ["kickoff", "Charlie"]},
+      {"task": "Confirm weekly call schedule", "key_terms": ["weekly", "schedule"]},
+      {"task": "Define stress test scope", "key_terms": ["stress test"]}
+    ]
+  },
+  "project_topics": [
+    {
+      "topic_id": "proj-arch",
+      "name": "Risk Model Architecture & Design",
+      "summary": "Designing the risk aggregation architecture for CTF accounts",
+      "key_terms": ["CTF", "Snowflake", "aggregation", "factor"],
+      "tasks": [
+        {"task": "Design risk analytics aggregation architecture", "owner": "Hassan"},
+        {"task": "Determine optimal risk model for aggregation", "owner": "Mark"}
+      ]
+    },
+    {
+      "topic_id": "proj-arm",
+      "name": "ARM",
+      "summary": "Account aggregation risk modeling work stream",
+      "key_terms": ["LMAC", "Monte Carlo", "memory"],
+      "tasks": [
+        {"task": "Test LMAC vs Monte Carlo Mac", "owner": "Mark"},
+        {"task": "Investigate Monte Carlo memory failure", "owner": "Mark"}
+      ]
+    },
+    {
+      "topic_id": "proj-team",
+      "name": "Project Team & Scheduling",
+      "summary": "Onboarding and weekly call cadence",
+      "key_terms": ["Charlie", "kickoff", "schedule"],
+      "tasks": [
+        {"task": "Track Charlie as assigned resource", "owner": "Hassan"},
+        {"task": "Confirm weekly call schedule with Charlie", "owner": "Hassan"}
+      ]
+    }
+  ],
+  "past_transcripts": {
+    "call-a-uuid-0001": "0001  Hassan describes the risk architecture design.\n0002  Mark talks about CTF contributions in Snowflake.\n0003  Mark wants to test LMAC vs Monte Carlo Mac.\n0004  Charlie joining as new team member."
+  },
+  "expected_verdict": {
+    "verdict": "should_be_merged_with",
+    "matched_topic_id": "proj-arch",
+    "min_confidence": 50
+  }
+}

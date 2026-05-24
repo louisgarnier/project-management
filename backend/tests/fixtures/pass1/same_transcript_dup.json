@@ -1,0 +1,33 @@
+{
+  "scenario": "same_transcript_dup",
+  "description": "Candidate topic extracted from a transcript identical to a past call. Should reconcile cleanly as duplicate.",
+  "candidate": {
+    "topic_id": "cand-001",
+    "name": "Risk Model & Job Optimization",
+    "summary": "",
+    "tasks": [
+      {"task": "Test LMAC vs Monte Carlo Mac on fixed income portfolio", "owner": "Mark", "key_terms": ["LMAC", "Monte Carlo", "fixed income"]},
+      {"task": "Investigate Monte Carlo Mac job memory failure", "owner": "Mark", "key_terms": ["Monte Carlo", "memory"]}
+    ]
+  },
+  "project_topics": [
+    {
+      "topic_id": "proj-arm",
+      "name": "ARM",
+      "summary": "Account aggregation risk modeling work stream",
+      "key_terms": ["LMAC", "Monte Carlo", "MAC", "memory"],
+      "tasks": [
+        {"task": "Test LMAC vs Monte Carlo Mac on fixed income portfolio", "owner": "Mark"},
+        {"task": "Investigate Monte Carlo Mac job memory failure", "owner": "Mark"}
+      ]
+    }
+  ],
+  "past_transcripts": {
+    "call-a-uuid-0001": "0001  Mark mentions testing LMAC vs Monte Carlo Mac on fixed income portfolio.\n0002  Memory failure under investigation for the Monte Carlo job."
+  },
+  "expected_verdict": {
+    "verdict": "should_be_merged_with",
+    "matched_topic_id": "proj-arm",
+    "min_confidence": 75
+  }
+}

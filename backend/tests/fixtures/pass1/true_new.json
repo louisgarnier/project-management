@@ -1,0 +1,29 @@
+{
+  "scenario": "true_new",
+  "description": "Candidate is genuinely new — no semantic overlap with existing project topics.",
+  "candidate": {
+    "topic_id": "cand-002",
+    "name": "Compliance Review Schedule",
+    "summary": "",
+    "tasks": [
+      {"task": "Schedule quarterly compliance review with legal team", "owner": "Hassan", "key_terms": ["compliance", "legal", "quarterly"]}
+    ]
+  },
+  "project_topics": [
+    {
+      "topic_id": "proj-arm",
+      "name": "ARM",
+      "summary": "Account aggregation risk modeling work stream",
+      "key_terms": ["LMAC", "Monte Carlo"],
+      "tasks": [{"task": "Test LMAC vs Monte Carlo Mac", "owner": "Mark"}]
+    }
+  ],
+  "past_transcripts": {
+    "call-a-uuid-0001": "0001  Mark talks about LMAC and Monte Carlo testing.\n0002  Memory issues with the Monte Carlo job."
+  },
+  "expected_verdict": {
+    "verdict": "truly_new",
+    "matched_topic_id": null,
+    "min_confidence": 75
+  }
+}
