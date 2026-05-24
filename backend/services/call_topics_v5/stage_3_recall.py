@@ -27,8 +27,8 @@ async def recall_pass(
     ingested: dict,
     existing_units: list[dict],
     *,
-    llm: str = "openrouter",
-    model: str | None = "deepseek/deepseek-v3.2",
+    llm: str,
+    model: str | None,
 ) -> dict:
     """Run Stage 3 — find missed units.
 

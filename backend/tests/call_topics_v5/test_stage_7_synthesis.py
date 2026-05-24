@@ -80,7 +80,7 @@ def test_synthesize_topic_e2e(monkeypatch):
         "evidence_unit_ids": ["u_0001", "u_0002"],
     }])
     monkeypatch.setattr(S7, "call_llm_raw", AsyncMock(return_value=llm_resp))
-    out = asyncio.run(S7.synthesize_topic("ARM", "high", units))
+    out = asyncio.run(S7.synthesize_topic("ARM", "high", units, llm="openrouter", model="deepseek/deepseek-v3.2"))
     assert out["topic_name"] == "ARM"
     assert len(out["tasks"]) == 1
     assert out["tasks"][0]["task"] == "Combined task"
@@ -118,7 +118,7 @@ def test_synthesize_all_topics_sequential(monkeypatch):
     }])
     mock = AsyncMock(side_effect=[response, response2])
     monkeypatch.setattr(S7, "call_llm_raw", mock)
-    out = asyncio.run(S7.synthesize_all_topics(working, pool))
+    out = asyncio.run(S7.synthesize_all_topics(working, pool, llm="openrouter", model="deepseek/deepseek-v3.2"))
     assert len(out) == 2
     assert out[0]["registry_id"] == "r1"
     assert out[1]["provisional"] is True

@@ -100,8 +100,8 @@ async def cluster_topics(
     atomic_units: list[dict],
     topic_registry: list[dict],
     *,
-    llm: str = "openrouter",
-    model: str | None = "deepseek/deepseek-v3.2",
+    llm: str,
+    model: str | None,
     project_context: str = "",
 ) -> dict:
     """Run Stage 5. Returns clusters + rejections.

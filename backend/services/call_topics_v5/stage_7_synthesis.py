@@ -102,8 +102,8 @@ async def synthesize_topic(
     importance: str,
     topic_units: list[dict],
     *,
-    llm: str = "openrouter",
-    model: str | None = "deepseek/deepseek-v3.2",
+    llm: str,
+    model: str | None,
 ) -> dict:
     """Run Stage 7 for one topic.
 
@@ -169,8 +169,8 @@ async def synthesize_all_topics(
     working_topics: list[dict],
     atomic_pool: list[dict],
     *,
-    llm: str = "openrouter",
-    model: str | None = "deepseek/deepseek-v3.2",
+    llm: str,
+    model: str | None,
     progress_callback=None,
 ) -> list[dict]:
     """Synthesize every working topic. Sequential per the plan baseline."""

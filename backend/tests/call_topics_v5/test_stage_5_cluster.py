@@ -65,7 +65,7 @@ def test_cluster_topics_end_to_end(monkeypatch):
         {"topic_name": "Stress Testing", "unit_ids": ["u_0003"], "new_topic": True, "importance": "medium"},
     ])
     monkeypatch.setattr(S5, "call_llm_raw", AsyncMock(return_value=llm_resp))
-    out = asyncio.run(S5.cluster_topics(units, registry))
+    out = asyncio.run(S5.cluster_topics(units, registry, llm="openrouter", model="deepseek/deepseek-v3.2"))
     assert len(out["clusters"]) == 2
     assert out["orphans"] == []
 

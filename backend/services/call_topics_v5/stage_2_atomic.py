@@ -107,8 +107,8 @@ async def extract_atomic_units(
     ingested: dict,
     project_context: str = "",
     *,
-    llm: str = "openrouter",
-    model: str | None = "deepseek/deepseek-v3.2",
+    llm: str,
+    model: str | None,
 ) -> dict:
     """Run Stage 2 — atomic unit extraction.
 

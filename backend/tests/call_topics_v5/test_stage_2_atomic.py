@@ -90,7 +90,7 @@ def test_extract_atomic_units_happy_path(monkeypatch):
         {"unit_id": "u_0002", "type": "question", "text": "Y?", "owner": "Nick", "evidence_lines": [5, 7]},
     ])
     monkeypatch.setattr(S2, "call_llm_raw", AsyncMock(return_value=llm_response))
-    out = asyncio.run(S2.extract_atomic_units(ingested))
+    out = asyncio.run(S2.extract_atomic_units(ingested, llm="openrouter", model="deepseek/deepseek-v3.2"))
     assert len(out["units"]) == 2
     assert out["rejected"] == []
     assert out["temperature"] == 0
@@ -103,13 +103,13 @@ def test_extract_atomic_units_handles_wrapped_dict(monkeypatch):
         {"unit_id": "u_0001", "type": "task", "text": "X", "owner": "A", "evidence_lines": [1, 2]},
     ]})
     monkeypatch.setattr(S2, "call_llm_raw", AsyncMock(return_value=llm_response))
-    out = asyncio.run(S2.extract_atomic_units(ingested))
+    out = asyncio.run(S2.extract_atomic_units(ingested, llm="openrouter", model="deepseek/deepseek-v3.2"))
     assert len(out["units"]) == 1
 
 
 def test_extract_atomic_units_malformed_json(monkeypatch):
     ingested = _mk_ingested(5)
     monkeypatch.setattr(S2, "call_llm_raw", AsyncMock(return_value="not json at all"))
-    out = asyncio.run(S2.extract_atomic_units(ingested))
+    out = asyncio.run(S2.extract_atomic_units(ingested, llm="openrouter", model="deepseek/deepseek-v3.2"))
     assert out["units"] == []
     assert "not parseable" in out["rejected"][0]
