@@ -16,6 +16,7 @@ import logging
 from typing import TypedDict
 
 from backend.database.supabase_client import get_client
+from backend.services.project_topic_state import get_project_topic_state
 
 logger = logging.getLogger("calltracker.call_topics_v5.stage_1")
 
@@ -33,6 +34,8 @@ class RegistryEntry(TypedDict, total=False):
     id: str
     name: str
     description: str
+    key_terms: list[str]  # NEW EPIC-18
+    tasks: list[dict]     # NEW EPIC-18
     approved_at: str
     approved_by_call_id: str | None
 
@@ -78,24 +81,22 @@ def load_context(project_id: str, *, db=None) -> ContextBundle:
         "default_model": proj.get("default_model"),
     }
 
-    # ── Topic registry (project-scoped, possibly empty) ──
-    registry_rows = (
-        client.table("topic_registry")
-        .select("id, name, description, approved_at, approved_by_call_id")
-        .eq("project_id", project_id)
-        .order("approved_at", desc=False)  # stable order, oldest-first
-        .execute()
-        .data
-    )
+    # ── Topic state (EPIC-18 unified read) ──
+    topic_state = get_project_topic_state(project_id, db=client)
+    # NOTE: field name `topic_registry` retained in ContextBundle for backward compat
+    # with Stage 5 and orchestrator; semantically this is now the full topic state.
     registry: list[RegistryEntry] = [
         {
-            "id": r["id"],
-            "name": r["name"],
-            "description": r.get("description") or "",
-            "approved_at": r["approved_at"],
-            "approved_by_call_id": r.get("approved_by_call_id"),
+            "id": t["topic_id"],
+            "name": t["name"],
+            "description": t.get("summary") or "",
+            # NEW (EPIC-18) — structural payload for Stage 5 V5-CORE
+            "key_terms": t.get("key_terms") or [],
+            "tasks": t.get("tasks") or [],
+            "approved_at": t.get("latest_update_at") or "",
+            "approved_by_call_id": t.get("first_raised_call_id"),
         }
-        for r in (registry_rows or [])
+        for t in topic_state
     ]
 
     logger.info(
