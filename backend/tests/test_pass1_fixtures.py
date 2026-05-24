@@ -13,18 +13,9 @@ def load_fixture(name: str) -> dict:
 
 
 def _ingest_fixture_transcripts(past_transcripts: dict) -> dict:
-    """Ingest raw fixture transcripts into the shape topic_verification.py expects.
-
-    ingest_transcript() returns lines as a list[{idx, text}].
-    topic_verification.py (_build_verify_new_prompt + _transcript_body) expects
-    lines to be a dict {idx: text}.  We normalise here.
-    """
-    result = {}
-    for cid, body in past_transcripts.items():
-        ingested = ingest_transcript(body)
-        ingested["lines"] = {ln["idx"]: ln["text"] for ln in ingested["lines"]}
-        result[cid] = ingested
-    return result
+    """Ingest raw fixture transcripts. Production code consumes the canonical
+    ingest_transcript output shape directly (after the line 495/733 fix)."""
+    return {cid: ingest_transcript(body) for cid, body in past_transcripts.items()}
 
 
 def _mock_verify_new_response(

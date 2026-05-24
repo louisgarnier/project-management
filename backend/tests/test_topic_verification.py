@@ -12,11 +12,13 @@ def _llm_returns(payload):
 
 
 def _ingested(text: str) -> dict:
-    """Build a minimal ingested dict from a raw string (matches Stage 0 output shape)."""
+    """Build a minimal ingested dict from a raw string (matches Stage 0 output shape).
+    Returns canonical ingest_transcript shape: lines is list[{"idx": str, "text": str}]."""
     lines = text.split("\n") if text else []
+    line_dicts = [{"idx": str(i + 1).zfill(4), "text": line} for i, line in enumerate(lines)]
     return {
         "line_count": len(lines),
-        "lines": {str(i + 1).zfill(4): line for i, line in enumerate(lines)},
+        "lines": line_dicts,
     }
 
 
@@ -278,7 +280,10 @@ def test_prompt_includes_line_numbered_transcripts():
     transcripts = {
         "call-a": {
             "line_count": 2,
-            "lines": {"0001": "Hello world", "0002": "Second line"},
+            "lines": [
+                {"idx": "0001", "text": "Hello world"},
+                {"idx": "0002", "text": "Second line"}
+            ],
         }
     }
     msg = _build_verify_new_prompt(candidate, [], transcripts)
@@ -291,7 +296,7 @@ def test_prompt_handles_empty_project_topics():
     """EPIC-18: _build_verify_new_prompt works with no existing project topics."""
     from backend.services.topic_verification import _build_verify_new_prompt
     candidate = {"topic_id": "c-1", "name": "Test", "tasks": [{"task": "do x"}]}
-    transcripts = {"call-a": {"line_count": 1, "lines": {"0001": "x"}}}
+    transcripts = {"call-a": {"line_count": 1, "lines": [{"idx": "0001", "text": "x"}]}}
     msg = _build_verify_new_prompt(candidate, [], transcripts)
     assert "EXISTING PROJECT TOPICS:" in msg
     assert "CANDIDATE NEW TOPIC:" in msg
@@ -319,7 +324,18 @@ async def test_run_verify_canonical_match_confirmed(monkeypatch):
         candidate={"name": "C", "tasks": [{"task": "X"}]},
         matched_topic={"topic_id": "t1", "name": "ARM", "tasks": [{"task": "X"}]},
         all_project_topics=[],
-        transcripts={"c1": {"line_count": 5, "lines": {"0001": "x", "0002": "y", "0003": "z", "0004": "a", "0005": "b"}}},
+        transcripts={
+            "c1": {
+                "line_count": 5,
+                "lines": [
+                    {"idx": "0001", "text": "x"},
+                    {"idx": "0002", "text": "y"},
+                    {"idx": "0003", "text": "z"},
+                    {"idx": "0004", "text": "a"},
+                    {"idx": "0005", "text": "b"}
+                ]
+            }
+        },
         llm="openrouter", model="x",
     )
     assert out["verdict"] == "confirmed_match"
@@ -344,7 +360,18 @@ async def test_run_verify_canonical_match_wrong_canonical(monkeypatch):
         candidate={"name": "C", "tasks": [{"task": "stress test setup"}]},
         matched_topic={"topic_id": "t1", "name": "ARM", "tasks": [{"task": "LMAC test"}]},
         all_project_topics=[{"topic_id": "t1", "name": "ARM"}, {"topic_id": "t2", "name": "Stress Test"}],
-        transcripts={"c1": {"line_count": 5, "lines": {"0001": "x", "0002": "y", "0003": "z", "0004": "a", "0005": "b"}}},
+        transcripts={
+            "c1": {
+                "line_count": 5,
+                "lines": [
+                    {"idx": "0001", "text": "x"},
+                    {"idx": "0002", "text": "y"},
+                    {"idx": "0003", "text": "z"},
+                    {"idx": "0004", "text": "a"},
+                    {"idx": "0005", "text": "b"}
+                ]
+            }
+        },
         llm="openrouter", model="x",
     )
     assert out["verdict"] == "wrong_canonical_belongs_elsewhere"
@@ -367,7 +394,18 @@ async def test_run_verify_canonical_match_failed_citations(monkeypatch):
         candidate={"name": "C", "tasks": []},
         matched_topic={"topic_id": "t1", "name": "ARM", "tasks": []},
         all_project_topics=[],
-        transcripts={"c1": {"line_count": 5, "lines": {"0001": "x", "0002": "y", "0003": "z", "0004": "a", "0005": "b"}}},
+        transcripts={
+            "c1": {
+                "line_count": 5,
+                "lines": [
+                    {"idx": "0001", "text": "x"},
+                    {"idx": "0002", "text": "y"},
+                    {"idx": "0003", "text": "z"},
+                    {"idx": "0004", "text": "a"},
+                    {"idx": "0005", "text": "b"}
+                ]
+            }
+        },
         llm="openrouter", model="x",
     )
     assert out["needs_manual_review"] is True

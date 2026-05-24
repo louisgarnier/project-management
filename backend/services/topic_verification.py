@@ -107,7 +107,8 @@ def _transcript_body(transcript_or_ingested) -> str:
     Returns plain text suitable for term-count / lexical scoring.
     """
     if isinstance(transcript_or_ingested, dict):
-        return " ".join(transcript_or_ingested.get("lines", {}).values())
+        lines = transcript_or_ingested.get("lines", [])
+        return " ".join(ln.get("text", "") for ln in lines if isinstance(ln, dict))
     return transcript_or_ingested or ""
 
 
@@ -492,7 +493,7 @@ def _build_verify_new_prompt(
         }
     transcripts_block = "\n\n".join(
         f"--- CALL {cid} ({ing['line_count']} lines) ---\n"
-        + "\n".join(f"{idx}  {text}" for idx, text in ing.get("lines", {}).items())
+        + "\n".join(f"{ln['idx']}  {ln['text']}" for ln in ing.get("lines", []))
         for cid, ing in transcripts.items()
     )
     project_topics_block = json.dumps([_shape_topic_for_llm(t) for t in project_topics], indent=2)
@@ -730,7 +731,7 @@ async def run_verify_canonical_match(
 
     transcripts_block = "\n\n".join(
         f"--- CALL {cid} ({ing['line_count']} lines) ---\n"
-        + "\n".join(f"{idx}  {text}" for idx, text in ing.get("lines", {}).items())
+        + "\n".join(f"{ln['idx']}  {ln['text']}" for ln in ing.get("lines", []))
         for cid, ing in transcripts.items()
     )
     prompt = (
