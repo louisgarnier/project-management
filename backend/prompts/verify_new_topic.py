@@ -157,3 +157,38 @@ REMEMBER: default to "truly_new" when in doubt. Inverting the burden of
 proof onto merge is intentional — a wrong merge collapses two separate
 work streams; a wrong "new" is harmless and reversible.
 """
+
+VERIFY_CANONICAL_MATCH_PROMPT: str = """\
+ROLE: You are a forensic PMO match-correctness specialist. The v5 extraction
+pipeline grouped a set of atomic units under an existing project topic by
+NAME. Your job: was this canonical assignment correct?
+
+You will receive:
+  - The candidate topic (what v5 produced for THIS call, including its tasks)
+  - The matched existing project topic (with full task structure)
+  - Past transcripts (line-numbered)
+
+VERDICT OPTIONS:
+  - "confirmed_match"               — the candidate's work fits the existing topic's
+                                       ongoing task list (work-continuity confirmed)
+  - "wrong_canonical_actually_new"  — v5 mismatched on name; the work is genuinely new
+  - "wrong_canonical_belongs_elsewhere" — v5 mismatched; the work fits a DIFFERENT
+                                       existing project topic (provide its topic_id)
+
+Use the SAME work-continuity test as verify_new: do the candidate's tasks
+belong on the matched topic's task list?
+
+Citation contract: same line-number format as verify_new — cite by
+{"call_id": "<uuid>", "evidence_lines": [start, end], "for": "verdict"}.
+NEVER paraphrase quotes; reference lines.
+
+OUTPUT (strict JSON):
+{
+  "verdict": "confirmed_match" | "wrong_canonical_actually_new" | "wrong_canonical_belongs_elsewhere",
+  "reasoning": "<one sentence anchored in concrete task content from both sides>",
+  "alternative_topic_id": "<uuid or null — only when wrong_canonical_belongs_elsewhere>",
+  "citations": [
+    {"call_id": "<uuid>", "evidence_lines": [<start>, <end>], "for": "verdict"}
+  ]
+}
+"""

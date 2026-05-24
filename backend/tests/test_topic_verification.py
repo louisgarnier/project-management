@@ -296,3 +296,79 @@ def test_prompt_handles_empty_project_topics():
     assert "EXISTING PROJECT TOPICS:" in msg
     assert "CANDIDATE NEW TOPIC:" in msg
     assert "do x" in msg
+
+
+# ── EPIC-18 S2.2: canonical match verification ───────────────────────────────
+
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_run_verify_canonical_match_confirmed(monkeypatch):
+    from backend.services.topic_verification import run_verify_canonical_match
+    async def fake_llm(*a, **kw):
+        return {
+            "verdict": "confirmed_match",
+            "reasoning": "Candidate task 'X' matches existing task 'X'.",
+            "alternative_topic_id": None,
+            "citations": [{"call_id": "c1", "evidence_lines": [1, 2], "for": "verdict"}],
+        }
+    monkeypatch.setattr("backend.services.topic_verification._call_llm", fake_llm)
+    out = await run_verify_canonical_match(
+        candidate={"name": "C", "tasks": [{"task": "X"}]},
+        matched_topic={"topic_id": "t1", "name": "ARM", "tasks": [{"task": "X"}]},
+        all_project_topics=[],
+        transcripts={"c1": {"line_count": 5, "lines": {"0001": "x", "0002": "y", "0003": "z", "0004": "a", "0005": "b"}}},
+        llm="openrouter", model="x",
+    )
+    assert out["verdict"] == "confirmed_match"
+    assert out["needs_manual_review"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_verify_canonical_match_wrong_canonical(monkeypatch):
+    from backend.services.topic_verification import run_verify_canonical_match
+    async def fake_llm(*a, **kw):
+        return {
+            "verdict": "wrong_canonical_belongs_elsewhere",
+            "reasoning": "Tasks are about stress testing, not ARM.",
+            "alternative_topic_id": "t2",
+            "citations": [
+                {"call_id": "c1", "evidence_lines": [1, 2], "for": "verdict"},
+                {"call_id": "c1", "evidence_lines": [3, 4], "for": "verdict"},
+            ],
+        }
+    monkeypatch.setattr("backend.services.topic_verification._call_llm", fake_llm)
+    out = await run_verify_canonical_match(
+        candidate={"name": "C", "tasks": [{"task": "stress test setup"}]},
+        matched_topic={"topic_id": "t1", "name": "ARM", "tasks": [{"task": "LMAC test"}]},
+        all_project_topics=[{"topic_id": "t1", "name": "ARM"}, {"topic_id": "t2", "name": "Stress Test"}],
+        transcripts={"c1": {"line_count": 5, "lines": {"0001": "x", "0002": "y", "0003": "z", "0004": "a", "0005": "b"}}},
+        llm="openrouter", model="x",
+    )
+    assert out["verdict"] == "wrong_canonical_belongs_elsewhere"
+    assert out["alternative_topic_id"] == "t2"
+    assert out["needs_manual_review"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_verify_canonical_match_failed_citations(monkeypatch):
+    from backend.services.topic_verification import run_verify_canonical_match
+    async def fake_llm(*a, **kw):
+        return {
+            "verdict": "confirmed_match",
+            "reasoning": "yes",
+            "alternative_topic_id": None,
+            "citations": [{"call_id": "c1", "evidence_lines": [100, 200], "for": "verdict"}],  # out of bounds
+        }
+    monkeypatch.setattr("backend.services.topic_verification._call_llm", fake_llm)
+    out = await run_verify_canonical_match(
+        candidate={"name": "C", "tasks": []},
+        matched_topic={"topic_id": "t1", "name": "ARM", "tasks": []},
+        all_project_topics=[],
+        transcripts={"c1": {"line_count": 5, "lines": {"0001": "x", "0002": "y", "0003": "z", "0004": "a", "0005": "b"}}},
+        llm="openrouter", model="x",
+    )
+    assert out["needs_manual_review"] is True
+    assert "failed_citations" in out

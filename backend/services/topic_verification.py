@@ -768,6 +768,69 @@ async def run_verify_new(
     return final
 
 
+async def run_verify_canonical_match(
+    candidate: dict,
+    matched_topic: dict,
+    all_project_topics: list[dict],
+    transcripts: dict[str, dict],
+    *,
+    llm: str,
+    model: str | None,
+    log_fn=None,
+) -> dict:
+    """EPIC-18 S2.2 — verify that v5's canonical match was correct.
+
+    candidate: v5-output topic with new_topic=False (claimed canonical match)
+    matched_topic: the existing project topic v5 said it matched
+    all_project_topics: full list (for `alternative_topic_id` selection)
+    transcripts: ingested past transcripts dict (same shape as Pass 1)
+
+    Returns: {verdict, reasoning, alternative_topic_id, citations, needs_manual_review}
+    """
+    from backend.prompts.verify_new_topic import VERIFY_CANONICAL_MATCH_PROMPT
+    from backend.services.citation_verify import verify_evidence_lines
+
+    name = matched_topic.get("name", "?")
+
+    async def _log(msg: str) -> None:
+        if log_fn:
+            await log_fn(msg)
+
+    transcripts_block = "\n\n".join(
+        f"--- CALL {cid} ({ing['line_count']} lines) ---\n"
+        + "\n".join(f"{idx}  {text}" for idx, text in ing.get("lines", {}).items())
+        for cid, ing in transcripts.items()
+    )
+    prompt = (
+        f"{VERIFY_CANONICAL_MATCH_PROMPT}\n\n"
+        f"CANDIDATE (what v5 produced this call):\n{json.dumps(candidate, indent=2)}\n\n"
+        f"MATCHED EXISTING TOPIC:\n{json.dumps(matched_topic, indent=2)}\n\n"
+        f"ALL PROJECT TOPICS (for alternative_topic_id selection):\n"
+        f"{json.dumps([{'topic_id': t.get('topic_id'), 'name': t.get('name')} for t in all_project_topics], indent=2)}\n\n"
+        f"PAST TRANSCRIPTS:\n{transcripts_block}"
+    )
+    await _log(f"      [canonical-check: {name}] asking LLM to verify v5's canonical match")
+    result = await _call_llm(prompt, llm, model=model)
+    if not isinstance(result, dict):
+        await _log(f"      [canonical-check: {name}] LLM returned non-dict — defaulting to confirmed_match pending manual review")
+        return {
+            "verdict": "confirmed_match",
+            "needs_manual_review": True,
+            "reasoning": "LLM non-dict response — assume v5 was right pending review",
+            "citations": [],
+            "alternative_topic_id": None,
+        }
+    cits = result.get("citations") or []
+    ok, failures = verify_evidence_lines(cits, transcripts)
+    result["needs_manual_review"] = not ok
+    if not ok:
+        result["failed_citations"] = failures
+        await _log(f"      [canonical-check: {name}] {len(failures)} citation(s) failed bounds check — flagged for review")
+    else:
+        await _log(f"      [canonical-check: {name}] ✓ verdict={result.get('verdict')}")
+    return result
+
+
 def _build_verify_not_discussed_prompt(topic: dict, transcript: str, call_id: str) -> str:
     anchor = json.dumps({"name": topic.get("name"), "key_terms": topic.get("key_terms", [])}, indent=2)
     return (
