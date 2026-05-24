@@ -180,6 +180,7 @@ import os
 
 from backend.database.supabase_client import get_client
 from backend.services.llm_service import call_llm_raw
+from backend.services.project_topic_state import get_project_topic_state
 from backend.services.topic_lineage import build_lineage_evidence_block
 from backend.utils.logger import get_logger
 
@@ -718,55 +719,37 @@ def _is_valid_topic_shape(d: object) -> bool:
 
 
 def _get_previous_topics(project_id: str, db) -> list[dict]:
-    """Return all non-archived topics for a project with their most recent update."""
-    topics = (
-        db.table("topics")
-        .select("id, name, calls_open, first_raised_call_id")
-        .eq("project_id", project_id)
-        .eq("archived", False)
-        .execute()
-        .data
-    )
-    result = []
-    for t in topics:
-        updates = (
-            db.table("topic_updates")
-            .select(
-                "summary, status, sentiment, importance, "
-                "evidence, key_terms, tasks, "
-                "open_questions, decisions, chronology_narrative, rag_verification_note"
-            )
-            .eq("topic_id", t["id"])
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-            .data
-        )
-        latest = updates[0] if updates else {}
-        result.append(
-            {
-                "topic_id": t["id"],
-                "name": t["name"],
-                "calls_open": t["calls_open"],
-                "summary": latest.get("summary", ""),
-                "status": latest.get("status", "open"),
-                "sentiment": latest.get("sentiment", "neutral"),
-                "importance": latest.get("importance", "medium"),
-                "evidence": latest.get("evidence", []),
-                "key_terms": latest.get("key_terms", []),
-                "tasks": latest.get("tasks", []),
-                "open_questions": latest.get("open_questions") or [],
-                "decisions": latest.get("decisions") or [],
-                "chronology_narrative": latest.get("chronology_narrative"),
-                "rag_verification_note": latest.get("rag_verification_note"),
-                # Legacy keys kept as empty defaults for frontend compat
-                "follow_up_items": [],
-                "is_parked": False,
-                "rationale": "",
-                "owner": "Us",
-            }
-        )
-    return result
+    """Return all non-archived topics for a project with their most recent update.
+
+    EPIC-18: refactored to consume project_topic_state unified view.
+    Legacy keys (follow_up_items, is_parked, rationale, owner) retained as
+    empty defaults for frontend back-compat.
+    """
+    state = get_project_topic_state(project_id, db=db)
+    return [
+        {
+            "topic_id": t["topic_id"],
+            "name": t["name"],
+            "calls_open": t.get("calls_open") or 0,
+            "summary": t.get("summary") or "",
+            "status": t.get("status") or "open",
+            "sentiment": t.get("sentiment") or "neutral",
+            "importance": t.get("importance") or "medium",
+            "evidence": t.get("evidence") or [],
+            "key_terms": t.get("key_terms") or [],
+            "tasks": t.get("tasks") or [],
+            "open_questions": t.get("open_questions") or [],
+            "decisions": t.get("decisions") or [],
+            "chronology_narrative": t.get("chronology_narrative"),
+            "rag_verification_note": t.get("rag_verification_note"),
+            # Legacy keys for frontend back-compat
+            "follow_up_items": [],
+            "is_parked": False,
+            "rationale": "",
+            "owner": "Us",
+        }
+        for t in state
+    ]
 
 
 def _get_topics_prompt(

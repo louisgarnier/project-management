@@ -317,41 +317,35 @@ def test_brief_call2_returns_sorted_topics(mock_brief, mock_gc):
 
 
 @patch("backend.routers.topics.get_client")
-def test_get_project_topics_returns_non_archived(mock_gc):
+def test_get_project_topics_returns_non_archived(mock_gc, monkeypatch):
     m = MagicMock()
+    mock_gc.return_value = m
 
-    # Mock: topics query (non-archived topics)
-    topics_mock = MagicMock()
-    topics_mock.data = [
+    # Mock get_project_topic_state to return unified view
+    fake_state = [
         {
-            "id": TOPIC_ID,
+            "topic_id": TOPIC_ID,
             "name": "Pricing",
+            "summary": "Monthly pref.",
+            "status": "open",
+            "sentiment": "concern",
+            "importance": "medium",
             "calls_open": 2,
             "first_raised_call_id": CALL_ID,
-        },
-    ]
-    # Mock: topic_updates query (latest update per topic)
-    updates_mock = MagicMock()
-    updates_mock.data = [
-        {
-            "summary": "Monthly pref.",
-            "follow_up_items": ["Send breakdown"],
+            "key_terms": [],
+            "tasks": [],
+            "open_questions": [],
             "decisions": [],
-            "status": "open",
-            "owner": "Client",
-            "sentiment": "concern",
+            "evidence": [],
+            "chronology_narrative": None,
+            "rag_verification_note": None,
+            "latest_update_at": None,
         },
     ]
-
-    # Chain the mocks: topics select → eq(project_id) → eq(archived) → execute
-    m.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = (
-        topics_mock
+    monkeypatch.setattr(
+        "backend.services.topics_service.get_project_topic_state",
+        lambda project_id, db=None: fake_state,
     )
-    # topic_updates: select → eq(topic_id) → order → limit → execute
-    m.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = (
-        updates_mock
-    )
-    mock_gc.return_value = m
 
     r = http.get(f"/api/projects/{PROJECT_ID}/topics")
     assert r.status_code == 200
@@ -1520,3 +1514,32 @@ def test_extract_call_topics_uses_new_default_prompt(monkeypatch):
     assert "[ROLE]" in captured["prompt"]
     assert "[RUBRIC]" in captured["prompt"]
     assert CALL_TOPICS_DEFAULT_PROMPT in captured["prompt"]
+
+
+def test_get_previous_topics_uses_unified_view(monkeypatch):
+    """EPIC-18: _get_previous_topics now reads from project_topic_state view."""
+    from backend.services.topics_service import _get_previous_topics
+    from unittest.mock import MagicMock
+
+    fake_state = [
+        {"topic_id": "t-1", "name": "ARM", "summary": "Risk", "status": "open",
+         "sentiment": "neutral", "importance": "high", "calls_open": 2,
+         "first_raised_call_id": "c-1", "key_terms": ["LMAC"], "tasks": [{"task": "x"}],
+         "open_questions": [], "decisions": [], "evidence": [],
+         "chronology_narrative": None, "rag_verification_note": None,
+         "latest_update_at": None},
+    ]
+    monkeypatch.setattr(
+        "backend.services.topics_service.get_project_topic_state",
+        lambda project_id, db=None: fake_state,
+    )
+    out = _get_previous_topics("proj-1", MagicMock())
+    assert len(out) == 1
+    assert out[0]["name"] == "ARM"
+    assert out[0]["key_terms"] == ["LMAC"]
+    assert out[0]["tasks"][0]["task"] == "x"
+    # Legacy keys still populated for frontend back-compat
+    assert out[0]["follow_up_items"] == []
+    assert out[0]["owner"] == "Us"
+    assert out[0]["is_parked"] is False
+    assert out[0]["rationale"] == ""

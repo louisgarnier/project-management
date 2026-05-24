@@ -687,7 +687,40 @@ def _build_aggregate_test_client(monkeypatch, project_id: str, topic_rows: list[
         def table(self, name):
             return _Tbl(name)
 
+    def _mock_get_project_topic_state(proj_id, db=None):
+        """Mock get_project_topic_state to return unified view from topic_rows."""
+        # Convert topic_rows (topic_updates format) to project_topic_state format
+        state = []
+        seen_ids = set()
+        for row in topic_rows:
+            tid = row.get("topic_id")
+            if tid and tid not in seen_ids:
+                seen_ids.add(tid)
+                state.append({
+                    "topic_id": tid,
+                    "name": row.get("name", f"topic-{tid}"),
+                    "summary": row.get("summary", ""),
+                    "status": row.get("status", "open"),
+                    "sentiment": row.get("sentiment", "neutral"),
+                    "importance": row.get("importance", "medium"),
+                    "calls_open": 1,
+                    "first_raised_call_id": "c1",
+                    "key_terms": row.get("key_terms", []),
+                    "tasks": row.get("tasks", []),
+                    "open_questions": row.get("open_questions", []),
+                    "decisions": row.get("decisions", []),
+                    "evidence": row.get("evidence", []),
+                    "chronology_narrative": row.get("chronology_narrative"),
+                    "rag_verification_note": row.get("rag_verification_note"),
+                    "latest_update_at": None,
+                })
+        return state
+
     monkeypatch.setattr(topics_service, "get_client", lambda: _DB())
+    monkeypatch.setattr(
+        "backend.services.topics_service.get_project_topic_state",
+        _mock_get_project_topic_state,
+    )
 
     import importlib
 
