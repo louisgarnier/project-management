@@ -12,28 +12,21 @@ can "merge with existing" instead of approving a new entry.
 from __future__ import annotations
 
 import logging
-import re
 from typing import TypedDict
+
+from backend.services.topic_similarity import effective_token_set
 
 logger = logging.getLogger("calltracker.call_topics_v5.stage_6")
 
 LEXICAL_MERGE_SUGGESTION_THRESHOLD = 0.6  # tuned later against gold set
 
 
-_TOKEN_RE = re.compile(r"\b[a-z][a-z0-9_-]+\b")
-
-
-def _tokens(s: str) -> set[str]:
-    return set(_TOKEN_RE.findall((s or "").lower()))
-
-
 def _jaccard(a: str, b: str) -> float:
-    ta, tb = _tokens(a), _tokens(b)
-    if not ta or not tb:
-        return 0.0
-    inter = ta & tb
-    union = ta | tb
-    return len(inter) / len(union) if union else 0.0
+    """Stage 6 name-vs-name jaccard. Stable wrapper over shared effective_token_set."""
+    sa = effective_token_set({"name": a})
+    sb = effective_token_set({"name": b})
+    inter, union = sa & sb, sa | sb
+    return (len(inter) / len(union)) if union else 0.0
 
 
 class WorkingTopic(TypedDict, total=False):

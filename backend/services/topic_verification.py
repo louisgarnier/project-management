@@ -11,6 +11,9 @@ from backend.prompts.verify_new_topic import VERIFY_NEW_TOPIC_PROMPT
 from backend.prompts.verify_not_discussed import VERIFY_NOT_DISCUSSED_PROMPT
 from backend.prompts.extract_topic_updates import EXTRACT_TOPIC_UPDATES_PROMPT
 from backend.services.citation_verify import verify_citations, find_quote_lines, verify_evidence_lines
+from backend.services.topic_similarity import (
+    effective_token_set, compute_idf, weighted_jaccard_tokens, weighted_jaccard, _STOPWORDS,
+)
 
 logger = logging.getLogger("calltracker.topic_verification")
 
@@ -99,55 +102,6 @@ class ProgressLogger:
 # ── Layer 1 — Mechanical pre-filter with IDF-weighted scoring ─────────────────
 
 
-_STOPWORDS = {
-    "the", "a", "an", "to", "and", "or", "for", "with", "of", "in", "on", "at",
-    "by", "from", "this", "that", "is", "are", "was", "were", "be", "been",
-    "have", "has", "had", "do", "does", "did", "will", "would", "should",
-    "could", "can", "may", "might", "must", "shall", "their", "our", "us",
-    "we", "they", "he", "she", "it", "you", "your", "my", "as", "if",
-    "when", "where", "what", "who", "how", "why", "all", "any", "some", "no",
-    "not", "more", "less", "very", "just", "also", "than", "then", "but",
-    "into", "out", "off", "over", "under", "again", "further", "once",
-}
-
-
-def _norm_terms(terms: list[str]) -> set[str]:
-    return {(s or "").lower().strip() for s in (terms or []) if (s or "").strip()}
-
-
-def effective_token_set(topic_or_candidate: dict) -> set[str]:
-    """Build the effective token bag for lexical matching.
-
-    v4 task-centric: also aggregates per-task key_terms across all tasks of
-    the topic, in addition to topic.key_terms and topic.name. This way the
-    new model and legacy data both feed the same scoring.
-
-    Solves the paraphrase problem: "stress testing" (key_term) vs "stress test"
-    (different key_term) now overlap on the tokens {stress, testing} vs
-    {stress, test} respectively — at least "stress" is shared.
-    """
-    tokens: set[str] = set()
-    sources: list[str] = []
-    # key_terms (may be multi-word)
-    for kt in (topic_or_candidate.get("key_terms") or []):
-        if kt:
-            sources.append(str(kt))
-    # name (always single phrase, may be multi-word)
-    if topic_or_candidate.get("name"):
-        sources.append(str(topic_or_candidate["name"]))
-    # v4 per-task aggregation — each task's key_terms feed the parent topic's bag
-    for task in (topic_or_candidate.get("tasks") or []):
-        if isinstance(task, dict):
-            for kt in (task.get("key_terms") or []):
-                if kt:
-                    sources.append(str(kt))
-    for src in sources:
-        for word in _re.findall(r"\b[a-z][a-z0-9_-]+\b", src.lower()):
-            if len(word) > 2 and word not in _STOPWORDS:
-                tokens.add(word)
-    return tokens
-
-
 def _transcript_body(transcript_or_ingested) -> str:
     """EPIC-18: accept either a raw string (legacy) or an ingested dict {line_count, lines}.
     Returns plain text suitable for term-count / lexical scoring.
@@ -175,37 +129,6 @@ def _count_term_occurrences(text: str, terms: list[str]) -> dict[str, int]:
     return out
 
 
-def compute_idf(project_topics: list[dict]) -> dict[str, float]:
-    """IDF computed over EFFECTIVE TOKEN SETS (key_terms + name tokenised).
-
-    Common tokens (appear in many topics) get low IDF; rare tokens high IDF.
-    Formula: IDF(t) = log((N + 1) / (df + 1)) + 1
-    """
-    N = max(len(project_topics), 1)
-    df: dict[str, int] = {}
-    for t in project_topics:
-        for tok in effective_token_set(t):
-            df[tok] = df.get(tok, 0) + 1
-    return {tok: _math.log((N + 1) / (count + 1)) + 1.0 for tok, count in df.items()}
-
-
-def weighted_jaccard_tokens(a_tokens: set[str], b_tokens: set[str], idf: dict[str, float]) -> float:
-    """IDF-weighted Jaccard on pre-computed token sets."""
-    inter = a_tokens & b_tokens
-    union = a_tokens | b_tokens
-    if not union:
-        return 0.0
-    inter_w = sum(idf.get(t, 1.0) for t in inter)
-    union_w = sum(idf.get(t, 1.0) for t in union)
-    return inter_w / union_w if union_w > 0 else 0.0
-
-
-def weighted_jaccard(a_terms: list[str], b_terms: list[str], idf: dict[str, float]) -> float:
-    """Legacy entry point: takes raw term lists, builds effective token sets, then scores.
-    Kept for tests + external callers."""
-    set_a = effective_token_set({"key_terms": a_terms})
-    set_b = effective_token_set({"key_terms": b_terms})
-    return weighted_jaccard_tokens(set_a, set_b, idf)
 
 
 def extract_task_subjects(tasks: list[dict]) -> set[str]:
