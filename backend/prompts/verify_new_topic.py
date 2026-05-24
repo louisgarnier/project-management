@@ -5,6 +5,10 @@ existing one?" (which the LLM hacks via shared platform/vendor names like
 "Snowflake"), we ask "would the candidate's tasks/OQ/decisions naturally fit
 on an existing topic's ongoing work list?". This is a continuity-of-work
 test, not a similarity test — much more discriminating.
+
+EPIC-18 (2026-05-24): citation contract switched to line-numbers (matches v5 Stage 4).
+extraction_grounded check removed (it was checking against a transcript Pass 1
+never sees — see design doc Section 3 RC4).
 """
 
 VERIFY_NEW_TOPIC_PROMPT: str = """\
@@ -114,21 +118,18 @@ PROCESS (mandatory, follow in order)
    (different) work are insufficient → downgrade to truly_new instead.
 
 ──────────────────────────────────────────────────────────────────────
-CITATION CONTRACT (anti-hallucination)
+CITATION CONTRACT (line-number, anti-hallucination)
 ──────────────────────────────────────────────────────────────────────
-- Every citation MUST be a verbatim copy-paste from a supplied transcript.
-- No paraphrasing. No partial reconstruction.
-- Citation format: {"call_id": "<uuid>", "lines": "X-Y", "quote": "<verbatim>"}
-- For verdict citations, the quote MUST be about the SAME WORK STREAM as
-  the candidate, not adjacent topics that share a name.
+Each transcript is supplied with line numbers (format: "0001  <text>").
+DO NOT copy or paraphrase quote text. Instead, cite by line range:
 
-──────────────────────────────────────────────────────────────────────
-EXTRACTION GROUNDING CHECK (separate concern)
-──────────────────────────────────────────────────────────────────────
-Independently of the merge verdict, check whether the candidate's tasks,
-open_questions, and decisions are actually grounded in the CURRENT call's
-transcript (not the past transcripts). Any item that doesn't appear in
-the current call's discussion should be flagged in `ungrounded_items`.
+  {"call_id": "<uuid>", "evidence_lines": [start_line, end_line], "for": "verdict|extraction"}
+
+- start_line and end_line are integers (the leading zeros are display-only)
+- The range MUST be inside the actual transcript's line count
+- For verdict citations, the cited lines MUST be about the SAME WORK
+  STREAM as the candidate (not adjacent topics that share a name)
+- For merges: provide AT LEAST TWO verdict citations
 
 ──────────────────────────────────────────────────────────────────────
 OUTPUT FORMAT (strict JSON — no markdown, no commentary outside JSON)
@@ -147,12 +148,8 @@ OUTPUT FORMAT (strict JSON — no markdown, no commentary outside JSON)
   "matched_topic_id": "<uuid or null>",
   "matched_topic_name": "<string or null>",
   "merge_reasoning": "<if merge: which specific candidate task(s) belong on which existing task list, with concrete references. If new: 'No existing topic's task list could naturally absorb the candidate's tasks.'>",
-  "extraction_grounded": true | false,
-  "ungrounded_items": [
-    {"type": "task|open_question|decision", "text": "<item text>"}
-  ],
   "citations": [
-    {"call_id": "...", "lines": "X-Y", "quote": "<verbatim>", "for": "verdict|extraction"}
+    {"call_id": "<uuid>", "evidence_lines": [<start>, <end>], "for": "verdict"}
   ]
 }
 
