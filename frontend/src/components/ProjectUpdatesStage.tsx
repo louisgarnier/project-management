@@ -1073,6 +1073,35 @@ function NewTopicCard({
             flexWrap: "wrap",
           }}
         >
+          {/* EPIC-18 STREAM 4: auto-accepted truly_new — skip manual buttons */}
+          {result.confidence?.auto_accept_eligible ? (
+            <>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "#006644",
+                  background: "#e3fcef",
+                  border: "1px solid #abf5d1",
+                  borderRadius: 4,
+                  padding: "4px 10px",
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                ✓ Auto-accepted as new (confidence {result.confidence.pct}%)
+              </span>
+              <button
+                type="button"
+                onClick={() => onDecisionChange({ action: "merge", merge_to_ids: result?.matched_topic_id ? [result.matched_topic_id] : [], merge_pending_names: [] })}
+                style={{ ...decisionButton, fontSize: 10 }}
+              >
+                Override: merge instead
+              </button>
+            </>
+          ) : (
+            <>
           <span style={{ fontSize: 10, color: "#5e6c84", fontWeight: 600, textTransform: "uppercase" }}>
             Your decision:
           </span>
@@ -1303,6 +1332,8 @@ function NewTopicCard({
                 </button>
               </div>
             </div>
+          )}
+            </>
           )}
         </div>
       )}

@@ -415,7 +415,22 @@ def compute_confidence(result: dict) -> dict:
         label, color = "Moderate", "#974f0c"
     else:
         label, color = "Low", "#ae2a19"
-    return {"pct": pct, "label": label, "color": color, "rationale": rationale}
+
+    # EPIC-18 STREAM 4: auto-accept truly_new at confidence ≥75%.
+    # merge verdicts are NEVER auto-accepted (wrong merge collapses; wrong new is reversible).
+    auto_accept_eligible = (
+        verdict == "truly_new"
+        and pct >= 75
+        and not needs_review
+        and not sanity_flag
+    )
+    return {
+        "pct": pct,
+        "label": label,
+        "color": color,
+        "rationale": rationale,
+        "auto_accept_eligible": auto_accept_eligible,  # EPIC-18 STREAM 4
+    }
 
 
 def format_confidence_log_line(conf: dict) -> str:

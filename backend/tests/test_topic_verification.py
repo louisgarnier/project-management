@@ -458,3 +458,35 @@ async def test_run_verify_new_recovers_response_under_data_key(monkeypatch):
         llm="x", model="y",
     )
     assert out["verdict"] == "truly_new"
+
+
+# ── EPIC-18 STREAM 4: auto-accept eligibility ────────────────────────────────
+
+
+def test_compute_confidence_truly_new_high_confidence_auto_eligible():
+    """EPIC-18 STREAM 4: truly_new at base 85 → auto_accept_eligible=True."""
+    from backend.services.topic_verification import compute_confidence
+    out = compute_confidence({"verdict": "truly_new"})
+    assert out["pct"] == 85
+    assert out["auto_accept_eligible"] is True
+
+
+def test_compute_confidence_merge_never_auto_eligible():
+    """EPIC-18 STREAM 4: should_be_merged_with NEVER auto-accepts, regardless of confidence."""
+    from backend.services.topic_verification import compute_confidence
+    out = compute_confidence({"verdict": "should_be_merged_with"})
+    assert out["auto_accept_eligible"] is False
+
+
+def test_compute_confidence_truly_new_with_review_flag_not_eligible():
+    """needs_manual_review=True overrides auto-accept eligibility."""
+    from backend.services.topic_verification import compute_confidence
+    out = compute_confidence({"verdict": "truly_new", "needs_manual_review": True})
+    assert out["auto_accept_eligible"] is False
+
+
+def test_compute_confidence_truly_new_with_sanity_flag_not_eligible():
+    """sanity_flag set → auto_accept_eligible=False."""
+    from backend.services.topic_verification import compute_confidence
+    out = compute_confidence({"verdict": "truly_new", "sanity_flag": "weak_mechanical"})
+    assert out["auto_accept_eligible"] is False

@@ -370,6 +370,14 @@ export interface EvidenceTrailEntry {
   action_label: string;  // "first raised" | "task added" | etc
 }
 
+// EPIC-18 STREAM 4: extended verdict types covering canonical-match verification (S2.2)
+export type Pass1Verdict =
+  | "truly_new"
+  | "should_be_merged_with"
+  | "confirmed_match"
+  | "wrong_canonical_actually_new"
+  | "wrong_canonical_belongs_elsewhere";
+
 export type VerifyNewVerdict = "truly_new" | "should_be_merged_with";
 
 export interface LexicalPrecheck {
@@ -461,6 +469,7 @@ export interface ConfidenceBreakdown {
   label: "High" | "Moderate" | "Low";
   color: string;
   rationale: { step: string; op: string; value: number; running: number }[];
+  auto_accept_eligible?: boolean; // EPIC-18 STREAM 4
 }
 
 export interface VerifyNewResult {
