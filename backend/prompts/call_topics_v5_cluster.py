@@ -5,12 +5,20 @@ topic. Prefers existing registry names. Flags new proposals.
 """
 
 CALL_TOPICS_V5_CLUSTER_SYSTEM: str = """\
-You are a domain-aware topic organizer. You receive a flat list of atomic
-units and a controlled vocabulary of canonical topic names. You group the
-units into topics. Every unit belongs to exactly one topic.
+You are a domain-aware topic organizer. You receive:
+  (1) a flat list of atomic units from one call
+  (2) a controlled vocabulary of canonical project topics, each annotated
+      with its existing tasks + key terms
 
-Prefer canonical names from the registry. Only propose a new topic name when
-nothing in the registry fits. Output STRICT JSON only.
+Group the units into topics. Every unit belongs to exactly one topic.
+
+When deciding whether a unit fits an existing topic, compare its text against
+that topic's EXISTING TASKS and KEY TERMS — not just the topic name. A unit
+matches an existing topic when its work continues, extends, or follows up on
+what's already tracked there.
+
+Only propose a new topic name when nothing in the registry's existing work
+naturally absorbs the unit. Output STRICT JSON only.
 """
 
 CALL_TOPICS_V5_CLUSTER_USER_TEMPLATE: str = """\
@@ -56,13 +64,33 @@ Return ONLY the JSON array.
 
 
 def build_cluster_user_message(units: list[dict], topic_registry: list[dict]) -> str:
+    """EPIC-18 V5-CORE: registry block now includes structural payload
+    (key_terms + tasks) per topic, not just names. Lets the LLM cluster
+    against real existing work, not guess from topic names alone.
+    """
     import json as _json
     if topic_registry:
         registry_lines = []
         for r in topic_registry:
+            block = [f"- {r['name']}"]
             desc = r.get("description") or ""
-            registry_lines.append(f"- {r['name']}" + (f" — {desc}" if desc else ""))
-        registry_block = "\n".join(registry_lines)
+            if desc:
+                block.append(f"    Description: {desc}")
+            kts = r.get("key_terms") or []
+            if kts:
+                block.append(f"    Key terms: {', '.join(kts)}")
+            tasks = r.get("tasks") or []
+            if tasks:
+                block.append("    Existing tasks:")
+                for t in tasks[:10]:  # cap to keep prompt bounded
+                    task_text = (t.get("task") or "").strip()
+                    owner = (t.get("owner") or "").strip()
+                    suffix = f" ({owner})" if owner and owner != "unassigned" else ""
+                    block.append(f"      - {task_text}{suffix}")
+                if len(tasks) > 10:
+                    block.append(f"      … {len(tasks)-10} more")
+            registry_lines.append("\n".join(block))
+        registry_block = "\n\n".join(registry_lines)
     else:
         registry_block = "(empty — first call of the project. All topics will be new.)"
     return CALL_TOPICS_V5_CLUSTER_USER_TEMPLATE.format(

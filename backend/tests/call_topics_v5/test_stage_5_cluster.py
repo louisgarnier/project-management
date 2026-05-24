@@ -1,9 +1,13 @@
-"""Tests for Stage 5 — topic clustering (mocked LLM)."""
+"""Tests for Stage 5 — topic clustering (mocked LLM).
+
+EPIC-18 V5-CORE — Tests for structured registry rendering in cluster prompt.
+"""
 
 import asyncio
 import json
 from unittest.mock import AsyncMock
 
+from backend.prompts.call_topics_v5_cluster import build_cluster_user_message
 from backend.services.call_topics_v5 import stage_5_cluster as S5
 
 
@@ -61,3 +65,51 @@ def test_cluster_topics_end_to_end(monkeypatch):
     out = asyncio.run(S5.cluster_topics(units, registry))
     assert len(out["clusters"]) == 2
     assert out["orphans"] == []
+
+
+def test_registry_block_includes_tasks_and_key_terms():
+    units = [{"unit_id": "u1", "text": "x"}]
+    registry = [
+        {"name": "ARM", "description": "Risk modeling",
+         "key_terms": ["LMAC", "Monte Carlo"],
+         "tasks": [{"task": "Test LMAC vs Monte Carlo Mac", "owner": "Mark"}]},
+    ]
+    msg = build_cluster_user_message(units, registry)
+    assert "ARM" in msg
+    assert "Key terms: LMAC, Monte Carlo" in msg
+    assert "Existing tasks:" in msg
+    assert "Test LMAC vs Monte Carlo Mac (Mark)" in msg
+
+
+def test_empty_registry_block_unchanged_message():
+    msg = build_cluster_user_message([], [])
+    assert "(empty — first call of the project" in msg
+
+
+def test_registry_caps_at_10_tasks():
+    registry = [{
+        "name": "A", "key_terms": [],
+        "tasks": [{"task": f"task {i}"} for i in range(15)],
+    }]
+    msg = build_cluster_user_message([], registry)
+    assert "… 5 more" in msg
+
+
+def test_registry_handles_unassigned_owner():
+    registry = [{
+        "name": "B", "key_terms": [],
+        "tasks": [{"task": "do X", "owner": "unassigned"}],
+    }]
+    msg = build_cluster_user_message([], registry)
+    # 'unassigned' owner suffix should be suppressed
+    assert "- do X\n" in msg or msg.endswith("- do X")
+    assert "(unassigned)" not in msg
+
+
+def test_registry_topic_with_no_tasks_or_key_terms():
+    registry = [{"name": "Legacy Topic", "description": "An old topic"}]
+    msg = build_cluster_user_message([], registry)
+    assert "Legacy Topic" in msg
+    assert "An old topic" in msg
+    # No "Existing tasks:" header since there are none
+    assert "Existing tasks:" not in msg
