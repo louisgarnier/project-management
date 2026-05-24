@@ -123,7 +123,8 @@ async def run_pipeline(
 
         # ── Stage 5 ──
         await _emit("Stage 5: clustering atomic units into topics (LLM)…")
-        s5 = await cluster_topics(atomic_pool, ctx["topic_registry"], llm=llm, model=model)
+        project_context = ctx["project_metadata"].get("context", "") or ""
+        s5 = await cluster_topics(atomic_pool, ctx["topic_registry"], llm=llm, model=model, project_context=project_context)
         payload["stages"]["5"] = {
             "clusters": len(s5["clusters"]),
             "orphans": s5["orphans"],

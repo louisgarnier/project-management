@@ -140,3 +140,18 @@ async def test_cluster_topics_passes_structured_registry_to_llm(mock_llm):
     user_msg = mock_llm.call_args.args[1]
     assert "Key terms: LMAC, Monte Carlo" in user_msg
     assert "Investigate Monte Carlo job memory failure (Mark)" in user_msg
+
+
+@pytest.mark.asyncio
+@patch("backend.services.call_topics_v5.stage_5_cluster.call_llm_raw", new_callable=AsyncMock)
+async def test_cluster_topics_injects_project_context(mock_llm):
+    """EPIC-18 S1.2: cluster_topics injects projects.context into system prompt."""
+    mock_llm.return_value = "[]"
+    await cluster_topics(
+        [{"unit_id": "u1", "text": "x"}], [],
+        llm="openrouter", model="deepseek/deepseek-v3.2",
+        project_context="This project tracks portfolio risk analytics; team uses FactSet, Snowflake, Monte Carlo models.",
+    )
+    system_msg = mock_llm.call_args.args[0]
+    assert "PROJECT CONTEXT" in system_msg
+    assert "FactSet, Snowflake, Monte Carlo models" in system_msg

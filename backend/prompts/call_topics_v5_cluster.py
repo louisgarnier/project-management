@@ -63,6 +63,20 @@ Return ONLY the JSON array.
 """
 
 
+def build_cluster_system_prompt(project_context: str = "") -> str:
+    """EPIC-18 S1.2: prime the LLM with project context if available."""
+    base = CALL_TOPICS_V5_CLUSTER_SYSTEM
+    if project_context.strip():
+        context_block = (
+            "\n\nPROJECT CONTEXT (background for this team/project — use it to "
+            "disambiguate references in the transcript, but do not invent claims "
+            "not present in the transcript):\n\n"
+            f"{project_context.strip()}\n"
+        )
+        return base + context_block
+    return base
+
+
 def build_cluster_user_message(units: list[dict], topic_registry: list[dict]) -> str:
     """EPIC-18 V5-CORE: registry block now includes structural payload
     (key_terms + tasks) per topic, not just names. Lets the LLM cluster

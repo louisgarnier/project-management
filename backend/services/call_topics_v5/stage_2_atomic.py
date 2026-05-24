@@ -13,6 +13,7 @@ from typing import TypedDict
 
 from backend.prompts.call_topics_v5_atomic import (
     CALL_TOPICS_V5_ATOMIC_SYSTEM,
+    build_atomic_system_prompt,
     build_atomic_user_message,
 )
 from backend.services.llm_service import call_llm_raw
@@ -122,7 +123,7 @@ async def extract_atomic_units(
         llm, model, ingested["line_count"],
     )
     raw_response = await call_llm_raw(
-        CALL_TOPICS_V5_ATOMIC_SYSTEM,
+        build_atomic_system_prompt(project_context),
         user_msg,
         llm,
         max_tokens=16384,

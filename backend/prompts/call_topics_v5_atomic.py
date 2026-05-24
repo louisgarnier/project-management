@@ -73,6 +73,25 @@ Return ONLY the JSON array. No surrounding text.
 """
 
 
+def build_atomic_system_prompt(project_context: str = "") -> str:
+    """EPIC-18 S1.2: prime the LLM with project context if available.
+
+    `project_context` comes from projects.context column — free-form notes
+    the user provides about the project (e.g., "Portfolio risk analytics
+    team using FactSet, Snowflake, Monte Carlo models").
+    """
+    base = CALL_TOPICS_V5_ATOMIC_SYSTEM
+    if project_context.strip():
+        context_block = (
+            "\n\nPROJECT CONTEXT (background for this team/project — use it to "
+            "disambiguate references in the transcript, but do not invent claims "
+            "not present in the transcript):\n\n"
+            f"{project_context.strip()}\n"
+        )
+        return base + context_block
+    return base
+
+
 def build_atomic_user_message(numbered_transcript: str, project_context: str = "") -> str:
     """Render the user message with the transcript + optional project context."""
     context_block = ""

@@ -13,6 +13,7 @@ from typing import TypedDict
 
 from backend.prompts.call_topics_v5_cluster import (
     CALL_TOPICS_V5_CLUSTER_SYSTEM,
+    build_cluster_system_prompt,
     build_cluster_user_message,
 )
 from backend.services.call_topics_v5.stage_2_atomic import _strip_code_fences
@@ -101,6 +102,7 @@ async def cluster_topics(
     *,
     llm: str = "openrouter",
     model: str | None = "deepseek/deepseek-v3.2",
+    project_context: str = "",
 ) -> dict:
     """Run Stage 5. Returns clusters + rejections.
 
@@ -115,7 +117,7 @@ async def cluster_topics(
         len(atomic_units), len(topic_registry),
     )
     raw = await call_llm_raw(
-        CALL_TOPICS_V5_CLUSTER_SYSTEM,
+        build_cluster_system_prompt(project_context),
         user_msg,
         llm,
         max_tokens=8192,
