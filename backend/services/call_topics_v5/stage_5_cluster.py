@@ -61,16 +61,26 @@ def _validate_clusters(
         if not all(isinstance(u, str) for u in units):
             reasons.append(f"cluster {i} ({name!r}): all unit_ids must be strings")
             continue
-        # Detect duplicates ACROSS clusters
+        # Detect duplicates ACROSS clusters.
+        # EPIC-19 (2026-05-25): previously rejected the ENTIRE cluster when any
+        # unit was duplicated — that turned Sonnet's accidental over-assignment
+        # into 13-task "Uncategorized" buckets. Now: drop just the duplicates;
+        # keep the rest of the cluster. Earlier cluster wins (first-assignment-wins).
         dups = [u for u in units if u in seen_units]
         if dups:
-            reasons.append(f"cluster {i} ({name!r}): unit_ids already assigned: {dups}")
-            continue
+            reasons.append(f"cluster {i} ({name!r}): dropped {len(dups)} duplicate unit_id(s) (already assigned): {dups}")
+            units = [u for u in units if u not in seen_units]
+            if not units:
+                reasons.append(f"cluster {i} ({name!r}): all units were duplicates — cluster discarded")
+                continue
         # Detect unknown unit_ids
         unknown = [u for u in units if u not in all_unit_ids]
         if unknown:
-            reasons.append(f"cluster {i} ({name!r}): unknown unit_ids: {unknown}")
-            continue
+            reasons.append(f"cluster {i} ({name!r}): dropped {len(unknown)} unknown unit_id(s): {unknown}")
+            units = [u for u in units if u in all_unit_ids]
+            if not units:
+                reasons.append(f"cluster {i} ({name!r}): all units were unknown — cluster discarded")
+                continue
         seen_units.update(units)
         # new_topic flag — default False
         new_topic = bool(c.get("new_topic", False))

@@ -37,15 +37,31 @@ def test_detects_orphans():
 
 
 def test_detects_duplicate_unit_assignment():
+    """EPIC-19: duplicates are dropped from later clusters, not the whole cluster.
+    First-assignment-wins: u_0002 stays in cluster A; cluster B keeps u_0003."""
     units = _units(3)
     raw = [
         {"topic_name": "A", "unit_ids": ["u_0001", "u_0002"], "new_topic": False, "importance": "high"},
         {"topic_name": "B", "unit_ids": ["u_0002", "u_0003"], "new_topic": True, "importance": "low"},
     ]
     kept, reasons = S5._validate_clusters(raw, {u["unit_id"] for u in units}, set())
-    # Second cluster rejected because u_0002 already taken
+    assert len(kept) == 2  # both clusters survive, B just loses u_0002
+    assert kept[0]["unit_ids"] == ["u_0001", "u_0002"]
+    assert kept[1]["unit_ids"] == ["u_0003"]
+    assert any("dropped" in r and "duplicate" in r for r in reasons)
+
+
+def test_drops_cluster_when_all_units_are_duplicates():
+    """EPIC-19: if all of a cluster's units are dups, the cluster is discarded."""
+    units = _units(2)
+    raw = [
+        {"topic_name": "A", "unit_ids": ["u_0001", "u_0002"], "new_topic": False, "importance": "high"},
+        {"topic_name": "B", "unit_ids": ["u_0001", "u_0002"], "new_topic": True, "importance": "low"},
+    ]
+    kept, reasons = S5._validate_clusters(raw, {u["unit_id"] for u in units}, set())
     assert len(kept) == 1
-    assert any("already assigned" in r for r in reasons)
+    assert kept[0]["topic_name"] == "A"
+    assert any("all units were duplicates" in r for r in reasons)
 
 
 def test_snaps_to_canonical_name_when_match():
