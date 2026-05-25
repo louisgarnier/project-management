@@ -47,3 +47,32 @@ def test_save_task_match_groups_topic_merge_kind():
     save_task_match_groups(call_id="c-1", groups=groups, db=db)
     inserted = db.table.return_value.insert.call_args.args[0]
     assert inserted["kind"] == "topic_merge"
+
+
+def test_save_task_match_groups_persists_target_topic_name():
+    db = _fake_db()
+    groups = [
+        TaskMatchGroup(
+            kind="binding",
+            call_task_refs=[{"call_topic_name": "X", "task_id": "t1"}],
+            project_task_refs=[{"project_topic_id": "p1", "task_id": "pt1"}],
+            target_topic_name="Brand New Topic",
+        )
+    ]
+    save_task_match_groups("c-1", groups, db=db)
+    inserted = db.table.return_value.insert.call_args.args[0]
+    assert inserted["target_topic_name"] == "Brand New Topic"
+
+
+def test_save_task_match_groups_target_topic_name_none_when_not_set():
+    db = _fake_db()
+    groups = [
+        TaskMatchGroup(
+            kind="binding",
+            call_task_refs=[{"call_topic_name": "Y", "task_id": "t2"}],
+            project_task_refs=[{"project_topic_id": "p2", "task_id": "pt2"}],
+        )
+    ]
+    save_task_match_groups("c-1", groups, db=db)
+    inserted = db.table.return_value.insert.call_args.args[0]
+    assert inserted["target_topic_name"] is None

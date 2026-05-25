@@ -410,7 +410,7 @@ export const topicsAPI = {
 
   // EPIC-19 — load existing match groups (for restoring drafts on mount)
   loadTaskMatches: (callId: string) =>
-    proxyFetch<{ kind: string; call_task_refs: import("@/types").TaskRef[]; project_task_refs: import("@/types").TaskRef[] }[]>(
+    proxyFetch<TaskMatchGroup[]>(
       `/api/calls/${callId}/topics/match-groups`,
       { method: "GET" }
     ),

@@ -89,6 +89,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
             kind: (r.kind as TaskMatchGroup['kind']) || 'binding',
             call_task_refs: r.call_task_refs || [],
             project_task_refs: r.project_task_refs || [],
+            target_topic_name: r.target_topic_name ?? null,  // EPIC-19
           }));
         if (loaded.length > 0) {
           isFirstRender.current = true; // treat hydration as the first render — skip auto-save
@@ -256,7 +257,8 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   function doCommitGroup(
     candidateRefs: TaskRef[],
     existingRefs: TaskRef[],
-    topicMergeDecision?: 'keep_existing' | 'keep_candidate' | 'merge'
+    topicMergeDecision?: 'keep_existing' | 'keep_candidate' | 'merge' | 'create_new',
+    newTopicName?: string,
   ) {
     const newGroups: TaskMatchGroup[] = [
       ...groups,
@@ -264,6 +266,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
         kind: 'binding' as const,
         call_task_refs: candidateRefs,
         project_task_refs: existingRefs,
+        target_topic_name: topicMergeDecision === 'create_new' ? (newTopicName || null) : null,
       },
     ];
     if (topicMergeDecision === 'merge' && candidateRefs.length > 0 && existingRefs.length > 0) {
@@ -604,7 +607,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
         <CrossTopicBindingModal
           candidateTopicName={showCrossTopicModal.candidate}
           existingTopicName={showCrossTopicModal.existing}
-          onChoose={(decision) => {
+          onChoose={(decision, newTopicName) => {
             if (decision === 'cancel') {
               setShowCrossTopicModal(null);
               setPendingRefs(null);
@@ -617,7 +620,10 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
                 ? 'keep_existing'
                 : decision === 'keep_candidate_topic'
                 ? 'keep_candidate'
-                : 'merge',
+                : decision === 'merge_topics'
+                ? 'merge'
+                : 'create_new',
+              newTopicName,
             );
           }}
         />

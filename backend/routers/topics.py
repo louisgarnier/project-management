@@ -181,6 +181,7 @@ class TaskMatchGroupIn(PydanticBaseModel):
     kind: Literal["binding", "topic_merge"] = "binding"
     call_task_refs: list[TaskRefIn] = []
     project_task_refs: list[TaskRefIn] = []
+    target_topic_name: str | None = None  # EPIC-19
 
 
 @router.post("/calls/{call_id}/topics/save-matches", status_code=200)

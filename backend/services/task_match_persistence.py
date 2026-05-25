@@ -20,10 +20,11 @@ class TaskRef(TypedDict, total=False):
     task_id: str               # the task UUID (v5-stamped for call refs, persistent for project refs)
 
 
-class TaskMatchGroup(TypedDict):
+class TaskMatchGroup(TypedDict, total=False):
     kind: Literal["binding", "topic_merge"]
     call_task_refs: list[TaskRef]
     project_task_refs: list[TaskRef]
+    target_topic_name: str | None  # EPIC-19: optional new topic name
 
 
 def save_task_match_groups(
@@ -38,6 +39,7 @@ def save_task_match_groups(
             "kind": g.get("kind", "binding"),
             "call_task_refs": g.get("call_task_refs", []),
             "project_task_refs": g.get("project_task_refs", []),
+            "target_topic_name": g.get("target_topic_name"),  # EPIC-19
             # Legacy cols populated for back-compat reads
             "call_topic_names": sorted({r.get("call_topic_name", "").lower().strip()
                                         for r in g.get("call_task_refs", [])
@@ -55,7 +57,7 @@ def load_task_match_groups(call_id: str, *, db=None) -> list[TaskMatchGroup]:
     client = db if db is not None else get_client()
     rows = (
         client.table("topic_match_groups")
-        .select("kind, call_task_refs, project_task_refs")
+        .select("kind, call_task_refs, project_task_refs, target_topic_name")
         .eq("call_id", call_id)
         .execute()
         .data
@@ -65,6 +67,7 @@ def load_task_match_groups(call_id: str, *, db=None) -> list[TaskMatchGroup]:
             kind=r.get("kind") or "binding",
             call_task_refs=r.get("call_task_refs") or [],
             project_task_refs=r.get("project_task_refs") or [],
+            target_topic_name=r.get("target_topic_name"),  # EPIC-19
         )
         for r in rows
     ]

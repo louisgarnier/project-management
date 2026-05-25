@@ -18,6 +18,10 @@ export type KanbanStage = "transcript" | "call_topics" | "project_matching" | "p
 export type MatchGroup = {
   project_topic_ids: string[];        // empty = new project topic, 1+ = linked/merge
   call_topic_names: string[];         // names from pending call topics
+  // EPIC-19: optional task-level refs (present when row was written by task_match_persistence)
+  call_task_refs?: Array<{ call_topic_name?: string; task_id?: string }>;
+  project_task_refs?: Array<{ project_topic_id?: string; task_id?: string }>;
+  target_topic_name?: string | null;
 };
 
 export interface Call {
@@ -554,4 +558,5 @@ export interface TaskMatchGroup {
   kind: BindingKind;
   call_task_refs: TaskRef[];
   project_task_refs: TaskRef[];
+  target_topic_name?: string | null;  // EPIC-19: optional new topic name
 }

@@ -692,6 +692,15 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                       )
                   )
                 )}
+                matchingGroups={
+                  groups
+                    .filter((g) => (g.project_topic_ids ?? []).includes(tid))
+                    .map((g) => ({
+                      call_task_refs: g.call_task_refs ?? [],
+                      project_task_refs: g.project_task_refs ?? [],
+                      target_topic_name: g.target_topic_name ?? null,
+                    }))
+                }
                 extracted={(eff.extract_updates_cache ?? {})[tid]}
                 fromNew={migratedFromNew.has(tid)}
                 fromNotDiscussed={migratedFromNotDiscussed.has(tid)}
@@ -1414,6 +1423,7 @@ function NotInCallCard({
 function MergedTopicCard({
   projectTopic,
   callMatches,
+  matchingGroups,
   extracted,
   fromNew,
   fromNotDiscussed,
@@ -1428,6 +1438,11 @@ function MergedTopicCard({
 }: {
   projectTopic: TopicData;
   callMatches: TopicData[];
+  matchingGroups?: Array<{
+    call_task_refs?: Array<{ call_topic_name?: string; task_id?: string }>;
+    project_task_refs?: Array<{ project_topic_id?: string; task_id?: string }>;
+    target_topic_name?: string | null;
+  }>;
   extracted?: ExtractedUpdateResult;
   fromNew: boolean;
   fromNotDiscussed: boolean;
@@ -1556,26 +1571,85 @@ function MergedTopicCard({
             <div style={{ fontWeight: 600, color: "#5e6c84", fontSize: 10 }}>
               THIS CALL ({allCallContributions.length})
             </div>
-            {/* Match-group topics first (matched by user in matching step) */}
-            {callMatches.map((m, i) => (
-              <div key={`mg-${i}`} style={{ marginBottom: 6 }}>
-                <div style={{ color: "#42526e" }}>
-                  <strong>{m.name}</strong>
-                  {m.summary && <span style={{ color: "#5e6c84" }}>: {m.summary}</span>}
+            {/* Match-group topics — show per-group sub-sections when task-level groups available */}
+            {matchingGroups && matchingGroups.length > 0 ? (
+              matchingGroups.map((g, gi) => {
+                // Build a lookup of all candidate tasks by task_id (across all callMatches' tasks)
+                const allCandidateTasks = new Map<string, { task: string; next_step?: string; owner?: string; topicName: string }>();
+                for (const m of callMatches) {
+                  for (const t of m.tasks || []) {
+                    if (t.task_id) {
+                      allCandidateTasks.set(t.task_id, {
+                        task: t.task,
+                        next_step: t.next_step,
+                        owner: t.owner,
+                        topicName: m.name,
+                      });
+                    }
+                  }
+                }
+                // Resolve the tasks bound in THIS group
+                const groupTasks = (g.call_task_refs || [])
+                  .map((r) => r.task_id ? allCandidateTasks.get(r.task_id) : null)
+                  .filter((x): x is { task: string; next_step?: string; owner?: string; topicName: string } => !!x);
+                if (groupTasks.length === 0) return null;
+                const subGroupBg = gi % 2 === 0 ? "#fafbfc" : "#f4f5f7";
+                return (
+                  <div
+                    key={`sg-${gi}`}
+                    style={{
+                      background: subGroupBg,
+                      borderLeft: "3px solid #c1c7d0",
+                      paddingLeft: 8,
+                      paddingTop: 4,
+                      paddingBottom: 4,
+                      marginBottom: 6,
+                      borderRadius: 2,
+                    }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "#5e6c84", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>
+                      Sub-group {gi + 1}
+                      {g.target_topic_name && (
+                        <span style={{ marginLeft: 6, color: "#974f0c", textTransform: "none", letterSpacing: 0 }}>
+                          → new topic: &quot;{g.target_topic_name}&quot;
+                        </span>
+                      )}
+                    </div>
+                    <ul style={{ fontSize: 11, color: "#5e6c84", margin: 0, paddingLeft: 16 }}>
+                      {groupTasks.map((t, ti) => (
+                        <li key={`sgt-${gi}-${ti}`}>
+                          <span style={{ color: "#42526e" }}>[{t.topicName}]</span>{" "}
+                          {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                          {t.next_step && <span style={{ color: "#97a0af" }}> → {t.next_step}</span>}
+                          {t.owner && <span style={{ color: "#97a0af" }}> ({t.owner})</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })
+            ) : (
+              // Fallback: no matchingGroups — use flat callMatches rendering
+              callMatches.map((m, i) => (
+                <div key={`mg-${i}`} style={{ marginBottom: 6 }}>
+                  <div style={{ color: "#42526e" }}>
+                    <strong>{m.name}</strong>
+                    {m.summary && <span style={{ color: "#5e6c84" }}>: {m.summary}</span>}
+                  </div>
+                  {m.tasks && m.tasks.length > 0 && (
+                    <ul style={{ fontSize: 11, color: "#5e6c84", margin: "2px 0 0", paddingLeft: 16 }}>
+                      {m.tasks.map((t, j) => (
+                        <li key={`mt-${i}-${j}`}>
+                          {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                          {t.next_step && <span style={{ color: "#97a0af" }}> → {t.next_step}</span>}
+                          {t.owner && <span style={{ color: "#97a0af" }}> ({t.owner})</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                {m.tasks && m.tasks.length > 0 && (
-                  <ul style={{ fontSize: 11, color: "#5e6c84", margin: "2px 0 0", paddingLeft: 16 }}>
-                    {m.tasks.map((t, j) => (
-                      <li key={`mt-${i}-${j}`}>
-                        {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
-                        {t.next_step && <span style={{ color: "#97a0af" }}> → {t.next_step}</span>}
-                        {t.owner && <span style={{ color: "#97a0af" }}> ({t.owner})</span>}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
+              ))
+            )}
             {/* Pass ① migrated topic — full audit trail inline */}
             {fromNewPending && (
               <div style={{ marginBottom: 4 }}>
