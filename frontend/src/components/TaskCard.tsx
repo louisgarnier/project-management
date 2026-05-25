@@ -25,7 +25,7 @@ export function TaskCard({
   // Priority: focused > group > selected > matchHint > default
   let style: React.CSSProperties;
   if (isFocused) {
-    style = { border: '2px solid #6f42c1', background: 'white', boxShadow: '0 0 0 2px #c4a8e8' };
+    style = { border: '2px dashed #8b5cf6', background: 'white' };
   } else if (groupColor) {
     style = { border: `2px solid ${groupColor.border}`, background: groupColor.bg, color: groupColor.text };
   } else if (isSelected) {

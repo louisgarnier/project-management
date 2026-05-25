@@ -66,11 +66,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
     existing: string;
   } | null>(null);
   const [pendingRefs, setPendingRefs] = useState<{ candidateRefs: TaskRef[]; existingRefs: TaskRef[] } | null>(null);
-  const [focusPos, setFocusPos] = useState<FocusPos>({
-    column: 'candidate',
-    topicIndex: 0,
-    taskIndex: 0,
-  });
+  const [focusPos, setFocusPos] = useState<FocusPos | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   // ── Match hints ──────────────────────────────────────────────────────────────
@@ -374,18 +370,19 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
       }
       if (e.key === 'j') {
         e.preventDefault();
-        setFocusPos(f => moveFocus(f, 1));
+        setFocusPos(f => f ? moveFocus(f, 1) : { column: 'candidate', topicIndex: 0, taskIndex: 0 });
       } else if (e.key === 'k') {
         e.preventDefault();
-        setFocusPos(f => moveFocus(f, -1));
+        setFocusPos(f => f ? moveFocus(f, -1) : { column: 'candidate', topicIndex: 0, taskIndex: 0 });
       } else if (e.key === 'h') {
         e.preventDefault();
-        setFocusPos(f => ({ ...f, column: 'existing', topicIndex: 0, taskIndex: 0 }));
+        setFocusPos({ column: 'existing', topicIndex: 0, taskIndex: 0 });
       } else if (e.key === 'l') {
         e.preventDefault();
-        setFocusPos(f => ({ ...f, column: 'candidate', topicIndex: 0, taskIndex: 0 }));
+        setFocusPos({ column: 'candidate', topicIndex: 0, taskIndex: 0 });
       } else if (e.key === 'Enter') {
         e.preventDefault();
+        if (!focusPos) return;
         const focused = getFocusedTaskRef(focusPos);
         if (focused) {
           if (focusPos.column === 'existing') toggleExisting(focused.id);
@@ -402,7 +399,9 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
         doCommitGroup(candidateRefs, []);
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        clearSelection();
+        setSelectedCandidates(new Set());
+        setSelectedExisting(new Set());
+        setFocusPos(null);
       }
     };
     window.addEventListener('keydown', handler);
@@ -447,10 +446,12 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
 
   // ── Derived helpers ──────────────────────────────────────────────────────────
 
-  const isFocused = (column: 'existing' | 'candidate', topicIdx: number, taskIdx: number) =>
-    focusPos.column === column &&
-    focusPos.topicIndex === topicIdx &&
-    focusPos.taskIndex === taskIdx;
+  const isFocused = (column: 'existing' | 'candidate', topicIdx: number, taskIdx: number, taskId: string) => {
+    if (!focusPos) return false;
+    // Don't show focus indicator on tasks already in a group (they're locked)
+    if (getGroupIndexForTask(taskId) !== null) return false;
+    return focusPos.column === column && focusPos.topicIndex === topicIdx && focusPos.taskIndex === taskIdx;
+  };
 
   const exactMatchCount = Array.from(matchHints.values()).filter(h => h === 'exact').length;
   const bindingGroupCount = groups.filter(g => g.kind === 'binding').length;
@@ -590,7 +591,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
                   nextStep={task.next_step}
                   owner={task.owner}
                   keyTerms={task.key_terms}
-                  isFocused={isFocused('existing', tIdx, taskIdx)}
+                  isFocused={isFocused('existing', tIdx, taskIdx, task.task_id)}
                   isSelected={selectedExisting.has(task.task_id)}
                   groupColor={groupIdx !== null ? groupColor(groupIdx) : null}
                   onClick={() => toggleExisting(task.task_id)}
@@ -619,7 +620,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
                   nextStep={task.next_step}
                   owner={task.owner}
                   keyTerms={task.key_terms}
-                  isFocused={isFocused('candidate', tIdx, taskIdx)}
+                  isFocused={isFocused('candidate', tIdx, taskIdx, task.task_id)}
                   isSelected={selectedCandidates.has(task.task_id)}
                   groupColor={groupIdx !== null ? groupColor(groupIdx) : null}
                   matchHint={matchHints.get(task.task_id)}
