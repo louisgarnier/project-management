@@ -9,52 +9,31 @@ test, not a similarity test — much more discriminating.
 EPIC-18 (2026-05-24): citation contract switched to line-numbers (matches v5 Stage 4).
 extraction_grounded check removed (it was checking against a transcript Pass 1
 never sees — see design doc Section 3 RC4).
+
+EPIC-19 (2026-05-25): reframed as safety-net verification of user's manual
+matching decision. Verdicts simplified to confirmed_new / suggest_merge_with.
+Default bias toward confirming user's decision. Rarity check + sanity flag
+penalty stack removed (the 18% confidence problem on common-term topics).
 """
 
 VERIFY_NEW_TOPIC_PROMPT: str = """\
-ROLE: You are a forensic PMO duplicate-detection specialist. Your only source
-of truth is the transcripts provided below. NEVER invent claims.
+ROLE: You are a PMO safety-net verifier. The user has manually reviewed
+candidate tasks and decided this candidate topic is genuinely new (no tasks
+bound to any existing project topic during the project_matching stage).
+Your job: re-verify this decision against past transcripts and existing
+project topics, and SUGGEST a merge ONLY if there is strong evidence the
+user missed a continuation of work.
+
+Default to confirming the user's "truly_new" decision. Flag a merge
+suggestion only when the candidate task list demonstrably continues a
+specific existing task's work.
 
 ──────────────────────────────────────────────────────────────────────
-DEFINITION OF "DUPLICATE / MERGE CANDIDATE"
+DEFINITION OF "USER LIKELY MISSED A MERGE"
 ──────────────────────────────────────────────────────────────────────
-A candidate topic matches an existing project topic IF AND ONLY IF the
-candidate's tasks, open_questions, and decisions could naturally be added
-to the existing topic's ongoing work list. The test is:
-
-  "Would a PMO logging this candidate file these new items under the
-   existing topic's bucket?"
-
-This is a WORK-CONTINUITY test, not a similarity test.
-
-NOT a match (DO NOT propose merge if):
-  - Shared platform/tool/vendor name only (e.g. both topics mention
-    Snowflake, AWS, Excel, Python — but the actual subject differs)
-  - Shared person/stakeholder name only
-  - Shared timeframe/date only
-  - Tangentially related decisions
-
-IS a match (DO propose merge if):
-  - The candidate's tasks describe the SAME work stream as existing tasks
-    (same problem being incrementally solved, same deliverable, same
-    domain owners)
-  - The candidate's open_questions are follow-ups to existing OQ or
-    address gaps in existing decisions
-  - The candidate's decisions extend, refine, or contradict existing
-    decisions on the SAME subject
-
-EXAMPLE — WRONG merge:
-  Candidate "Snowflake Environment Connectivity" (tasks: contact snowflake
-  team, establish access) merged with existing "Account aggregation
-  architecture" (tasks: design CTF aggregation, validate ARM composite,
-  model business lines). DIFFERENT WORK STREAMS even though both mention
-  Snowflake. PMO would track these separately.
-
-EXAMPLE — CORRECT merge:
-  Candidate "Snowflake access setup" (tasks: schedule call with snowflake
-  architect, get VPN access) merged with existing "Snowflake Environment
-  Connectivity" (tasks: contact product team for snowflake access,
-  identify environments). SAME WORK STREAM (provisioning access).
+The candidate's task(s) describe the same concrete work as an existing
+project task: same problem, same deliverable, same domain. Not just
+shared platform/vendor name. Not just shared timeframe.
 
 ──────────────────────────────────────────────────────────────────────
 DATA SHAPE — v4 task-centric (the INPUT you receive)
@@ -143,18 +122,16 @@ OUTPUT FORMAT (strict JSON — no markdown, no commentary outside JSON)
       "reason": "<one sentence, anchored in concrete task content>"
     }
   ],
-  "final_verdict": "truly_new" | "should_be_merged_with",
-  "verdict": "<MIRROR of final_verdict, for backward-compat>",
+  "verdict": "confirmed_new" | "suggest_merge_with",
   "matched_topic_id": "<uuid or null>",
   "matched_topic_name": "<string or null>",
-  "merge_reasoning": "<if merge: which specific candidate task(s) belong on which existing task list, with concrete references. If new: 'No existing topic's task list could naturally absorb the candidate's tasks.'>",
+  "merge_reasoning": "<one sentence if suggest_merge_with, else 'No existing topic continues the candidate's work.'>",
   "citations": [
     {"call_id": "<uuid>", "evidence_lines": [<start>, <end>], "for": "verdict"}
   ]
 }
 
-REMEMBER: default to "truly_new" when in doubt. Inverting the burden of
-proof onto merge is intentional — a wrong merge collapses two separate
-work streams; a wrong "new" is harmless and reversible.
+REMEMBER: default to "confirmed_new" (preserve the user's manual decision).
+Only suggest a merge when the evidence is unambiguous.
 """
 
