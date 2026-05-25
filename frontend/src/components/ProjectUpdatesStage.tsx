@@ -1535,7 +1535,22 @@ function MergedTopicCard({
             <div style={{ fontWeight: 600, color: "#5e6c84", fontSize: 10 }}>
               PREVIOUS
             </div>
-            <div style={{ color: "#42526e" }}>{projectTopic.summary || "(no summary)"}</div>
+            {projectTopic.summary && (
+              <div style={{ color: "#42526e", marginBottom: 4 }}>{projectTopic.summary}</div>
+            )}
+            {projectTopic.tasks && projectTopic.tasks.length > 0 ? (
+              <ul style={{ fontSize: 11, color: "#5e6c84", margin: "2px 0 0", paddingLeft: 16 }}>
+                {projectTopic.tasks.map((t, i) => (
+                  <li key={`pt-${i}`}>
+                    {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                    {t.next_step && <span style={{ color: "#97a0af" }}> → {t.next_step}</span>}
+                    {t.owner && <span style={{ color: "#97a0af" }}> ({t.owner})</span>}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              !projectTopic.summary && <div style={{ color: "#97a0af", fontStyle: "italic" }}>(no tasks yet)</div>
+            )}
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, color: "#5e6c84", fontSize: 10 }}>
@@ -1543,8 +1558,22 @@ function MergedTopicCard({
             </div>
             {/* Match-group topics first (matched by user in matching step) */}
             {callMatches.map((m, i) => (
-              <div key={`mg-${i}`} style={{ color: "#42526e", marginBottom: 4 }}>
-                <strong>{m.name}</strong>: {m.summary || "(no summary)"}
+              <div key={`mg-${i}`} style={{ marginBottom: 6 }}>
+                <div style={{ color: "#42526e" }}>
+                  <strong>{m.name}</strong>
+                  {m.summary && <span style={{ color: "#5e6c84" }}>: {m.summary}</span>}
+                </div>
+                {m.tasks && m.tasks.length > 0 && (
+                  <ul style={{ fontSize: 11, color: "#5e6c84", margin: "2px 0 0", paddingLeft: 16 }}>
+                    {m.tasks.map((t, j) => (
+                      <li key={`mt-${i}-${j}`}>
+                        {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                        {t.next_step && <span style={{ color: "#97a0af" }}> → {t.next_step}</span>}
+                        {t.owner && <span style={{ color: "#97a0af" }}> ({t.owner})</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             ))}
             {/* Pass ① migrated topic — full audit trail inline */}
