@@ -1099,32 +1099,25 @@ async def get_pending_topics(call_id: str) -> list[dict]:
 
 
 async def save_match_groups(call_id: str, groups: list[dict]) -> dict:
-    """
-    Persist match groups and advance to project_updates.
+    """EPIC-19: task-level match groups.
 
-    groups: [{"project_topic_ids": ["uuid", ...], "call_topic_names": ["name1", ...]}]
+    Each group: {
+      kind: "binding" | "topic_merge",
+      call_task_refs: [{call_topic_name, task_id}, ...],
+      project_task_refs: [{project_topic_id, task_id}, ...],
+    }
     """
+    from backend.services.task_match_persistence import save_task_match_groups
+
     db = get_client()
-
-    # Delete previous groups for this call (idempotent save)
-    db.table("topic_match_groups").delete().eq("call_id", call_id).execute()
-
-    for g in groups:
-        db.table("topic_match_groups").insert(
-            {
-                "call_id": call_id,
-                "project_topic_ids": g.get("project_topic_ids", []),
-                "call_topic_names": [
-                    n.lower().strip() for n in g.get("call_topic_names", [])
-                ],
-            }
-        ).execute()
-
+    result = save_task_match_groups(call_id, groups, db=db)
     db.table("calls").update({"kanban_stage": "project_updates"}).eq(
         "id", call_id
     ).execute()
-    logger.info(f"✅ [Topics] Saved {len(groups)} match groups → project_updates")
-    return {"saved": len(groups)}
+    logger.info(
+        f"✅ [Topics] Saved {result['saved']} task-level match group(s) → project_updates"
+    )
+    return result
 
 
 async def run_merge_background(call_id: str) -> None:

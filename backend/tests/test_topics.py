@@ -1543,3 +1543,53 @@ def test_get_previous_topics_uses_unified_view(monkeypatch):
     assert out[0]["owner"] == "Us"
     assert out[0]["is_parked"] is False
     assert out[0]["rationale"] == ""
+
+
+def test_save_match_groups_persists_task_level_refs(monkeypatch):
+    """EPIC-19: endpoint accepts task-level match groups via save_task_match_groups."""
+    from backend.services.topics_service import save_match_groups
+
+    saved = []
+
+    def fake_save(call_id, groups, db=None):
+        saved.append({"call_id": call_id, "groups": groups})
+        return {"saved": len(groups)}
+
+    # Mock it at the import location inside the function
+    monkeypatch.setattr(
+        "backend.services.task_match_persistence.save_task_match_groups",
+        fake_save,
+    )
+    # Stub get_client so the kanban_stage advance doesn't hit real DB
+    class _FakeQuery:
+        def update(self, *a, **kw):
+            return self
+
+        def eq(self, *a, **kw):
+            return self
+
+        def execute(self):
+            return type("R", (), {"data": []})()
+
+    class _FakeClient:
+        def table(self, *a, **kw):
+            return _FakeQuery()
+
+    monkeypatch.setattr(
+        "backend.services.topics_service.get_client",
+        lambda: _FakeClient(),
+    )
+    out = asyncio.run(
+        save_match_groups(
+            "c-1",
+            [
+                {
+                    "kind": "binding",
+                    "call_task_refs": [{"call_topic_name": "ARM", "task_id": "t1"}],
+                    "project_task_refs": [{"project_topic_id": "p-arm", "task_id": "pt1"}],
+                }
+            ],
+        )
+    )
+    assert out["saved"] == 1
+    assert saved[0]["groups"][0]["kind"] == "binding"

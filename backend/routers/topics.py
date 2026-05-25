@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Literal
 
 from backend.database.supabase_client import get_client
 from backend.services.topic_lineage import (
@@ -171,13 +171,20 @@ async def get_pending(call_id: str):
         raise HTTPException(status_code=404, detail=str(e))
 
 
-class MatchGroupPayload(PydanticBaseModel):
-    project_topic_ids: list[str] = []
-    call_topic_names: list[str]
+class TaskRefIn(PydanticBaseModel):
+    call_topic_name: str | None = None
+    project_topic_id: str | None = None
+    task_id: str | None = None
+
+
+class TaskMatchGroupIn(PydanticBaseModel):
+    kind: Literal["binding", "topic_merge"] = "binding"
+    call_task_refs: list[TaskRefIn] = []
+    project_task_refs: list[TaskRefIn] = []
 
 
 @router.post("/calls/{call_id}/topics/save-matches", status_code=200)
-async def save_matches(call_id: str, groups: list[MatchGroupPayload]):
+async def save_matches(call_id: str, groups: list[TaskMatchGroupIn]):
     """Save manual match groups and advance to project_updates."""
     logger.info(f"📥 [Topics] Save matches: call={call_id}, groups={len(groups)}")
     try:
