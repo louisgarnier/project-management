@@ -678,25 +678,27 @@ async def _run_verify_new_background(call_id: str) -> None:
         project_id = call_row[0]["project_id"]
         pending = call_row[0].get("pending_topics") or []
 
-        groups = db.table("topic_match_groups").select("call_topic_names, project_topic_ids").eq("call_id", call_id).execute().data
-        # A "new" candidate = pending topic whose name is in a group with empty project_topic_ids
-        new_group_names = {n.lower().strip() for g in groups if not (g.get("project_topic_ids") or []) for n in (g.get("call_topic_names") or [])}
-        new_candidates = [t for t in pending if t["name"].lower().strip() in new_group_names]
-        await plog.log(f"Found {len(new_candidates)} new-topic candidate(s) to verify")
+        # EPIC-19: task-level match groups replace topic-level bucketization
+        from backend.services.task_match_persistence import load_task_match_groups
+        groups = load_task_match_groups(call_id, db=db)
 
-        # A "canonical" candidate = pending topic whose name is in a group with non-empty project_topic_ids
-        # Build a mapping: lowercased call topic name → first matched project topic id
-        canonical_name_to_project_id: dict[str, str] = {}
+        # "new_candidates" = pending topics with NO bindings in any group
+        # (i.e., no project_task_refs anywhere that reference their tasks)
+        bound_call_topic_names = set()
         for g in groups:
-            ptids = g.get("project_topic_ids") or []
-            if ptids:
-                for n in (g.get("call_topic_names") or []):
-                    canonical_name_to_project_id[n.lower().strip()] = ptids[0]
-        canonical_candidates = [
+            if g.get("kind") != "binding":
+                continue
+            # If this group has project_task_refs (i.e., binds to existing), candidate is NOT new
+            if g.get("project_task_refs"):
+                for r in g.get("call_task_refs", []):
+                    if r.get("call_topic_name"):
+                        bound_call_topic_names.add(r["call_topic_name"].lower().strip())
+
+        new_candidates = [
             t for t in pending
-            if t["name"].lower().strip() in canonical_name_to_project_id
+            if (t.get("name") or "").lower().strip() not in bound_call_topic_names
         ]
-        await plog.log(f"Found {len(canonical_candidates)} canonical-match candidate(s) to verify")
+        await plog.log(f"Found {len(new_candidates)} new-topic candidate(s) to verify")
 
         await plog.log("Loading past transcripts (calls before this one)…")
         calls = (
@@ -832,43 +834,9 @@ async def _run_verify_new_background(call_id: str) -> None:
             entry["kind"] = "new_topic_verification"
             cache[c["name"]] = entry
 
-        # ── Pass ① bidirectional: verify canonical matches (S2.2) ──
-        from backend.services.topic_verification import run_verify_canonical_match as _run_verify_canonical_match
-        if canonical_candidates:
-            await plog.log(f"Pass ① — canonical match verification: checking {len(canonical_candidates)} canonical-match topic(s)")
-        for c in canonical_candidates:
-            matched_project_id = canonical_name_to_project_id.get(c["name"].lower().strip())
-            matched_topic = next((p for p in project_topics if p.get("topic_id") == matched_project_id), None)
-            if not matched_topic:
-                await plog.log(f"  ⚠ Canonical candidate '{c.get('name')}' references unknown topic_id={matched_project_id}; skipping verification")
-                continue
-            await plog.log(f"  → Topic \"{c.get('name')}\": canonical match verification (v5 said this matches '{matched_topic.get('name')}')")
-            r = await _run_verify_canonical_match(
-                c, matched_topic, project_topics, transcripts,
-                llm=llm, model=model, log_fn=plog.log,
-            )
-            verdict = r.get("verdict", "?")
-            need_review = r.get("needs_manual_review")
-            if need_review:
-                await plog.log(f"  ⚠ Topic \"{c.get('name')}\": canonical match flagged for manual review (citation bounds check failed)")
-            elif verdict == "confirmed_match":
-                await plog.log(f"  ✓ Topic \"{c.get('name')}\": v5 canonical match confirmed → '{matched_topic.get('name')}'")
-            elif verdict == "wrong_canonical_actually_new":
-                await plog.log(f"  ↻ Topic \"{c.get('name')}\": v5 WRONG match — work is actually new (needs new topic)")
-            elif verdict == "wrong_canonical_belongs_elsewhere":
-                alt_id = r.get("alternative_topic_id")
-                alt = next((p for p in project_topics if p.get("topic_id") == alt_id), None)
-                alt_name = alt.get("name") if alt else alt_id
-                await plog.log(f"  ↻ Topic \"{c.get('name')}\": v5 WRONG match — work belongs under '{alt_name}'")
-            # Store flat result dict (backward-compatible) plus kind + matched_topic_id for frontend (Task 19)
-            entry = dict(r)
-            entry["kind"] = "canonical_match_verification"
-            entry["matched_topic_id"] = matched_project_id
-            cache[c["name"]] = entry
-
         cache["__progress__"] = plog.entries_snapshot()
-        total_verified = len(results) + len(canonical_candidates)
-        cache["__progress__"].append({"ts": __import__("datetime").datetime.utcnow().isoformat() + "Z", "msg": f"Pass ① complete — {total_verified} topic(s) verified ({len(results)} new, {len(canonical_candidates)} canonical)"})
+        total_verified = len(results)
+        cache["__progress__"].append({"ts": __import__("datetime").datetime.utcnow().isoformat() + "Z", "msg": f"Pass ① complete — {total_verified} new topic(s) verified"})
 
         db.table("calls").update(
             {"verify_new_cache": cache, "verify_new_status": "done"}
