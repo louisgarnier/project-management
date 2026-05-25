@@ -16,7 +16,7 @@ from backend.services.topics_service import (
     _stamp_item_ids, _status_rollup,
 )
 from backend.utils.logger import get_logger
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from openai import APIStatusError as OpenAIStatusError
 from pydantic import BaseModel as PydanticBaseModel
 
@@ -184,12 +184,17 @@ class TaskMatchGroupIn(PydanticBaseModel):
 
 
 @router.post("/calls/{call_id}/topics/save-matches", status_code=200)
-async def save_matches(call_id: str, groups: list[TaskMatchGroupIn]):
-    """Save manual match groups and advance to project_updates."""
-    logger.info(f"📥 [Topics] Save matches: call={call_id}, groups={len(groups)}")
+async def save_matches(
+    call_id: str,
+    groups: list[TaskMatchGroupIn],
+    draft: bool = Query(default=False),
+):
+    """Save manual match groups. If draft=True, skips kanban_stage advance."""
+    logger.info(f"📥 [Topics] Save matches: call={call_id}, groups={len(groups)}, draft={draft}")
     try:
-        result = await save_match_groups(call_id, [g.model_dump() for g in groups])
-        logger.info(f"✅ [Topics] Saved match groups; project_updates stage advanced")
+        result = await save_match_groups(call_id, [g.model_dump() for g in groups], draft=draft)
+        if not draft:
+            logger.info(f"✅ [Topics] Saved match groups; project_updates stage advanced")
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -241,11 +246,11 @@ async def get_match_groups(call_id: str):
 
     groups = (
         db.table("topic_match_groups")
-        .select("project_topic_ids, call_topic_names")
+        .select("kind, call_task_refs, project_task_refs, call_topic_names, project_topic_ids")
         .eq("call_id", call_id)
         .execute()
         .data
-    )
+    ) or []
 
     result = []
     for g in groups:
@@ -256,6 +261,9 @@ async def get_match_groups(call_id: str):
             if row:
                 names.append(row[0]["name"])
         result.append({
+            "kind": g.get("kind", "binding"),
+            "call_task_refs": g.get("call_task_refs") or [],
+            "project_task_refs": g.get("project_task_refs") or [],
             "project_topic_ids": ptids,
             "project_topic_names": names,
             "call_topic_names": g.get("call_topic_names", []),

@@ -1098,7 +1098,7 @@ async def get_pending_topics(call_id: str) -> list[dict]:
     return row[0].get("pending_topics") or []
 
 
-async def save_match_groups(call_id: str, groups: list[dict]) -> dict:
+async def save_match_groups(call_id: str, groups: list[dict], *, draft: bool = False) -> dict:
     """EPIC-19: task-level match groups.
 
     Each group: {
@@ -1106,17 +1106,25 @@ async def save_match_groups(call_id: str, groups: list[dict]) -> dict:
       call_task_refs: [{call_topic_name, task_id}, ...],
       project_task_refs: [{project_topic_id, task_id}, ...],
     }
+
+    If draft=True, only persist groups; DO NOT advance kanban_stage.
+    Used by the frontend's auto-save during interactive editing.
     """
     from backend.services.task_match_persistence import save_task_match_groups
 
     db = get_client()
     result = save_task_match_groups(call_id, groups, db=db)
-    db.table("calls").update({"kanban_stage": "project_updates"}).eq(
-        "id", call_id
-    ).execute()
-    logger.info(
-        f"✅ [Topics] Saved {result['saved']} task-level match group(s) → project_updates"
-    )
+    if not draft:
+        db.table("calls").update({"kanban_stage": "project_updates"}).eq(
+            "id", call_id
+        ).execute()
+        logger.info(
+            f"✅ [Topics] Saved {result['saved']} task-level match group(s) → project_updates"
+        )
+    else:
+        logger.info(
+            f"💾 [Topics] Saved {result['saved']} task-level match group(s) (draft, no stage advance)"
+        )
     return result
 
 

@@ -69,6 +69,55 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   const [focusPos, setFocusPos] = useState<FocusPos | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
+  // ── Load existing groups on mount ────────────────────────────────────────────
+
+  const isFirstRender = React.useRef(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await topicsAPI.loadTaskMatches(callId);
+        if (cancelled) return;
+        // Filter to only valid EPIC-19 shape (rows with call_task_refs or project_task_refs)
+        const loaded: TaskMatchGroup[] = (rows || [])
+          .filter(r =>
+            (Array.isArray(r.call_task_refs) && r.call_task_refs.length > 0) ||
+            (Array.isArray(r.project_task_refs) && r.project_task_refs.length > 0)
+          )
+          .map(r => ({
+            kind: (r.kind as TaskMatchGroup['kind']) || 'binding',
+            call_task_refs: r.call_task_refs || [],
+            project_task_refs: r.project_task_refs || [],
+          }));
+        if (loaded.length > 0) {
+          isFirstRender.current = true; // treat hydration as the first render — skip auto-save
+          setGroups(loaded);
+        }
+      } catch (e) {
+        console.warn('[TaskMatchingStage] Failed to load existing matches:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callId]);
+
+  // ── Auto-save on group changes (debounced, draft mode) ───────────────────────
+
+  useEffect(() => {
+    // Skip the very first render (and right after load-on-mount hydration)
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const handle = setTimeout(() => {
+      topicsAPI.saveTaskMatches(callId, groups, true /* draft */).catch(e => {
+        console.warn('[TaskMatchingStage] Auto-save (draft) failed:', e);
+      });
+    }, 500); // 500ms debounce
+    return () => clearTimeout(handle);
+  }, [groups, callId]);
+
   // ── Match hints ──────────────────────────────────────────────────────────────
 
   const matchHints = useMemo(() => {

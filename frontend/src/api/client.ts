@@ -401,12 +401,19 @@ export const topicsAPI = {
       body: JSON.stringify(groups),
     }),
 
-  // EPIC-19 — task-level save-matches endpoint
-  saveTaskMatches: (callId: string, groups: TaskMatchGroup[]) =>
-    proxyFetch<{ saved: number }>(`/api/calls/${callId}/topics/save-matches`, {
+  // EPIC-19 — task-level save-matches endpoint (draft=true skips stage advance)
+  saveTaskMatches: (callId: string, groups: TaskMatchGroup[], draft: boolean = false) =>
+    proxyFetch<{ saved: number }>(`/api/calls/${callId}/topics/save-matches${draft ? '?draft=true' : ''}`, {
       method: "POST",
       body: JSON.stringify(groups),
     }),
+
+  // EPIC-19 — load existing match groups (for restoring drafts on mount)
+  loadTaskMatches: (callId: string) =>
+    proxyFetch<{ kind: string; call_task_refs: import("@/types").TaskRef[]; project_task_refs: import("@/types").TaskRef[] }[]>(
+      `/api/calls/${callId}/topics/match-groups`,
+      { method: "GET" }
+    ),
 
   getMatchGroups: (callId: string) =>
     proxyFetch<{ project_topic_ids: string[]; project_topic_names: string[]; call_topic_names: string[] }[]>(
