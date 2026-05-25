@@ -10,36 +10,49 @@ interface TaskCardProps {
   owner?: string;
   status?: string;
   keyTerms?: string[];
-  isSelected?: boolean;
-  isBound?: boolean;
   isFocused?: boolean;
+  isSelected?: boolean;     // user clicked but not yet linked → amber
+  groupColor?: { bg: string; border: string; text: string } | null;  // committed group color
   matchHint?: 'exact' | 'partial' | null;
   onClick?: () => void;
 }
 
 export function TaskCard({
   taskId, topicName, taskText, nextStep, owner, status, keyTerms,
-  isSelected, isBound, isFocused, matchHint, onClick,
+  isFocused, isSelected, groupColor, matchHint, onClick,
 }: TaskCardProps) {
-  const border = isFocused
-    ? 'border-purple-500 ring-2 ring-purple-300'
-    : isSelected ? 'border-blue-500'
-    : isBound ? 'border-green-500'
-    : 'border-gray-200';
-  const bg = matchHint === 'exact' ? 'bg-yellow-50' : matchHint === 'partial' ? 'bg-orange-50' : 'bg-white';
+  // Priority: focused > group > selected > matchHint > default
+  let style: React.CSSProperties;
+  if (isFocused) {
+    style = { border: '2px solid #6f42c1', background: 'white', boxShadow: '0 0 0 2px #c4a8e8' };
+  } else if (groupColor) {
+    style = { border: `2px solid ${groupColor.border}`, background: groupColor.bg, color: groupColor.text };
+  } else if (isSelected) {
+    style = { border: '2px solid #f6c000', background: '#fff0b3', color: '#7a4e00' };
+  } else if (matchHint === 'exact') {
+    style = { border: '2px solid #e2e8f0', background: '#fefce8' };
+  } else if (matchHint === 'partial') {
+    style = { border: '2px solid #e2e8f0', background: '#fff7ed' };
+  } else {
+    style = { border: '2px solid #e2e8f0', background: 'white' };
+  }
   return (
     <div
       onClick={onClick}
-      className={`p-2 border-2 rounded cursor-pointer ${border} ${bg} hover:shadow-md text-xs mb-1`}
+      style={{
+        padding: 8, borderRadius: 6, cursor: 'pointer', marginBottom: 4,
+        fontSize: 12, transition: 'border-color .12s, background .12s',
+        ...style,
+      }}
       data-task-id={taskId}
     >
-      <div className="text-gray-500 text-xs">{topicName}</div>
-      <div className="font-medium">{taskText}</div>
-      {nextStep && <div className="text-gray-600 mt-1">→ {nextStep}</div>}
-      {owner && <div className="text-gray-500">Owner: {owner}</div>}
-      {status && <div className="text-gray-400 text-xs">{status}</div>}
+      <div style={{ fontSize: 10, color: '#6b7280' }}>{topicName}</div>
+      <div style={{ fontWeight: 500 }}>{taskText}</div>
+      {nextStep && <div style={{ color: '#6b7280', marginTop: 4 }}>→ {nextStep}</div>}
+      {owner && <div style={{ color: '#6b7280', fontSize: 10 }}>Owner: {owner}</div>}
+      {status && <div style={{ color: '#9ca3af', fontSize: 10 }}>{status}</div>}
       {keyTerms && keyTerms.length > 0 && (
-        <div className="text-gray-400 mt-1">{keyTerms.join(', ')}</div>
+        <div style={{ color: '#9ca3af', marginTop: 4, fontSize: 10 }}>{keyTerms.join(', ')}</div>
       )}
     </div>
   );
