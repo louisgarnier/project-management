@@ -438,11 +438,8 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                 <span style={{ color: "#42526e", textTransform: "none", letterSpacing: 0 }}>
                   {effectivePrompt.name}
                 </span>
-                {effectivePrompt.model && (
-                  <span style={{ color: "#7a869a", textTransform: "none", letterSpacing: 0 }}>
-                    {" "}({effectivePrompt.llm ?? "?"}/{effectivePrompt.model})
-                  </span>
-                )}
+                {/* EPIC-19: removed (llm/model) suffix — v5 ignores library entry model;
+                    the 🤖 chip below shows what was actually used (from project.default_model). */}
               </>
             )}
           </div>
