@@ -1,5 +1,89 @@
 # Build Log — Call Tracker
 
+### 2026-05-25 — EPIC-19: Task-Level Project Matching + Narrowed 3-Pass Synthesis (code-complete / pending smoke)
+
+**Goal:** Pivot from EPIC-18's topic-level verification (18-30% confidence on real data) to task-level manual matching with narrowed LLM safety-net + synthesis roles.
+
+**Phase 1 — Backend foundation (Tasks 1-3, commits ca799cd → 9899572):**
+- Migration 035: `topic_match_groups` extended with `call_task_refs` + `project_task_refs` + `kind` columns
+- `backend/services/task_match_persistence.py`: `save_task_match_groups` + `load_task_match_groups`
+- `save_match_groups` endpoint accepts task-level shape; new Pydantic models `TaskRefIn` + `TaskMatchGroupIn`
+
+**Phase 2 — Pass 1 narrowing (Tasks 4-7, commits 49b0af1 → 26f79b8):**
+- Deleted `run_verify_canonical_match` + `VERIFY_CANONICAL_MATCH_PROMPT` (S2.2 — never triggered in prod)
+- Deleted `check_citation_rarity` + `check_reasoning_references_tasks`
+- Removed sanity-flag penalty stack from `compute_confidence`
+- Pass 1 prompt reframed as safety-net for user's manual decision (verdicts: `confirmed_new` / `suggest_merge_with`)
+- Verdict normalization in `run_verify_new` (legacy `truly_new` / `should_be_merged_with` aliases preserved)
+- Dropped `wrong_canonical.json` fixture (scenario now handled by user matching)
+
+**Phase 3 — Pass 2 line-number migration (Task 8, commit 3da7150):**
+- `backend/prompts/verify_not_discussed.py`: line-range citation contract; safety-net framing
+- `run_verify_not_discussed` accepts ingested transcript dict; uses `verify_evidence_lines`
+- Pass 2 router ingests current call transcript via `ingest_transcript`
+
+**Phase 4 — Pass 3 synthesis rewrite (Tasks 9-10, commits ab7082c → 376ea9b):**
+- `backend/prompts/extract_topic_updates.py`: synthesis prompt (NOT re-extraction)
+- `run_synthesize_merged_topic`: inputs are previous topic_updates + new bound tasks + ingested transcripts
+- Per-topic LLM call (Q2 default); preserves `task_id` identity across calls
+- Pass 3 router (`_run_extract_updates_background`) rewritten to assemble synthesis inputs from match_groups + project_topic_state
+
+**Phase 5 — Frontend task-level matching UI (Tasks 11-13, commits 89a9793 → 35cbe1a):**
+- `frontend/src/components/TaskMatchingStage.tsx`: replaces topic-level `ProjectMatchingStage` (still on disk; unrendered)
+- `frontend/src/components/TaskCard.tsx`: per-task display with selected/bound/focused/match-hint states
+- `frontend/src/components/CrossTopicBindingModal.tsx`: 4-option modal for cross-topic binding decisions
+- Keyboard navigation: j/k (down/up), h/l (column switch), Enter (stage), space (bind), n (mark new), esc (clear)
+- Auto-bind exact-text matches bulk action (mechanical, no LLM)
+- `TaskMatchGroup` / `TaskRef` / `BindingKind` types in `frontend/src/types/index.ts`
+- `topicsAPI.saveTaskMatches(callId, groups)` API method
+
+**Phase 6 — Migration + wrap (Tasks 14-15, commit b9ca278 + this):**
+- `backend/scripts/migrate_match_groups_to_task_level.py`: backfill historical topic-level → task-level shape (idempotent; skips already-migrated rows)
+- `docs/project/config/2026-05-25-epic-19-migration-runbook.md`: manual steps
+- ADR-005 (task-level matching), ADR-006 (Pass 3 as synthesis)
+- ACTIVE.md + codebase.md + build-log updated
+
+**Decisions taken (Q1-Q5 defaults from design Section 11):**
+- Q1: Pass 1 + Pass 2 parallel (no overlap on buckets)
+- Q2: Pass 3 per-topic LLM call (parallelizable across topics)
+- Q3: Cross-topic decisions persist as `kind='topic_merge'` row type
+- Q4: Pass 3 input as structured JSON
+- Q5: Frontend keyboard-first (j/k/h/l/Enter/space/n/esc)
+
+**What EPIC-19 obsoleted (deleted from EPIC-18):**
+- `run_verify_canonical_match` + `VERIFY_CANONICAL_MATCH_PROMPT` (S2.2 P1-BIDIRECTIONAL)
+- `check_citation_rarity` + `check_reasoning_references_tasks`
+- Sanity-flag penalty stack in `compute_confidence` (the 18% killer)
+- Free-form quote citation in Pass 2 (replaced with line-numbers)
+- Full re-extraction in Pass 3 (replaced with synthesis)
+- `wrong_canonical.json` fixture
+
+**What EPIC-19 preserved from EPIC-18:**
+- `project_topic_state` view (ADR-003)
+- Line-number citation pattern (ADR-004) — extended to Pass 2 + Pass 3
+- v5 structured registry (V5-CORE)
+- `projects.context` wiring (V5-CONTEXT)
+- Verification asymmetry UX (`auto_accept_eligible`)
+- Migration script pattern
+
+**Commits (15):** `ca799cd` → `38bcda0` → `9899572` → `49b0af1` → `152fd20` → `a03a401` → `26f79b8` → `3da7150` → `ab7082c` → `376ea9b` → `89a9793` → `7957adf` → `35cbe1a` → `b9ca278` → (this entry's commit). All on branch `epic-16-rag-rework` with `[EPIC-19]` prefix.
+
+**Tests:** Final state — all phases green. Backend ~63 + 19 + 5 tests pass across test_topic_verification, test_topics, test_pass1_fixtures, test_task_match_persistence (and adjusted pre-existing tests). Frontend tsc + lint clean.
+
+**Pending manual steps before smoke test:**
+1. Apply migration 035 in Supabase Dashboard
+2. Run `repopulate_verify_new_cache.py --project <uuid>` to reset stale caches
+3. Run `migrate_match_groups_to_task_level.py --project <uuid>` (dry-run first) to backfill historical match_groups
+4. Re-open project a / call b and walk through: project_matching task UI → Pass 1/2 advisory verdicts → Pass 3 synthesized topic_updates
+5. Confirm acceptance criteria: confidence on `confirmed_new` verdicts ≥80% (no penalty stack), no `citations_lack_rare_terms` warnings, task-matching usable in <10 min per call
+
+**Known follow-ups:**
+- Delete `frontend/src/components/ProjectMatchingStage.tsx` (old topic-level matching) — left in place as rollback safety; remove in a future cleanup once smoke confirms EPIC-19 is stable
+- `sanity_check_llm_vs_lexical` still sets a diagnostic `sanity_flag` field, no longer affects scoring (deliberate — diagnostic only)
+- Pass 3 synthesis prompt quality on accumulated-state topics needs real-world validation (LLM may need prompt iteration)
+
+---
+
 ### 2026-05-25 — EPIC-18 Task 18 smoke test results / EPIC-19 decision
 
 **Smoke run on project 'a' / call b** (real follow-up calls, not same-transcript): v5 produced 7 candidate clusters. Pass 1 produced 6 should_be_merged_with + 1 truly_new verdicts — **semantically correct.** But confidence scores landed at 18-30% across the board, all flagged for manual review.

@@ -15,6 +15,60 @@
 | ADR-002 | Use Supabase Storage for Call Context Files | Accepted | 2026-04-10 | EPIC-4 |
 | ADR-003 | Unified project_topic_state view as single source of truth | Accepted | 2026-05-24 | EPIC-18 |
 | ADR-004 | Line-number citation pattern for all cross-call verification (Pass 1) | Accepted | 2026-05-24 | EPIC-18 |
+| ADR-005 | Task-level manual matching at project_matching stage | Accepted | 2026-05-25 | EPIC-19 |
+| ADR-006 | Pass 3 as synthesis from bound tasks, not re-extraction | Accepted | 2026-05-25 | EPIC-19 |
+
+---
+
+## ADR-005 — Task-level manual matching at project_matching stage
+
+**Date:** 2026-05-25
+**Epic:** EPIC-19
+**Status:** Accepted
+
+### Context
+EPIC-18's topic-level verification produced semantically-correct verdicts at 18-30% confidence due to sanity-stack compounding on a fuzzy unit (the topic). Real-data smoke on project a revealed the failure was structural: comparing topic blobs is fundamentally fuzzy. The data also showed 0/40 exact task-text matches between consecutive real calls, meaning task-level *automatic* matching also depends on LLM semantic match — but task-level *manual* matching is concrete and fast.
+
+### Decision
+project_matching becomes task-level: users manually bind candidate tasks (from v5) to existing tasks (from project_topic_state) with N:M support. Cross-topic bindings surface a modal for the topic-shape decision. LLM-driven matching is removed from this stage entirely. The 3 LLM passes downstream become safety-net verifiers (Pass 1 + 2) and synthesizer (Pass 3) — not primary matchers.
+
+### Consequences
+- User does identity work; LLM does only safety-net (Pass 1/2) + synthesis (Pass 3)
+- 18-30% confidence problem dissolves (Pass 1 reflects actual match quality, no penalty stack)
+- Smaller LLM cost (4 candidate topics × 1 advisory call instead of 7 × full sanity-stack)
+- Workflow adds user time at matching stage (~5-10 min/call); acceptable at human-scale PMO use
+- The `topic_match_groups` table is extended (migration 035) with task-level `call_task_refs` + `project_task_refs` + `kind` discriminator
+
+### Alternatives considered
+- **Task-level LLM matching:** still fragile; EPIC-18's failure modes recur at finer granularity. Real-data showed 0/40 exact text matches between consecutive calls, so the deterministic-pre-match argument fails.
+- **Embedding-based semantic matching:** infra dependency; ROI unclear at scale of one PMO; deferred until needed.
+- **Status quo + workflow accommodations:** ship EPIC-18 as-is and have user tolerate 18-30% review burden. Rejected as accepting mediocrity.
+
+---
+
+## ADR-006 — Pass 3 as synthesis from bound tasks, not re-extraction
+
+**Date:** 2026-05-25
+**Epic:** EPIC-19
+**Status:** Accepted
+
+### Context
+EPIC-18 Pass 3 (`extract_topic_updates`) re-extracted task state from raw transcripts on every call. Heavy LLM work; produced spurious tasks when the LLM "discovered" things differently each call. EPIC-15's failed chronology attempts (twice) tried this approach with prompt variations; none produced coherent cross-call updates.
+
+### Decision
+Pass 3 receives the already-confirmed bindings (from matching + Pass 1/2 user overrides) + previous `topic_updates` state + ingested transcripts. It SYNTHESIZES the merged state — preserves `task_id` identity, updates fields based on new evidence. Does NOT re-discover or re-extract tasks. One LLM call per merged topic (parallelizable across topics, structured JSON inputs per Q2 + Q4 decisions).
+
+### Consequences
+- Task identity is stable across calls (`task_id` preserved through `topic_updates` chain)
+- Pass 3 output structure is deterministic (one row per merged topic, exact task list from the bindings)
+- LLM work narrower: synthesize + update, not extract
+- Cross-call chronology is a derived view over the `topic_updates` history rather than an LLM re-generation
+- Function renamed: `run_extract_topic_updates` → `run_synthesize_merged_topic`
+
+### Alternatives considered
+- **Keep re-extraction with stricter prompts:** the failure mode of EPIC-15's chronology — both attempts dropped after producing incoherent cross-call updates on real data
+- **Event-sourced task model:** over-engineered for current scale; rejected during EPIC-19 brainstorm
+- **Skip Pass 3 entirely; just append new tasks to topic_updates as-is:** loses synthesized topic-level summary + status rollup that the user wants for the Brief/Kanban view
 
 ---
 

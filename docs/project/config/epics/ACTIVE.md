@@ -1,11 +1,18 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Active epic:** EPIC-19 — Task-level Pass 1 redesign (to be brainstormed)
+- **Active epic:** EPIC-19 — Task-level project matching + narrowed 3-pass synthesis (code-complete, pending smoke test)
 - **Branch:** `epic-16-rag-rework`
-- **Status:** EPIC-18 shipped 2026-05-24. Task 18 smoke test on project 'a' call b (2026-05-25) exposed systemic confidence inflation from topic-level rarity/sanity penalty stack (18-30% confidence on semantically-correct merges). D5 gate triggered. Decision: skip the planned S2.4 P1-RETRIEVAL fallback; pivot to EPIC-19 task-level redesign instead.
-- **EPIC-18 smoke findings:** verdicts semantically correct on project 'a' (5 merges + 2 truly_new), but workflow forces manual review on all because S07/Meeting logistics fail rarity check (common-term topics), Risk model arch hit insufficient_verdict_citations. S2.2 canonical-match path never triggers in real usage because `topic_match_groups.project_topic_ids` is empty (project_matching is a passthrough). See `workflow/ERRORS.md` ERR-007 for the one real bug fixed mid-flight.
-- **Next:** Brainstorm EPIC-19 (task-level matching, deterministic pre-match → semantic for unmatched, derived topic verdict). See [[project_epic_19_task_level_redesign]] memory.
+- **Status:** All 15 tasks landed (commits ca799cd → final wrap-up). Migration 035 pending manual apply in Supabase Dashboard. Backfill script ready.
+- **Next:** Run manual steps per `docs/project/config/2026-05-25-epic-19-migration-runbook.md`, then smoke test project a / call b end-to-end under the new pipeline.
+
+## EPIC-19 design + plan + brainstorm
+- Brainstorm: `docs/project/config/2026-05-25-epic-19-brainstorm.md`
+- Plan: `docs/project/config/2026-05-25-epic-19-implementation-plan.md`
+- Migration runbook: `docs/project/config/2026-05-25-epic-19-migration-runbook.md`
+
+## Prior epic state
+- **EPIC-18** (topic-level Pass 1/2/3 reliability): code-complete, smoke revealed deeper architectural issue → EPIC-19 reframe
 
 ## What EPIC-18 left behind that EPIC-19 inherits
 - ✅ Foundation kept: unified `project_topic_state` view (ADR-003), line-number citation pattern (ADR-004), V5-CORE structured registry, Pass 1 fixtures, verification-asymmetry UX, migration script

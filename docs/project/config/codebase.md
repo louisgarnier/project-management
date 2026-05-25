@@ -4,6 +4,42 @@
 
 ---
 
+## EPIC-19 additions (2026-05-25)
+
+**Backend:**
+- `backend/database/migrations/035_task_level_match_groups.sql` — extends `topic_match_groups` with `call_task_refs` + `project_task_refs` + `kind` columns
+- `backend/services/task_match_persistence.py` — `save_task_match_groups`, `load_task_match_groups`, `TaskMatchGroup` / `TaskRef` TypedDicts
+- `backend/tests/test_task_match_persistence.py` — 3 tests
+- `backend/scripts/migrate_match_groups_to_task_level.py` — backfill historical topic-level → task-level
+
+**Modified backend:**
+- `backend/services/topics_service.py` — `save_match_groups` delegates to `save_task_match_groups`
+- `backend/routers/topics.py` — new `TaskRefIn` + `TaskMatchGroupIn` Pydantic models; Pass 1/2/3 background tasks rewritten for task-level routing; canonical-match branch deleted
+- `backend/services/topic_verification.py` — deleted `run_verify_canonical_match`, `check_citation_rarity`, `check_reasoning_references_tasks`, sanity-flag penalty stack; rewrote `run_verify_not_discussed` (line-numbers); rewrote `run_extract_topic_updates` → `run_synthesize_merged_topic`; verdict normalization for `confirmed_new`/`suggest_merge_with`
+- `backend/prompts/verify_new_topic.py` — safety-net framing; removed `VERIFY_CANONICAL_MATCH_PROMPT`
+- `backend/prompts/verify_not_discussed.py` — line-range citations + safety-net framing
+- `backend/prompts/extract_topic_updates.py` — synthesis framing (not re-extraction)
+
+**Frontend:**
+- `frontend/src/components/TaskMatchingStage.tsx` — task-level project_matching UI (replaces `ProjectMatchingStage`)
+- `frontend/src/components/TaskCard.tsx` — per-task display
+- `frontend/src/components/CrossTopicBindingModal.tsx` — cross-topic binding decision
+- `frontend/src/types/index.ts` — `TaskRef`, `TaskMatchGroup`, `BindingKind` types
+- `frontend/src/api/client.ts` — `topicsAPI.saveTaskMatches`
+- `frontend/app/projects/[id]/calls/[call_id]/page.tsx` — routes `project_matching` stage to `TaskMatchingStage`
+
+**Migration runbook:** `docs/project/config/2026-05-25-epic-19-migration-runbook.md`
+
+**Deleted:**
+- `backend/tests/fixtures/pass1/wrong_canonical.json`
+- Pass 1 canonical-match path code (function + prompt + router branch + 3 tests)
+- Pass 1 rarity check + sanity stack code (functions + their callers + tests)
+
+**Left in place (deprecated, awaiting cleanup):**
+- `frontend/src/components/ProjectMatchingStage.tsx` — old topic-level matching component, no longer rendered
+
+---
+
 ## EPIC-18 additions (2026-05-24)
 
 **Unified data layer:**
