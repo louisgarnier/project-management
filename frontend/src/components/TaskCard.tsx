@@ -12,15 +12,20 @@ interface TaskCardProps {
   keyTerms?: string[];
   isSelected?: boolean;
   isBound?: boolean;
+  isFocused?: boolean;
   matchHint?: 'exact' | 'partial' | null;
   onClick?: () => void;
 }
 
 export function TaskCard({
   taskId, topicName, taskText, nextStep, owner, status, keyTerms,
-  isSelected, isBound, matchHint, onClick,
+  isSelected, isBound, isFocused, matchHint, onClick,
 }: TaskCardProps) {
-  const border = isSelected ? 'border-blue-500' : isBound ? 'border-green-500' : 'border-gray-200';
+  const border = isFocused
+    ? 'border-purple-500 ring-2 ring-purple-300'
+    : isSelected ? 'border-blue-500'
+    : isBound ? 'border-green-500'
+    : 'border-gray-200';
   const bg = matchHint === 'exact' ? 'bg-yellow-50' : matchHint === 'partial' ? 'bg-orange-50' : 'bg-white';
   return (
     <div
