@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { TaskCard } from './TaskCard';
+import { CrossTopicBindingModal } from './CrossTopicBindingModal';
 import type { TaskMatchGroup, TaskRef } from '@/types';
 import { topicsAPI } from '@/api/client';
 
@@ -28,6 +29,10 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   const [stagedCandidate, setStagedCandidate] = useState<TaskRef | null>(null);
   const [stagedExisting, setStagedExisting] = useState<TaskRef | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showCrossTopicModal, setShowCrossTopicModal] = useState<{
+    candidate: string;
+    existing: string;
+  } | null>(null);
 
   // Exact-text match hints (mechanical, no LLM)
   const matchHints = useMemo(() => {
@@ -53,13 +58,45 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
 
   function commitBinding() {
     if (!stagedCandidate || !stagedExisting) return;
-    setGroups(g => [...g, {
-      kind: 'binding' as const,
-      call_task_refs: [stagedCandidate],
-      project_task_refs: [stagedExisting],
-    }]);
+    // Cross-topic check
+    const candidateTopic = stagedCandidate.call_topic_name?.toLowerCase();
+    const existingTopic = existingTopics.find(t => t.topic_id === stagedExisting.project_topic_id);
+    const existingTopicNameLc = existingTopic?.name.toLowerCase();
+    if (candidateTopic && existingTopicNameLc && candidateTopic !== existingTopicNameLc) {
+      setShowCrossTopicModal({
+        candidate: stagedCandidate.call_topic_name || '',
+        existing: existingTopic?.name || '',
+      });
+      return;
+    }
+    doCommitBinding();
+  }
+
+  function doCommitBinding(topicMergeDecision?: 'keep_existing' | 'keep_candidate' | 'merge') {
+    if (!stagedCandidate || !stagedExisting) return;
+    const newGroups: TaskMatchGroup[] = [
+      ...groups,
+      {
+        kind: 'binding' as const,
+        call_task_refs: [stagedCandidate],
+        project_task_refs: [stagedExisting],
+      },
+    ];
+    if (topicMergeDecision === 'merge') {
+      // Emit an additional topic_merge group capturing the decision
+      newGroups.push({
+        kind: 'topic_merge',
+        call_task_refs: [{ call_topic_name: stagedCandidate.call_topic_name || '', task_id: '' }],
+        project_task_refs: [{ project_topic_id: stagedExisting.project_topic_id || '', task_id: '' }],
+      });
+    }
+    // 'keep_existing' and 'keep_candidate' don't emit additional groups —
+    // the binding alone implies the task lives under the chosen topic.
+    // Per-binding topic ownership is derived later from the binding direction.
+    setGroups(newGroups);
     setStagedCandidate(null);
     setStagedExisting(null);
+    setShowCrossTopicModal(null);
   }
 
   function clearStaging() { setStagedCandidate(null); setStagedExisting(null); }
@@ -104,6 +141,25 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
 
   return (
     <div className="flex gap-4 p-4">
+      {showCrossTopicModal && (
+        <CrossTopicBindingModal
+          candidateTopicName={showCrossTopicModal.candidate}
+          existingTopicName={showCrossTopicModal.existing}
+          onChoose={(decision) => {
+            if (decision === 'cancel') {
+              setShowCrossTopicModal(null);
+              return;
+            }
+            doCommitBinding(
+              decision === 'keep_existing_topic'
+                ? 'keep_existing'
+                : decision === 'keep_candidate_topic'
+                ? 'keep_candidate'
+                : 'merge',
+            );
+          }}
+        />
+      )}
       <div className="flex-1 overflow-auto max-h-[80vh]">
         <h3 className="font-semibold mb-2 sticky top-0 bg-white">Existing project tasks</h3>
         {existingTopics.map(t => (
