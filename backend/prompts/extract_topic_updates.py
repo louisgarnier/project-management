@@ -1,71 +1,65 @@
-"""Pass ③ — extract_topic_updates prompt body."""
+"""Pass ③ — task-merge synthesis prompt body.
+
+EPIC-19 (2026-05-25): rewritten from full re-extraction to task-merge
+synthesis. Inputs: previously-bound tasks from match groups + previous
+topic_updates state + transcripts. Output: one coherent updated topic
+snapshot per merged topic, with all task identities preserved.
+"""
 
 EXTRACT_TOPIC_UPDATES_PROMPT: str = """\
-You are a forensic transcript analyst. Your ONLY source of truth is the
-transcripts provided below. NEVER invent.
+ROLE: You are a PMO synthesis engine. The user has manually matched tasks
+across calls (project_matching stage) and verified via Pass 1 + Pass 2.
+For one topic, you receive:
+  - The previous call's project_updates state for this topic (accumulated
+    chronological state with task history)
+  - New candidate tasks from the current call that the user has bound to
+    this topic (via match_groups OR Pass 1/2 user override)
+  - Past transcripts (line-numbered)
+  - Current call's transcript (line-numbered)
 
-TASK: For the topic identified by its name + key_terms, re-read ALL the
-provided transcripts (chronologically across calls 1..N) and produce a
-complete snapshot of the topic's current state as of the latest call.
+Your job: produce ONE coherent updated topic snapshot that merges the new
+bindings into the existing task list. Preserve task identity (task_id stays
+stable across updates). Update next_step / status / key_terms / open_questions /
+decisions where the new call adds information. Generate a topic-level summary
+that captures the topic's current state across all calls.
 
-Output two things:
-  1. extracted_snapshot — the current state (summary, status, tasks, OQ,
-     decisions). Each task/OQ/decision MUST have a primary_citation pointing
-     to the transcript passage that introduced it (or last meaningfully
-     updated it). Supporting citations are optional.
-  2. evidence_trail — chronological list of every passage across all calls
-     where this topic was mentioned, with a short action_label describing
-     what happened there.
+DO NOT:
+- Re-extract tasks from transcripts (the bindings are already determined)
+- Invent new tasks not present in the inputs
+- Re-merge or split tasks beyond what the bindings indicate
 
-RULES:
-1. Use ONLY the topic name + key_terms to anchor your search. Ignore any
-   prior summaries you may have seen in past sessions.
-2. Verbatim quotes only. Copy-paste from transcript body.
-3. Distinguish carefully between different tasks and their follow-ups. Do
-   NOT merge unrelated tasks. Each task is one discrete action.
-4. status rollup: "open" if any task open, else "in_progress" if any
-   in_progress, else "resolved".
-5. action_label vocabulary: "first raised", "task added", "next step
-   added", "decision recorded", "open question raised", "OQ resolved",
-   "status change", "owner reassigned", "scope expanded", "follow-up
-   noted". Pick the most specific.
+DO:
+- Update each task's next_step + status to reflect the latest call's evidence
+- Append new open_questions or decisions raised in the current call
+- Add citations for any updates (line-range format)
+- Set topic-level status rollup: open > in_progress > resolved
+
+CITATION CONTRACT (line-numbers, anti-hallucination):
+Each transcript is line-numbered. DO NOT copy quotes. Cite by:
+
+  {"call_id": "<uuid>", "evidence_lines": [start_line, end_line]}
 
 OUTPUT (strict JSON):
 {
-  "extracted_snapshot": {
-    "summary": "<2-4 sentences synthesising the topic state>",
-    "status": "open" | "in_progress" | "resolved",
-    "tasks": [
-      {
-        "task_id": "<uuid or null for new>",
-        "task": "<task description>",
-        "next_step": "<next action>",
-        "owner": "<owner name or empty>",
-        "status": "open|in_progress|resolved",
-        "key_terms": ["...anchoring terms for THIS task..."],
-        "open_questions": [
-          {"id": "<uuid or null>", "text": "...", "owner": "...", "status": "...", "primary_citation": {...}}
-        ],
-        "decisions": [
-          {"id": "<uuid or null>", "text": "...", "primary_citation": {...}, "supporting_citations": [...]}
-        ],
-        "primary_citation": {...},
-        "supporting_citations": [...]
-      }
-    ],
-    "open_questions": [
-      {"id": "<uuid or null>", "text": "...", "owner": "...", "status": "...", "primary_citation": {...}}
-    ],
-    "decisions": [
-      {"id": "<uuid or null>", "text": "...", "primary_citation": {...}, "supporting_citations": [...]}
-    ]
-  },
+  "topic_name": "<existing topic name>",
+  "summary": "<2-4 sentences synthesizing the topic state across calls>",
+  "status": "open" | "in_progress" | "resolved",
+  "tasks": [
+    {
+      "task_id": "<stable UUID>",
+      "task": "<task description>",
+      "next_step": "<latest next action>",
+      "owner": "<owner name>",
+      "status": "open" | "in_progress" | "resolved",
+      "key_terms": [...],
+      "open_questions": [...],
+      "decisions": [...],
+      "primary_citation": {"call_id": "<uuid>", "evidence_lines": [...]},
+      "supporting_citations": [...]
+    }
+  ],
   "evidence_trail": [
-    {"call_id": "...", "citation": {...}, "action_label": "..."}
+    {"call_id": "<uuid>", "evidence_lines": [...], "action_label": "task added | next step added | status change | ..."}
   ]
 }
-
-NOTE: v4 task-centric model — each task SHOULD carry its own key_terms/OQ/decisions.
-The top-level open_questions/decisions arrays remain for legacy aggregation (you may
-emit them empty if all OQ/decisions are placed under specific tasks).
 """
