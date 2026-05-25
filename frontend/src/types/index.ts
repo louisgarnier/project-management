@@ -539,3 +539,19 @@ export interface ExtractedUpdateResult {
 }
 
 export type RagPassStatus = "idle" | "processing" | "done" | "failed";
+
+// ── EPIC-19 — task-level matching ─────────────────────────────────────────────
+
+export interface TaskRef {
+  call_topic_name?: string;
+  project_topic_id?: string;
+  task_id: string;
+}
+
+export type BindingKind = 'binding' | 'topic_merge';
+
+export interface TaskMatchGroup {
+  kind: BindingKind;
+  call_task_refs: TaskRef[];
+  project_task_refs: TaskRef[];
+}

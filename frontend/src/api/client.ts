@@ -2,7 +2,7 @@
 // This keeps secrets server-side and avoids CORS issues.
 // SSE connections (artifact streaming) connect directly to the backend URL.
 
-import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory, LibraryEntry, SystemSettings, EvidenceRef, TaskData, TopicData, OpenQuestionData, DecisionData, Citation, VerifyNewResult, VerifyNotDiscussedResult, ExtractedUpdateResult } from "@/types";
+import type { Project, Call, CallFile, ArtifactType, Artifact, LLMProvider, ArtifactMode, ContextScope, TopicsTimelineData, ArtifactCategory, LibraryEntry, SystemSettings, EvidenceRef, TaskData, TopicData, OpenQuestionData, DecisionData, Citation, VerifyNewResult, VerifyNotDiscussedResult, ExtractedUpdateResult, TaskMatchGroup } from "@/types";
 
 const PROXY_BASE = "/api/proxy";
 
@@ -396,6 +396,13 @@ export const topicsAPI = {
     proxyFetch<import("@/types").TopicData[]>(`/api/calls/${callId}/topics/pending`),
 
   saveMatches: (callId: string, groups: import("@/types").MatchGroup[]) =>
+    proxyFetch<{ saved: number }>(`/api/calls/${callId}/topics/save-matches`, {
+      method: "POST",
+      body: JSON.stringify(groups),
+    }),
+
+  // EPIC-19 — task-level save-matches endpoint
+  saveTaskMatches: (callId: string, groups: TaskMatchGroup[]) =>
     proxyFetch<{ saved: number }>(`/api/calls/${callId}/topics/save-matches`, {
       method: "POST",
       body: JSON.stringify(groups),

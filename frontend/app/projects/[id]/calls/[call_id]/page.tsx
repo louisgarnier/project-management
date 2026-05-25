@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { artifactsAPI, callsAPI } from "@/api/client";
+import { artifactsAPI, callsAPI, topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
-import type { Call } from "@/types";
+import type { Call, TopicData } from "@/types";
 import TranscriptStage from "@/components/TranscriptStage";
 import TranscriptPanel from "@/components/TranscriptPanel";
 import ContextFiles from "@/components/ContextFiles";
@@ -14,6 +14,7 @@ import TopicsStage from "@/components/TopicsStage";
 import TopicsPanel from "@/components/TopicsPanel";
 import CallTopicsStage from "@/components/CallTopicsStage";
 import ProjectMatchingStage from "@/components/ProjectMatchingStage";
+import { TaskMatchingStage } from "@/components/TaskMatchingStage";
 import ProjectUpdatesStage from "@/components/ProjectUpdatesStage";
 import ProjectMatchingHistoricalView from "@/components/ProjectMatchingHistoricalView";
 import ProjectUpdatesHistoricalView from "@/components/ProjectUpdatesHistoricalView";
@@ -57,6 +58,9 @@ export default function CallDetailPage() {
   const [rollbackError, setRollbackError] = useState<string | null>(null);
   const [isLocking, setIsLocking] = useState(false);
   const [lockError, setLockError] = useState<string | null>(null);
+  // EPIC-19: task-level matching state
+  const [matchingExistingTopics, setMatchingExistingTopics] = useState<TopicData[]>([]);
+  const [matchingCandidateTopics, setMatchingCandidateTopics] = useState<TopicData[]>([]);
   async function handleConfirmReset() {
     setResetting(true);
     try {
@@ -165,6 +169,20 @@ export default function CallDetailPage() {
   useEffect(() => {
     loadCall();
   }, [loadCall]);
+
+  // EPIC-19: load project + candidate topics when entering project_matching stage
+  useEffect(() => {
+    if (!call || call.kanban_stage !== "project_matching") return;
+    Promise.all([
+      topicsAPI.priorToCall(projectId, callId),
+      topicsAPI.getPending(callId),
+    ]).then(([existing, candidates]) => {
+      setMatchingExistingTopics(existing);
+      setMatchingCandidateTopics(candidates);
+    }).catch((err) => {
+      logger.error("Failed to load matching topics", { component: "CallDetailPage", data: err });
+    });
+  }, [call?.kanban_stage, callId, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleLock() {
     setIsLocking(true);
@@ -435,10 +453,34 @@ export default function CallDetailPage() {
       {call.kanban_stage === "project_matching" || call.kanban_stage === "project_updates" ? (
         <div className="flex-1 overflow-hidden flex flex-col">
           {call.kanban_stage === "project_matching" && (
-            <ProjectMatchingStage
+            <TaskMatchingStage
               callId={call.id}
-              projectId={call.project_id}
-              onMatchingComplete={() => loadCall()}
+              existingTopics={matchingExistingTopics
+                .filter(t => t.topic_id && (t.tasks ?? []).length > 0)
+                .map(t => ({
+                  topic_id: t.topic_id!,
+                  name: t.name,
+                  tasks: (t.tasks ?? []).map(task => ({
+                    task_id: task.task_id,
+                    task: task.task,
+                    next_step: task.next_step || undefined,
+                    owner: task.owner || undefined,
+                    key_terms: task.key_terms,
+                  })),
+                }))}
+              candidateTopics={matchingCandidateTopics
+                .filter(t => (t.tasks ?? []).length > 0)
+                .map(t => ({
+                  name: t.name,
+                  tasks: (t.tasks ?? []).map(task => ({
+                    task_id: task.task_id,
+                    task: task.task,
+                    next_step: task.next_step || undefined,
+                    owner: task.owner || undefined,
+                    key_terms: task.key_terms,
+                  })),
+                }))}
+              onAdvance={() => loadCall()}
             />
           )}
           {call.kanban_stage === "project_updates" && (
