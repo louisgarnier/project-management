@@ -424,21 +424,44 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
             textTransform: "uppercase",
             letterSpacing: ".06em",
             marginBottom: 4,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
           }}
         >
-          Call Topics · {callTitle} · {callDate}
-          {effectivePrompt && (
-            <>
-              {" · "}
-              <span style={{ color: "#42526e", textTransform: "none", letterSpacing: 0 }}>
-                {effectivePrompt.name}
-              </span>
-              {effectivePrompt.model && (
-                <span style={{ color: "#7a869a", textTransform: "none", letterSpacing: 0 }}>
-                  {" "}({effectivePrompt.llm ?? "?"}/{effectivePrompt.model})
+          <div>
+            Call Topics · {callTitle} · {callDate}
+            {effectivePrompt && (
+              <>
+                {" · "}
+                <span style={{ color: "#42526e", textTransform: "none", letterSpacing: 0 }}>
+                  {effectivePrompt.name}
                 </span>
-              )}
-            </>
+                {effectivePrompt.model && (
+                  <span style={{ color: "#7a869a", textTransform: "none", letterSpacing: 0 }}>
+                    {" "}({effectivePrompt.llm ?? "?"}/{effectivePrompt.model})
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+          {call.call_topics_v5_payload?.model_used && (
+            <div
+              style={{
+                display: "inline-block",
+                fontSize: 10,
+                padding: "2px 8px",
+                borderRadius: 4,
+                background: "#eff6ff",
+                color: "#1e40af",
+                border: "1px solid #bfdbfe",
+                whiteSpace: "nowrap",
+              }}
+              title="Model used for v5 extraction"
+            >
+              🤖 {call.call_topics_v5_payload.model_used}
+            </div>
           )}
         </div>
         <div

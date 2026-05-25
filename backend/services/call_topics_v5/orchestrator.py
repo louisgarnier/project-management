@@ -96,6 +96,7 @@ async def run_pipeline(
         model = ctx["project_metadata"]["default_model"]
         payload["model_used"] = f"{llm}/{model}"
         payload["params"] = {"temperature": 0}
+        await _emit(f"🤖 Using model: {llm}/{model}")
 
         # ── Stage 2 ──
         await _emit("Stage 2: atomic unit extraction (LLM)…")
