@@ -1,11 +1,15 @@
 # Active Context — Call Tracker
 
 ## Current Story
-- **Active epic:** EPIC-18 — Call Topics (v5) + Pass 1 Reliability Rework (code-complete, pending manual smoke test)
-- **Branch:** `epic-16-rag-rework` (EPIC-17 v5 and EPIC-18 reliability rework both shipped on this branch)
-- **Status:** Code-complete. Migration 034 applied. Awaiting Task 18 smoke test against project B.
-- **Last delivered:** Task 20 / STREAM 5 — migration script + runbook (`f755bdf`) — 2026-05-24
-- **Next:** User runs Task 18 smoke test (see migration runbook at `docs/project/config/2026-05-24-epic-18-migration-runbook.md`). Re-evaluate P1-RETRIEVAL (S2.4) gating if smoke shows <90% verdicts @ <75% confidence.
+- **Active epic:** EPIC-19 — Task-level Pass 1 redesign (to be brainstormed)
+- **Branch:** `epic-16-rag-rework`
+- **Status:** EPIC-18 shipped 2026-05-24. Task 18 smoke test on project 'a' call b (2026-05-25) exposed systemic confidence inflation from topic-level rarity/sanity penalty stack (18-30% confidence on semantically-correct merges). D5 gate triggered. Decision: skip the planned S2.4 P1-RETRIEVAL fallback; pivot to EPIC-19 task-level redesign instead.
+- **EPIC-18 smoke findings:** verdicts semantically correct on project 'a' (5 merges + 2 truly_new), but workflow forces manual review on all because S07/Meeting logistics fail rarity check (common-term topics), Risk model arch hit insufficient_verdict_citations. S2.2 canonical-match path never triggers in real usage because `topic_match_groups.project_topic_ids` is empty (project_matching is a passthrough). See `workflow/ERRORS.md` ERR-007 for the one real bug fixed mid-flight.
+- **Next:** Brainstorm EPIC-19 (task-level matching, deterministic pre-match → semantic for unmatched, derived topic verdict). See [[project_epic_19_task_level_redesign]] memory.
+
+## What EPIC-18 left behind that EPIC-19 inherits
+- ✅ Foundation kept: unified `project_topic_state` view (ADR-003), line-number citation pattern (ADR-004), V5-CORE structured registry, Pass 1 fixtures, verification-asymmetry UX, migration script
+- ❌ To be obsoleted in EPIC-19: `run_verify_new` (topic-level), `run_verify_canonical_match`, rarity check, sanity flag stack, `verify_new_topic.py` prompt
 
 ## Prior epic
 - **EPIC-17 / v5 pipeline:** shipped (11 commits, see git log)

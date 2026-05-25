@@ -1,5 +1,26 @@
 # Build Log — Call Tracker
 
+### 2026-05-25 — EPIC-18 Task 18 smoke test results / EPIC-19 decision
+
+**Smoke run on project 'a' / call b** (real follow-up calls, not same-transcript): v5 produced 7 candidate clusters. Pass 1 produced 6 should_be_merged_with + 1 truly_new verdicts — **semantically correct.** But confidence scores landed at 18-30% across the board, all flagged for manual review.
+
+**Root cause analysis** (data captured live):
+- S07 / Meeting logistics: sanity_flag=`citations_lack_rare_terms` (topics with common/code-like terms have NO rare terms; rarity check is mathematically incapable of passing) → 18%
+- Risk model architecture: sanity_flag=`insufficient_verdict_citations` (LLM provided 0 verdict-tagged citations) → 30%
+- All other merges hit some flavor of the penalty stack (0/2 cit verbatim, weak mechanical, etc.)
+
+**Architectural finding (deeper than the fixable issues):**
+- Pass 1's topic-level comparison + sanity-check stack is guilty-until-proven-innocent: every check that fails compounds a penalty. A correct merge with weak evidence lands at 18% because TOPIC-level evidence is structurally fuzzy.
+- S2.2 P1-BIDIRECTIONAL canonical-match path NEVER fires in real usage: `topic_match_groups.project_topic_ids` is always empty (project_matching is a passthrough; the table wasn't designed to receive v5's canonical info). v5 Stage 6 identifies canonical matches, but that info dies before reaching Pass 1.
+
+**D5 gate triggered.** Planned fallback was S2.4 P1-RETRIEVAL (topic-pair focused calls). User pivoted to EPIC-19 (task-level matching) instead — addresses the root cause rather than narrowing the broken paradigm.
+
+**EPIC-18 status:** shipped (21 commits, all code green). Foundations (unified data layer, line-number citations, V5-CORE structured registry, Pass 1 fixtures, asymmetry UX, migration script) carry into EPIC-19. The topic-level verify_new + canonical_match orchestration becomes obsolete in EPIC-19.
+
+**One real bug fixed mid-flight:** ERR-007 — `ingest_transcript()` shape mismatch (`lines` is `list[{idx, text}]`, was treated as dict). Fixed at commit `dcea73d`.
+
+---
+
 ### 2026-05-24 — EPIC-18: Call Topics (v5) + Pass 1 Reliability Rework (code-complete / pending manual smoke test)
 
 **Goal:** Make Pass 1 (verify_new) and v5 call_topics reliable on same-transcript regression test. Triggered by 2026-05-23 test that showed 6/6 citation failures, 1 LLM crash, 1 false-negative, and 1 mega-topic on identical input.
