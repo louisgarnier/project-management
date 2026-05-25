@@ -15,11 +15,12 @@ interface TaskCardProps {
   groupColor?: { bg: string; border: string; text: string } | null;  // committed group color
   matchHint?: 'exact' | 'partial' | null;
   onClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export function TaskCard({
   taskId, topicName, taskText, nextStep, owner, status, keyTerms,
-  isFocused, isSelected, groupColor, matchHint, onClick,
+  isFocused, isSelected, groupColor, matchHint, onClick, onContextMenu,
 }: TaskCardProps) {
   // Priority: focused > group > selected > matchHint > default
   let style: React.CSSProperties;
@@ -39,6 +40,7 @@ export function TaskCard({
   return (
     <div
       onClick={onClick}
+      onContextMenu={onContextMenu}
       style={{
         padding: 8, borderRadius: 6, cursor: 'pointer', marginBottom: 4,
         fontSize: 12, transition: 'border-color .12s, background .12s',

@@ -47,6 +47,13 @@ type FocusPos = {
   taskIndex: number;
 };
 
+type ContextMenuState = {
+  x: number;
+  y: number;
+  taskId: string;
+  side: 'existing' | 'candidate';
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onAdvance }: Props) {
@@ -64,6 +71,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
     topicIndex: 0,
     taskIndex: 0,
   });
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   // ── Match hints ──────────────────────────────────────────────────────────────
 
@@ -238,6 +246,69 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
     setSelectedExisting(new Set());
   }
 
+  // ── Context menu ─────────────────────────────────────────────────────────────
+
+  function handleContextMenu(e: React.MouseEvent, taskId: string, side: 'existing' | 'candidate') {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, taskId, side });
+  }
+
+  function addTaskToGroup(taskId: string, side: 'existing' | 'candidate', targetBindingGroupIdx: number) {
+    // Remove the task from any group it is already in
+    const newGroups = groups.map(g => {
+      if (g.kind !== 'binding') return g;
+      return {
+        ...g,
+        call_task_refs: g.call_task_refs.filter(r => r.task_id !== taskId),
+        project_task_refs: g.project_task_refs.filter(r => r.task_id !== taskId),
+      };
+    });
+    // Find the target binding group by binding-only index
+    let bindingCounter = -1;
+    const targetGlobalIdx = newGroups.findIndex(g => {
+      if (g.kind !== 'binding') return false;
+      bindingCounter++;
+      return bindingCounter === targetBindingGroupIdx;
+    });
+    if (targetGlobalIdx === -1) return;
+    const ref = side === 'existing' ? findExistingRef(taskId) : findCandidateRef(taskId);
+    if (!ref) return;
+    const target = { ...newGroups[targetGlobalIdx] };
+    if (side === 'existing') {
+      target.project_task_refs = [...target.project_task_refs, ref];
+    } else {
+      target.call_task_refs = [...target.call_task_refs, ref];
+    }
+    newGroups[targetGlobalIdx] = target;
+    // Drop any binding groups that became empty after removal
+    const cleaned = newGroups.filter(g =>
+      g.kind !== 'binding' ||
+      g.call_task_refs.length > 0 ||
+      g.project_task_refs.length > 0
+    );
+    setGroups(cleaned);
+    setContextMenu(null);
+  }
+
+  function removeTaskFromCurrentGroup(taskId: string) {
+    const newGroups = groups.map(g => {
+      if (g.kind !== 'binding') return g;
+      return {
+        ...g,
+        call_task_refs: g.call_task_refs.filter(r => r.task_id !== taskId),
+        project_task_refs: g.project_task_refs.filter(r => r.task_id !== taskId),
+      };
+    });
+    // Drop emptied binding groups
+    const cleaned = newGroups.filter(g =>
+      g.kind !== 'binding' ||
+      g.call_task_refs.length > 0 ||
+      g.project_task_refs.length > 0
+    );
+    setGroups(cleaned);
+    setContextMenu(null);
+  }
+
   // ── Focus navigation helpers ─────────────────────────────────────────────────
 
   function getColumnTopics(
@@ -339,6 +410,26 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCandidates, selectedExisting, focusPos, showCrossTopicModal, existingTopics, candidateTopics, groups]);
 
+  // ── Context menu close on click-outside / Escape ─────────────────────────────
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = () => setContextMenu(null);
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    // Slight delay so the menu's own click doesn't immediately close it
+    const t = setTimeout(() => {
+      window.addEventListener('click', handleClick);
+      window.addEventListener('keydown', handleEsc);
+    }, 50);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('click', handleClick);
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, [contextMenu]);
+
   // ── Save ─────────────────────────────────────────────────────────────────────
 
   async function save() {
@@ -368,6 +459,97 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
 
   return (
     <div className="flex gap-4 p-4">
+      {contextMenu && (() => {
+        const bindingGroups = groups.filter(g => g.kind === 'binding');
+        const currentIdx = getGroupIndexForTask(contextMenu.taskId);
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              top: contextMenu.y,
+              left: contextMenu.x,
+              background: 'white',
+              border: '1px solid #d1d5db',
+              borderRadius: 6,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              zIndex: 100,
+              minWidth: 200,
+              padding: 4,
+              fontSize: 12,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {currentIdx !== null && (
+              <div style={{
+                fontSize: 10, color: '#6b7280', padding: '6px 8px',
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+                borderBottom: '1px solid #e5e7eb',
+              }}>
+                Currently in Group {currentIdx + 1}
+              </div>
+            )}
+            {bindingGroups.length === 0 ? (
+              <div style={{ padding: '8px 8px', color: '#9ca3af' }}>
+                No groups yet — link some tasks first
+              </div>
+            ) : (
+              bindingGroups.map((g, idx) => {
+                if (idx === currentIdx) return null;
+                const col = groupColor(idx);
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => addTaskToGroup(contextMenu.taskId, contextMenu.side, idx)}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '6px 8px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      borderRadius: 4,
+                      color: col.text,
+                      fontSize: 12,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = col.bg)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    {currentIdx !== null ? 'Move to' : 'Add to'} Group {idx + 1}
+                    <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 8 }}>
+                      ({g.call_task_refs.length} ↔ {g.project_task_refs.length})
+                    </span>
+                  </button>
+                );
+              })
+            )}
+            {currentIdx !== null && (
+              <button
+                onClick={() => removeTaskFromCurrentGroup(contextMenu.taskId)}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '6px 8px',
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  borderRadius: 4,
+                  color: '#ae2a19',
+                  fontSize: 12,
+                  borderTop: '1px solid #e5e7eb',
+                  marginTop: 4,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#fee2e2')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                Remove from current group
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
       {showCrossTopicModal && pendingRefs && (
         <CrossTopicBindingModal
           candidateTopicName={showCrossTopicModal.candidate}
@@ -412,6 +594,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
                   isSelected={selectedExisting.has(task.task_id)}
                   groupColor={groupIdx !== null ? groupColor(groupIdx) : null}
                   onClick={() => toggleExisting(task.task_id)}
+                  onContextMenu={(e) => handleContextMenu(e, task.task_id, 'existing')}
                 />
               );
             })}
@@ -441,6 +624,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
                   groupColor={groupIdx !== null ? groupColor(groupIdx) : null}
                   matchHint={matchHints.get(task.task_id)}
                   onClick={() => toggleCandidate(task.task_id)}
+                  onContextMenu={(e) => handleContextMenu(e, task.task_id, 'candidate')}
                 />
               );
             })}
@@ -559,7 +743,8 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
           {saving ? 'Saving…' : 'Save matches → Project updates'}
         </button>
         <div className="text-xs text-gray-500 mt-2">
-          Keyboard: j/k = up/down, h/l = column, Enter = toggle, space = link, n = mark new, esc = clear
+          Keyboard: j/k = up/down, h/l = column, Enter = toggle, space = link, n = mark new, esc = clear<br/>
+          Right-click any task to add/move/remove to an existing group
         </div>
       </div>
     </div>
