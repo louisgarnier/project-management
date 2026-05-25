@@ -256,59 +256,6 @@ def lexical_precheck(
 # ── Post-LLM mechanical checks (defense-in-depth) ─────────────────────────────
 
 
-def check_citation_rarity(
-    citations: list[dict], candidate: dict, idf: dict[str, float],
-    *, rare_idf_threshold: float = 1.0,
-) -> list[str]:
-    """Each verdict citation's quote must contain at least one RARE token
-    from the candidate's effective token set (key_terms + name tokens).
-    Generic platform terms (low IDF) get filtered out."""
-    cand_tokens = effective_token_set(candidate)
-    rare = {t for t in cand_tokens if idf.get(t, 1.0) >= rare_idf_threshold}
-    if not rare:
-        return []
-    failures: list[str] = []
-    for i, c in enumerate(citations):
-        if (c.get("for") or "verdict") != "verdict":
-            continue
-        quote = (c.get("quote") or "")
-        if not any(rt in quote.lower() for rt in rare):
-            preview = quote if len(quote) <= 240 else quote[:240] + "…"
-            failures.append(
-                f"citation #{i}: quote contains no rare candidate term — evidence too weak (only generic shared terms) — \"{preview}\""
-            )
-    return failures
-
-
-def check_reasoning_references_tasks(
-    reasoning: str, candidate_tasks: list[dict], target_tasks: list[dict],
-) -> list[str]:
-    """merge_reasoning must reference at least one specific task from candidate AND target.
-    Wishy-washy reasoning ('both are about X') gets caught here."""
-    failures: list[str] = []
-    reasoning_lower = (reasoning or "").lower()
-    if not reasoning_lower.strip():
-        return ["merge_reasoning is empty"]
-
-    def task_significant_words(tasks: list[dict]) -> set[str]:
-        out: set[str] = set()
-        for t in tasks or []:
-            for field in ("task", "next_step"):
-                text = (t.get(field) or "").lower()
-                for w in _re.findall(r"\b[a-z][a-z0-9_-]{3,}\b", text):
-                    if w not in _STOPWORDS:
-                        out.add(w)
-        return out
-
-    cand_words = task_significant_words(candidate_tasks)
-    target_words = task_significant_words(target_tasks)
-    has_cand_ref = any(w in reasoning_lower for w in cand_words) if cand_words else True
-    has_target_ref = any(w in reasoning_lower for w in target_words) if target_words else True
-    if not has_cand_ref:
-        failures.append("merge_reasoning doesn't reference any specific candidate task")
-    if not has_target_ref:
-        failures.append("merge_reasoning doesn't reference any specific target task")
-    return failures
 
 
 def compute_confidence(result: dict) -> dict:
@@ -358,17 +305,6 @@ def compute_confidence(result: dict) -> dict:
             "running": round(new_running, 1),
         })
         running = new_running
-
-    # ── Sanity flag penalty ──
-    sanity_flag = result.get("sanity_flag")
-    if sanity_flag:
-        running -= 15
-        rationale.append({
-            "step": f"Sanity flag: {sanity_flag}",
-            "op": "− penalty",
-            "value": 15,
-            "running": round(running, 1),
-        })
 
     # ── Pre-filter target score nudge ──
     matched_id = result.get("matched_topic_id")
@@ -422,7 +358,6 @@ def compute_confidence(result: dict) -> dict:
         verdict == "truly_new"
         and pct >= 75
         and not needs_review
-        and not sanity_flag
     )
     return {
         "pct": pct,
@@ -622,61 +557,25 @@ async def run_verify_new(
             await _log(f"      [{name}] all {len(cits)} quote(s) found in the transcripts ✓")
             final = {**result, "needs_manual_review": False}
 
-            # ── Post-LLM mechanical defense-in-depth ──
-            # Order of checks (any fail → downgrade to needs_manual_review):
-            #   (a) ≥2 verdict-tagged citations for merge
-            #   (b) Each verdict citation contains a RARE candidate key_term
-            #   (c) merge_reasoning references both a candidate and a target task
-            #   (d) Sanity-check LLM verdict against mechanical scoring
+            # EPIC-19: simplified post-LLM check.
+            # Only the ≥2 verdict-citation count check is retained.
+            # Rarity + reasoning-anchor + sanity-flag stack removed (was producing
+            # false-positive penalties on topics with common/code-like terms; see
+            # EPIC-19 spec Section 1).
             if final.get("verdict") == "should_be_merged_with":
                 verdict_cits = [c for c in cits if (c.get("for") or "verdict") == "verdict"]
-
-                # (a) ≥2 citations
                 if len(verdict_cits) < 2:
                     final["needs_manual_review"] = True
-                    final["sanity_flag"] = "insufficient_verdict_citations"
                     final.setdefault("failed_citations", []).append(
                         f"merge verdict requires ≥2 verdict citations, got {len(verdict_cits)}"
                     )
-                    await _log(f"      [{name}] ⚠ merge has {len(verdict_cits)} verdict citation(s) (need ≥2) — downgrading")
+                    await _log(f"      [{name}] ⚠ merge has {len(verdict_cits)} verdict citation(s) (need ≥2) — needs review")
 
-                # (b) Citation rarity check (each verdict citation must contain a rare candidate term)
-                if not final.get("needs_manual_review") and precheck:
-                    idf = precheck.get("_idf_for_rarity_check") or {}
-                    rarity_fails = check_citation_rarity(verdict_cits, candidate, idf)
-                    if rarity_fails:
-                        final["needs_manual_review"] = True
-                        final["sanity_flag"] = "citations_lack_rare_terms"
-                        final.setdefault("failed_citations", []).extend(rarity_fails)
-                        await _log(f"      [{name}] ⚠ citation rarity check failed: {len(rarity_fails)} citation(s) quote only generic terms — downgrading")
-
-                # (c) Reasoning must reference both sides' tasks (no wishy-washy "both are about X")
-                if not final.get("needs_manual_review") and precheck:
-                    target_id = final.get("matched_topic_id")
-                    target = next((p for p in project_topics if p.get("topic_id") == target_id), None)
-                    if target:
-                        reasoning_fails = check_reasoning_references_tasks(
-                            final.get("merge_reasoning") or "",
-                            candidate.get("tasks") or [],
-                            target.get("tasks") or [],
-                        )
-                        if reasoning_fails:
-                            final["needs_manual_review"] = True
-                            final["sanity_flag"] = "reasoning_lacks_task_anchors"
-                            final.setdefault("failed_citations", []).extend(reasoning_fails)
-                            await _log(f"      [{name}] ⚠ merge_reasoning is too vague (doesn't name specific tasks): {'; '.join(reasoning_fails)} — downgrading")
-
-            # (d) Sanity flag — LLM vs mechanical scoring (only set if no earlier flag)
+            # Strip the cached _idf_for_rarity_check from the persisted precheck
+            # so it doesn't bloat the cache JSONB unnecessarily.
             if precheck is not None:
-                # Strip the cached _idf_for_rarity_check from the persisted precheck
-                # so it doesn't bloat the cache JSONB unnecessarily.
                 precheck_persisted = {k: v for k, v in precheck.items() if not k.startswith("_")}
                 final["lexical_precheck"] = precheck_persisted
-                if not final.get("sanity_flag"):
-                    flag = sanity_check_llm_vs_lexical(final, precheck)
-                    if flag:
-                        final["sanity_flag"] = flag
-                        await _log(f"      [{name}] ⚠ sanity flag: {flag} — LLM verdict disagrees with mechanical scoring")
 
             # Compute + persist + log the confidence breakdown
             final["confidence"] = compute_confidence(final)
