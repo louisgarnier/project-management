@@ -877,6 +877,7 @@ async def _run_verify_not_discussed_background(call_id: str) -> None:
     import datetime as _dt2
     from backend.services.topics_service import _resolve_workflow_llm_for_category, _get_previous_topics
     from backend.services.topic_verification import ProgressLogger
+    from backend.services.call_topics_v5.stage_0_ingest import ingest_transcript
     db = get_client()
     plog = ProgressLogger(db, call_id, "verify_not_discussed_cache")
     try:
@@ -886,8 +887,9 @@ async def _run_verify_not_discussed_background(call_id: str) -> None:
         if not call_row:
             return
         project_id = call_row[0]["project_id"]
-        transcript = call_row[0].get("transcript") or ""
-        await plog.log(f"Loaded transcript for current call ({len(transcript)} chars)")
+        transcript_raw = call_row[0].get("transcript") or ""
+        ingested = ingest_transcript(transcript_raw)
+        await plog.log(f"Loaded transcript for current call ({ingested['line_count']} lines)")
 
         groups = db.table("topic_match_groups").select("project_topic_ids").eq("call_id", call_id).execute().data
         matched_ids = {pid for g in groups for pid in (g.get("project_topic_ids") or [])}
@@ -902,20 +904,20 @@ async def _run_verify_not_discussed_background(call_id: str) -> None:
         async def _one(t):
             await plog.log(f"  → Topic \"{t['name']}\": scanning current call transcript…")
             r = await _run_verify_not_discussed(
-                {"name": t["name"], "key_terms": t.get("key_terms") or []},
-                transcript, call_id=call_id, llm=llm, model=model, log_fn=plog.log,
+                {"name": t["name"], "tasks": t.get("tasks") or []},
+                ingested, call_id=call_id, llm=llm, model=model, log_fn=plog.log,
             )
             verdict = (r or {}).get("verdict", "?")
             need_review = (r or {}).get("needs_manual_review")
             if need_review:
                 fails = (r or {}).get("failed_citations") or []
                 await plog.log(f"  ⚠ Topic \"{t['name']}\": needs manual review — citation issue: {'; '.join(fails[:2])}")
-            elif verdict == "not_discussed":
+            elif verdict == "confirmed_not_discussed":
                 await plog.log(f"  ✓ Topic \"{t['name']}\": confirmed NOT discussed in this call")
-            elif verdict == "actually_discussed":
+            elif verdict == "suggest_discussed_at":
                 cit = (r or {}).get("citation") or {}
-                q = (cit.get("quote") or "")[:80]
-                await plog.log(f"  ↻ Topic \"{t['name']}\": actually mentioned (\"{q}…\") → moving to Merged section")
+                ev = (cit.get("evidence_lines") or [None])[0]
+                await plog.log(f"  ↻ Topic \"{t['name']}\": actually mentioned (line ~{ev}) → moving to Merged section")
             else:
                 await plog.log(f"  ✓ Topic \"{t['name']}\": {verdict}")
             return r

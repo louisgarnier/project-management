@@ -173,31 +173,71 @@ def test_resolve_workflow_llm_uses_project_default():
 
 
 def test_run_verify_not_discussed_not_found(monkeypatch):
-    """Happy path: topic not mentioned, citation=null."""
-    transcript = "We only discussed migration timeline today."
-    llm_result = {"verdict": "not_discussed", "citation": None}
+    """EPIC-19: Happy path — topic not mentioned, citation=null."""
+    ingested = _ingested("We only discussed migration timeline today.")
+    llm_result = {"verdict": "confirmed_not_discussed", "reasoning": "topic not mentioned", "citation": None}
     monkeypatch.setattr(tv, "_call_llm", _llm_returns(llm_result))
     out = asyncio.run(tv.run_verify_not_discussed(
-        {"name": "Performance testing", "key_terms": ["perf"]},
-        transcript, call_id="call-3", llm="claude", model=None
+        {"name": "Performance testing", "tasks": []},
+        ingested, call_id="call-3", llm="claude", model=None
     ))
-    assert out["verdict"] == "not_discussed"
+    assert out["verdict"] == "confirmed_not_discussed"
     assert out["citation"] is None
     assert out["needs_manual_review"] is False
 
 
 def test_run_verify_not_discussed_found(monkeypatch):
-    transcript = "Hassan said the perf test passed."
-    llm_result = {"verdict": "actually_discussed",
-                  "citation": {"call_id": "call-3", "lines": "1-1", "quote": "the perf test passed"}}
+    """EPIC-19: LLM finds evidence at line range — citation uses evidence_lines."""
+    ingested = _ingested("Hassan said the perf test passed.")
+    llm_result = {
+        "verdict": "suggest_discussed_at",
+        "reasoning": "perf test was mentioned",
+        "citation": {"call_id": "call-3", "evidence_lines": [1, 1]},
+    }
     monkeypatch.setattr(tv, "_call_llm", _llm_returns(llm_result))
     out = asyncio.run(tv.run_verify_not_discussed(
-        {"name": "Performance testing", "key_terms": ["perf"]},
-        transcript, call_id="call-3", llm="claude", model=None
+        {"name": "Performance testing", "tasks": [{"task": "Run perf test"}]},
+        ingested, call_id="call-3", llm="claude", model=None
     ))
-    assert out["verdict"] == "actually_discussed"
-    assert out["citation"]["quote"] == "the perf test passed"
+    assert out["verdict"] == "suggest_discussed_at"
+    assert out["citation"]["evidence_lines"] == [1, 1]
     assert out["needs_manual_review"] is False
+
+
+def test_run_verify_not_discussed_uses_line_range(monkeypatch):
+    """EPIC-19: Pass 2 cites by line range, verified via bounds check."""
+    ingested = _ingested("Line one.\nLine two.\nLine three.")
+    llm_result = {
+        "verdict": "confirmed_not_discussed",
+        "reasoning": "topic not mentioned in current call",
+        "citation": None,
+    }
+    monkeypatch.setattr(tv, "_call_llm", _llm_returns(llm_result))
+    out = asyncio.run(tv.run_verify_not_discussed(
+        topic={"name": "ARM", "tasks": [{"task": "Implement ARM"}]},
+        ingested_transcript=ingested,
+        call_id="c-1", llm="x", model="y",
+    ))
+    assert out["verdict"] == "confirmed_not_discussed"
+    assert out["needs_manual_review"] is False
+
+
+def test_run_verify_not_discussed_bad_evidence_lines(monkeypatch):
+    """EPIC-19: LLM cites out-of-bounds evidence_lines — citation verify fails, needs_manual_review=True."""
+    ingested = _ingested("Short transcript.")
+    llm_result = {
+        "verdict": "suggest_discussed_at",
+        "reasoning": "found something",
+        "citation": {"call_id": "c-1", "evidence_lines": [1, 99]},  # line 99 doesn't exist
+    }
+    monkeypatch.setattr(tv, "_call_llm", _llm_returns(llm_result))
+    out = asyncio.run(tv.run_verify_not_discussed(
+        {"name": "Test topic", "tasks": []},
+        ingested, call_id="c-1", llm="x", model="y",
+    ))
+    assert out["verdict"] == "suggest_discussed_at"
+    assert out["needs_manual_review"] is True
+    assert "failed_citations" in out
 
 
 def test_run_extract_topic_updates_returns_snapshot_and_trail(monkeypatch):

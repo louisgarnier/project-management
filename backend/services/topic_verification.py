@@ -625,24 +625,16 @@ async def run_verify_new(
 
 
 
-def _build_verify_not_discussed_prompt(topic: dict, transcript: str, call_id: str) -> str:
-    anchor = json.dumps({"name": topic.get("name"), "key_terms": topic.get("key_terms", [])}, indent=2)
-    return (
-        f"{VERIFY_NOT_DISCUSSED_PROMPT}\n\n"
-        f"TOPIC ANCHOR:\n{anchor}\n\n"
-        f"TRANSCRIPT (call_id={call_id}):\n{transcript}"
-    )
-
-
 async def run_verify_not_discussed(
-    topic: dict, transcript: str, *, call_id: str, llm: str, model: str | None, log_fn=None,
+    topic: dict, ingested_transcript: dict, *,
+    call_id: str, llm: str, model: str | None, log_fn=None,
 ) -> dict:
-    """Pass ② — verify a topic wasn't discussed in the supplied transcript.
+    """EPIC-19: Pass 2 — verify a topic wasn't discussed in the supplied transcript.
 
-    Returns the LLM verdict with `needs_manual_review` set to True if citation
-    verification failed on both attempts (only relevant when verdict='actually_discussed').
-
-    log_fn (optional): async callable(str) — emits per-attempt progress.
+    Args:
+        topic: existing project topic with name + tasks anchor
+        ingested_transcript: v5 Stage 0 ingest output dict {line_count, lines}
+        call_id: id of the current call (used in citation call_id)
     """
     name = topic.get("name", "?")
 
@@ -650,40 +642,39 @@ async def run_verify_not_discussed(
         if log_fn:
             await log_fn(msg)
 
-    prompt = _build_verify_not_discussed_prompt(topic, transcript, call_id)
-    result: dict = {}
-    failures: list[str] = []
-
-    for attempt in (1, 2):
-        await _log(f"      [{name}] attempt {attempt}: asking LLM to scan the current call transcript for any mention")
-        result = await _call_llm(prompt, llm, model=model)
-        if not isinstance(result, dict):
-            logger.warning("⚠️ [verify_not_discussed] LLM returned non-dict on attempt %d", attempt)
-            await _log(f"      [{name}] attempt {attempt}: LLM response invalid — retrying")
-            failures = ["LLM returned non-dict"]
-            continue
-        citation = result.get("citation")
-        cits = [citation] if citation else []
-        for c in cits:
-            if not c.get("lines"):
-                computed = find_quote_lines(c.get("quote", ""), transcript)
-                if computed:
-                    c["lines"] = computed
-        if citation:
-            await _log(f"      [{name}] attempt {attempt}: LLM claims it found a mention — checking the quote is actually in the transcript")
-        else:
-            await _log(f"      [{name}] attempt {attempt}: LLM confirmed no mention in the transcript")
-        ok, failures = verify_citations(cits, {call_id: transcript})
-        if ok:
-            return {**result, "needs_manual_review": False}
-        logger.warning("⚠️ [verify_not_discussed] citation verify failed on attempt %d: %s", attempt, failures)
-        await _log(f"      [{name}] attempt {attempt}: the quote LLM cited is NOT in the transcript — retrying")
-        prompt = (
-            f"{prompt}\n\nPREVIOUS ATTEMPT FAILED citation verification:\n"
-            f"{json.dumps(failures, indent=2)}\nRedo with a verbatim quote."
-        )
-
-    return {**result, "needs_manual_review": True, "failed_citations": failures}
+    transcript_block = (
+        f"--- CALL {call_id} ({ingested_transcript['line_count']} lines) ---\n"
+        + "\n".join(f"{ln['idx']}  {ln['text']}" for ln in ingested_transcript.get("lines", []))
+    )
+    anchor = json.dumps({
+        "topic_name": topic.get("name"),
+        "tasks": [
+            {"task": t.get("task"), "next_step": t.get("next_step"),
+             "key_terms": t.get("key_terms", [])}
+            for t in (topic.get("tasks") or [])
+        ],
+    }, indent=2)
+    prompt = (
+        f"{VERIFY_NOT_DISCUSSED_PROMPT}\n\n"
+        f"TOPIC ANCHOR (existing project topic, from previous call's project_updates):\n{anchor}\n\n"
+        f"CURRENT CALL TRANSCRIPT (line-numbered):\n{transcript_block}"
+    )
+    await _log(f"      [{name}] asking LLM to scan current call for any mention")
+    result = await _call_llm(prompt, llm, model=model)
+    if not isinstance(result, dict):
+        return {
+            "verdict": "confirmed_not_discussed",
+            "needs_manual_review": True,
+            "reasoning": "LLM non-dict response — defaulting to user's decision",
+            "citation": None,
+        }
+    cit = result.get("citation")
+    cits = [cit] if cit else []
+    ok, failures = verify_evidence_lines(cits, {call_id: ingested_transcript})
+    result["needs_manual_review"] = not ok
+    if not ok:
+        result["failed_citations"] = failures
+    return result
 
 
 def _build_extract_updates_prompt(topic_anchor: dict, transcripts: dict[str, str]) -> str:
