@@ -711,53 +711,72 @@ def _collect_citations(snapshot: dict, trail: list[dict]) -> list[dict]:
     return out
 
 
-async def run_extract_topic_updates(
-    topic_anchor: dict, transcripts: dict[str, str], *, llm: str, model: str | None, log_fn=None,
+async def run_synthesize_merged_topic(
+    topic_name: str,
+    previous_update: dict,
+    new_bound_tasks: list[dict],
+    ingested_transcripts: dict[str, dict],
+    *,
+    llm: str,
+    model: str | None,
+    log_fn=None,
 ) -> dict:
-    """Pass ③ — full re-extraction of a topic from raw transcripts.
+    """EPIC-19: Pass 3 — synthesize one merged topic's updated state.
 
-    Returns the LLM output augmented with `needs_manual_review=True` if any
-    citation in the snapshot or evidence_trail couldn't be verified after one retry.
+    Args:
+        topic_name: the existing project topic's name (anchor)
+        previous_update: the topic's last topic_updates row (full state)
+        new_bound_tasks: candidate tasks from this call that bound to this topic
+        ingested_transcripts: {call_id: ingest_dict} for past + current calls
 
-    log_fn (optional): async callable(str) — emits per-attempt progress.
+    Returns the synthesized topic snapshot dict + needs_manual_review flag.
     """
-    name = topic_anchor.get("name", "?")
+    from backend.prompts.extract_topic_updates import EXTRACT_TOPIC_UPDATES_PROMPT
 
     async def _log(msg: str) -> None:
         if log_fn:
             await log_fn(msg)
 
-    prompt = _build_extract_updates_prompt(topic_anchor, transcripts)
-    result: dict = {}
-    failures: list[str] = []
+    transcripts_block = "\n\n".join(
+        f"--- CALL {cid} ({ing['line_count']} lines) ---\n"
+        + "\n".join(f"{ln['idx']}  {ln['text']}" for ln in ing.get("lines", []))
+        for cid, ing in ingested_transcripts.items()
+    )
+    inputs = {
+        "topic_name": topic_name,
+        "previous_update_state": previous_update,
+        "new_bound_tasks_this_call": new_bound_tasks,
+    }
+    prompt = (
+        f"{EXTRACT_TOPIC_UPDATES_PROMPT}\n\n"
+        f"INPUTS (structured JSON):\n{json.dumps(inputs, indent=2)}\n\n"
+        f"TRANSCRIPTS (line-numbered, chronological):\n{transcripts_block}"
+    )
+    await _log(f"      [{topic_name}] synthesizing merged update from {len(new_bound_tasks)} new task(s) + previous state")
+    result = await _call_llm(prompt, llm, model=model)
+    if not isinstance(result, dict):
+        return {
+            "topic_name": topic_name, "tasks": [], "summary": "",
+            "status": "open", "evidence_trail": [],
+            "needs_manual_review": True,
+            "failed_citations": ["LLM returned non-dict response"],
+        }
 
-    for attempt in (1, 2):
-        await _log(f"      [{name}] attempt {attempt}: asking LLM to re-extract from {len(transcripts)} transcript(s) (chronological)")
-        result = await _call_llm(prompt, llm, model=model)
-        if not isinstance(result, dict):
-            logger.warning("⚠️ [extract_updates] LLM returned non-dict on attempt %d", attempt)
-            await _log(f"      [{name}] attempt {attempt}: LLM response invalid — retrying")
-            failures = ["LLM returned non-dict"]
-            continue
-        snapshot = result.get("extracted_snapshot") or {}
-        trail = result.get("evidence_trail") or []
-        all_cits = _collect_citations(snapshot, trail)
-        for c in all_cits:
-            if not c.get("lines"):
-                body = transcripts.get(c.get("call_id"), "")
-                computed = find_quote_lines(c.get("quote", ""), body)
-                if computed:
-                    c["lines"] = computed
-        await _log(f"      [{name}] attempt {attempt}: LLM responded with snapshot + {len(all_cits)} supporting quote(s) — checking each is actually in the transcripts")
-        ok, failures = verify_citations(all_cits, transcripts)
-        if ok:
-            await _log(f"      [{name}] all {len(all_cits)} quote(s) found in the transcripts ✓")
-            return {**result, "needs_manual_review": False}
-        logger.warning("⚠️ [extract_updates] citation verify failed on attempt %d: %s", attempt, failures)
-        await _log(f"      [{name}] attempt {attempt}: {len(failures)} of {len(all_cits)} quote(s) NOT found in the transcripts — retrying")
-        prompt = (
-            f"{prompt}\n\nPREVIOUS ATTEMPT FAILED citation verification:\n"
-            f"{json.dumps(failures, indent=2)}\nRedo with verbatim quotes."
-        )
+    # Collect all citations for verification
+    all_cits = []
+    for t in result.get("tasks") or []:
+        if t.get("primary_citation"):
+            all_cits.append(t["primary_citation"])
+        all_cits.extend(t.get("supporting_citations") or [])
+    for e in result.get("evidence_trail") or []:
+        if e.get("evidence_lines") and e.get("call_id"):
+            all_cits.append({"call_id": e["call_id"], "evidence_lines": e["evidence_lines"]})
 
-    return {**result, "needs_manual_review": True, "failed_citations": failures}
+    ok, failures = verify_evidence_lines(all_cits, ingested_transcripts)
+    result["needs_manual_review"] = not ok
+    if not ok:
+        result["failed_citations"] = failures
+        await _log(f"      [{topic_name}] {len(failures)} citation(s) failed bounds check — flagged for review")
+    else:
+        await _log(f"      [{topic_name}] ✓ all {len(all_cits)} citation(s) verified")
+    return result

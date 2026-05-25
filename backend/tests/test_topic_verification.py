@@ -240,43 +240,40 @@ def test_run_verify_not_discussed_bad_evidence_lines(monkeypatch):
     assert "failed_citations" in out
 
 
-def test_run_extract_topic_updates_returns_snapshot_and_trail(monkeypatch):
-    """Pass ③ returns extracted_snapshot + evidence_trail with verified citations."""
-    transcripts = {
-        "call-1": "Hassan mentioned MC Mac issue first.",
-        "call-2": "Test the boost flag next.",
+def test_run_synthesize_merged_topic_verified_citations(monkeypatch):
+    """EPIC-19 Pass 3 synthesizes topic state; all citations verified → needs_manual_review=False."""
+    ingested_transcripts = {
+        "call-1": _ingested("Hassan mentioned MC Mac issue first."),
+        "call-2": _ingested("Test the boost flag next."),
     }
-    topic_anchor = {"name": "MC Mac memory issue", "key_terms": ["MC Mac"]}
     llm_result = {
-        "extracted_snapshot": {
-            "summary": "MC Mac memory issue under investigation.",
-            "status": "in_progress",
-            "tasks": [
-                {"task_id": None, "task": "Test boost flag", "next_step": "",
-                 "owner": "", "status": "open",
-                 "primary_citation": {"call_id": "call-2", "lines": "1-1",
-                                       "quote": "Test the boost flag next"},
-                 "supporting_citations": []}
-            ],
-            "open_questions": [],
-            "decisions": [],
-        },
+        "topic_name": "MC Mac memory issue",
+        "summary": "MC Mac memory issue under investigation.",
+        "status": "in_progress",
+        "tasks": [
+            {"task_id": "pt-1", "task": "Test boost flag", "next_step": "",
+             "owner": "", "status": "open",
+             "key_terms": ["MC Mac"],
+             "open_questions": [], "decisions": [],
+             "primary_citation": {"call_id": "call-2", "evidence_lines": [1, 1]},
+             "supporting_citations": []}
+        ],
         "evidence_trail": [
-            {"call_id": "call-1",
-             "citation": {"call_id": "call-1", "lines": "1-1",
-                          "quote": "MC Mac issue first"},
-             "action_label": "first raised"},
-            {"call_id": "call-2",
-             "citation": {"call_id": "call-2", "lines": "1-1",
-                          "quote": "Test the boost flag next"},
-             "action_label": "task added"},
+            {"call_id": "call-1", "evidence_lines": [1, 1], "action_label": "first raised"},
+            {"call_id": "call-2", "evidence_lines": [1, 1], "action_label": "task added"},
         ],
     }
     monkeypatch.setattr(tv, "_call_llm", _llm_returns(llm_result))
 
-    out = asyncio.run(tv.run_extract_topic_updates(topic_anchor, transcripts, llm="claude", model=None))
+    out = asyncio.run(tv.run_synthesize_merged_topic(
+        topic_name="MC Mac memory issue",
+        previous_update={"tasks": [], "summary": "", "status": "open"},
+        new_bound_tasks=[{"task_id": "ct-1", "task": "Test boost flag"}],
+        ingested_transcripts=ingested_transcripts,
+        llm="claude", model=None,
+    ))
     assert out["needs_manual_review"] is False
-    assert len(out["extracted_snapshot"]["tasks"]) == 1
+    assert len(out["tasks"]) == 1
     assert len(out["evidence_trail"]) == 2
 
 
@@ -396,3 +393,50 @@ def test_compute_confidence_truly_new_with_review_flag_not_eligible():
     from backend.services.topic_verification import compute_confidence
     out = compute_confidence({"verdict": "truly_new", "needs_manual_review": True})
     assert out["auto_accept_eligible"] is False
+
+
+# ── EPIC-19: Pass 3 synthesis ────────────────────────────────────────────────
+
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_run_synthesize_merged_topic_returns_snapshot(monkeypatch):
+    """EPIC-19: Pass 3 synthesizes one topic from bound tasks + history."""
+    from backend.services.topic_verification import run_synthesize_merged_topic
+    async def fake_llm(*a, **kw):
+        return {
+            "topic_name": "ARM",
+            "summary": "Account aggregation risk modeling continuing work.",
+            "status": "in_progress",
+            "tasks": [
+                {"task_id": "pt-1", "task": "Investigate Monte Carlo memory issue",
+                 "next_step": "Run profiler on the failing job",
+                 "owner": "Mark", "status": "in_progress",
+                 "key_terms": ["Monte Carlo", "memory"],
+                 "open_questions": [], "decisions": [],
+                 "primary_citation": {"call_id": "c-2", "evidence_lines": [10, 15]},
+                 "supporting_citations": []}
+            ],
+            "evidence_trail": [
+                {"call_id": "c-1", "evidence_lines": [5, 8], "action_label": "task added"},
+                {"call_id": "c-2", "evidence_lines": [10, 15], "action_label": "next step added"},
+            ],
+        }
+    monkeypatch.setattr("backend.services.topic_verification._call_llm", fake_llm)
+    out = await run_synthesize_merged_topic(
+        topic_name="ARM",
+        previous_update={"tasks": [{"task_id": "pt-1", "task": "Investigate Monte Carlo memory issue"}]},
+        new_bound_tasks=[{"task_id": "ct-1", "task": "Run profiler on failing job"}],
+        ingested_transcripts={
+            "c-1": {"line_count": 20, "lines": [{"idx": f"{i:04d}", "text": f"line {i}"} for i in range(1, 21)]},
+            "c-2": {"line_count": 20, "lines": [{"idx": f"{i:04d}", "text": f"line {i}"} for i in range(1, 21)]},
+        },
+        llm="x", model="y",
+    )
+    assert out["topic_name"] == "ARM"
+    assert out["status"] == "in_progress"
+    assert len(out["tasks"]) == 1
+    assert out["tasks"][0]["task_id"] == "pt-1"
+    assert out["needs_manual_review"] is False

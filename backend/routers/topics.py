@@ -958,96 +958,107 @@ async def verify_not_discussed(call_id: str, background_tasks: BackgroundTasks):
 # --------------------------------------------------------------------------- #
 
 
-from backend.services.topic_verification import run_extract_topic_updates as _run_extract
-
-
 async def _run_extract_updates_background(call_id: str) -> None:
-    """Pass ③ — full re-extraction for every merged topic (incl. ones migrated by Pass ① + ②)."""
-    import asyncio
-    import datetime as _dt3
+    """EPIC-19 Pass 3 — synthesize merged topic states from bound tasks."""
+    from backend.services.task_match_persistence import load_task_match_groups
+    from backend.services.topic_verification import run_synthesize_merged_topic
+    from backend.services.call_topics_v5.stage_0_ingest import ingest_transcript
+    from backend.services.project_topic_state import get_project_topic_state
     from backend.services.topics_service import _resolve_workflow_llm_for_category
     from backend.services.topic_verification import ProgressLogger
+
     db = get_client()
     plog = ProgressLogger(db, call_id, "extract_updates_cache")
+    await plog.start()
+
     try:
-        await plog.start()
-        await plog.log("Starting Pass ③ — Extract updates from transcripts")
-        call_row = db.table("calls").select(
-            "project_id, verify_new_cache, verify_not_discussed_cache"
-        ).eq("id", call_id).execute().data
-        if not call_row:
+        await plog.log("Loading task-level match groups…")
+        groups = load_task_match_groups(call_id, db=db)
+        binding_groups = [g for g in groups if g.get("kind") == "binding" and g.get("project_task_refs")]
+        merged_topic_ids = set()
+        for g in binding_groups:
+            for r in g["project_task_refs"]:
+                if r.get("project_topic_id"):
+                    merged_topic_ids.add(r["project_topic_id"])
+
+        if not merged_topic_ids:
+            await plog.log("No merged topics for this call — Pass 3 no-op")
+            db.table("calls").update({
+                "extract_updates_cache": {"__progress__": plog.entries_snapshot()},
+                "extract_updates_status": "done",
+            }).eq("id", call_id).execute()
             return
+
+        # Project context
+        call_row = db.table("calls").select("project_id, transcript").eq("id", call_id).execute().data
         project_id = call_row[0]["project_id"]
 
-        groups = db.table("topic_match_groups").select("project_topic_ids").eq("call_id", call_id).execute().data
-        matched_ids = list({pid for g in groups for pid in (g.get("project_topic_ids") or [])})
-        nd_cache = call_row[0].get("verify_not_discussed_cache") or {}
-        moved_from_nd = [tid for tid, r in nd_cache.items() if (r or {}).get("verdict") == "actually_discussed"]
-        matched_ids = list(set(matched_ids + moved_from_nd))
-        vn_cache = call_row[0].get("verify_new_cache") or {}
-        moved_from_new = [
-            (r or {}).get("matched_topic_id")
-            for r in vn_cache.values()
-            if (r or {}).get("verdict") == "should_be_merged_with" and (r or {}).get("matched_topic_id")
-        ]
-        matched_ids = list({*matched_ids, *moved_from_new})
-        await plog.log(f"Collected {len(matched_ids)} merged topic anchor(s) (incl. migrations from ① and ②)")
+        # Existing project topics (full state)
+        all_state = get_project_topic_state(project_id, db=db)
+        state_by_id = {t["topic_id"]: t for t in all_state}
 
-        # key_terms lives on topic_updates, not parent topics. The Pass ③ prompt
-        # uses name as anchor; key_terms is optional context (LLM works without it).
-        anchors = (
-            db.table("topics").select("id, name")
-            .in_("id", matched_ids).execute().data
-        ) if matched_ids else []
+        # Pending tasks (this call's candidates)
+        pending_row = db.table("calls").select("pending_topics").eq("id", call_id).execute().data
+        pending = (pending_row[0] or {}).get("pending_topics") or []
+        pending_tasks_by_topic_name = {(p.get("name") or "").lower(): p.get("tasks", []) for p in pending}
 
-        await plog.log("Loading all transcripts in the project (chronological)…")
-        calls = (
-            db.table("calls").select("id, transcript")
-            .eq("project_id", project_id).order("created_at").execute().data
-        )
-        transcripts = {c["id"]: (c.get("transcript") or "") for c in calls if c.get("transcript")}
-        total_tokens_approx = sum(len(t) for t in transcripts.values()) // 4
-        await plog.log(f"Loaded {len(transcripts)} transcript(s) — approx {total_tokens_approx:,} tokens of context per topic")
+        # All transcripts in project
+        all_calls = db.table("calls").select("id, transcript, created_at").eq("project_id", project_id).order("created_at").execute().data
+        transcripts = {
+            c["id"]: ingest_transcript(c.get("transcript") or "")
+            for c in all_calls if c.get("transcript")
+        }
+        await plog.log(f"Loaded {len(transcripts)} transcript(s) for synthesis context")
 
+        # Resolve LLM config
         llm, model = _resolve_workflow_llm_for_category(project_id, "extract_topic_updates", db)
-        await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(anchors)} topic(s) in parallel — this can take 1-2 min")
+        await plog.log(f"Calling LLM ({llm}/{model or 'default'}) per merged topic ({len(merged_topic_ids)} topic(s))")
 
-        async def _one(t):
-            await plog.log(f"  → Topic \"{t['name']}\": re-extracting from transcripts…")
-            r = await _run_extract(
-                {"name": t["name"], "key_terms": t.get("key_terms") or []},
-                transcripts, llm=llm, model=model, log_fn=plog.log,
+        results = {}
+        for topic_id in merged_topic_ids:
+            topic = state_by_id.get(topic_id)
+            if not topic:
+                await plog.log(f"  ⚠ Skipping topic_id {topic_id} (not in project state)")
+                continue
+            # Collect new bound tasks for this topic
+            new_bound = []
+            for g in binding_groups:
+                pt_ids = {r.get("task_id") for r in g["project_task_refs"] if r.get("project_topic_id") == topic_id}
+                if not pt_ids:
+                    continue
+                for r in g["call_task_refs"]:
+                    name = (r.get("call_topic_name") or "").lower()
+                    if not r.get("task_id"):
+                        continue
+                    for t in pending_tasks_by_topic_name.get(name, []):
+                        if t.get("task_id") == r["task_id"]:
+                            new_bound.append(t)
+            if not new_bound:
+                await plog.log(f"  ⚠ Topic '{topic['name']}' has no bound new tasks — skip")
+                continue
+            await plog.log(f"  → Synthesizing '{topic['name']}'…")
+            r = await run_synthesize_merged_topic(
+                topic_name=topic["name"],
+                previous_update={
+                    "tasks": topic.get("tasks", []),
+                    "summary": topic.get("summary"),
+                    "status": topic.get("status"),
+                    "key_terms": topic.get("key_terms"),
+                },
+                new_bound_tasks=new_bound,
+                ingested_transcripts=transcripts,
+                llm=llm, model=model, log_fn=plog.log,
             )
-            need_review = (r or {}).get("needs_manual_review")
-            snapshot = (r or {}).get("extracted_snapshot") or {}
-            tasks_n = len(snapshot.get("tasks") or [])
-            decs_n = len(snapshot.get("decisions") or [])
-            oqs_n = len(snapshot.get("open_questions") or [])
-            trail_n = len((r or {}).get("evidence_trail") or [])
-            if need_review:
-                fails = (r or {}).get("failed_citations") or []
-                summary = "; ".join(fails[:3])
-                if len(fails) > 3:
-                    summary += f"; +{len(fails)-3} more"
-                await plog.log(f"  ⚠ Topic \"{t['name']}\": needs manual review — citations failed: {summary}")
-            else:
-                await plog.log(f"  ✓ Topic \"{t['name']}\": extracted {tasks_n} task(s), {oqs_n} OQ, {decs_n} decision(s) with {trail_n} chronological citation(s)")
-            return r
+            results[topic_id] = r
 
-        results = await asyncio.gather(*[_one(t) for t in anchors])
-        cache = {t["id"]: r for t, r in zip(anchors, results)}
-        cache["__progress__"] = plog.entries_snapshot()
-        cache["__progress__"].append({"ts": _dt3.datetime.utcnow().isoformat() + "Z", "msg": f"Pass ③ complete — {len(results)} topic(s) extracted"})
-        db.table("calls").update(
-            {"extract_updates_cache": cache, "extract_updates_status": "done"}
-        ).eq("id", call_id).execute()
-        logger.info(f"✅ [extract_updates] done for call {call_id} ({len(results)} topics)")
+        cache = {**results, "__progress__": plog.entries_snapshot()}
+        db.table("calls").update({
+            "extract_updates_cache": cache,
+            "extract_updates_status": "done",
+        }).eq("id", call_id).execute()
+        await plog.log(f"✅ Pass 3 synthesis complete for {len(results)} topic(s)")
     except Exception as e:
-        logger.exception(f"❌ [extract_updates] failed for call {call_id}: {e}")
-        try:
-            await plog.log(f"❌ ERROR: {e}")
-        except Exception:
-            pass
+        logger.exception(f"❌ [synthesize] failed for call {call_id}: {e}")
         db.table("calls").update({"extract_updates_status": "failed"}).eq("id", call_id).execute()
     finally:
         await plog.stop()
