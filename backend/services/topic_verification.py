@@ -540,6 +540,14 @@ async def run_verify_new(
         # Normalise verdict field (new prompt outputs "final_verdict"; old code expects "verdict")
         if "final_verdict" in result and "verdict" not in result:
             result["verdict"] = result["final_verdict"]
+        # EPIC-19: normalize verdict names (prompt uses confirmed_new / suggest_merge_with;
+        # legacy downstream code may still check truly_new / should_be_merged_with).
+        v = result.get("verdict")
+        if v == "confirmed_new":
+            result["verdict"] = "truly_new"  # legacy alias
+        elif v == "suggest_merge_with":
+            result["verdict"] = "should_be_merged_with"  # legacy alias
+        result["final_verdict"] = result["verdict"]
         # Log per-topic evaluations if present
         evals = result.get("evaluations") or []
         if evals:

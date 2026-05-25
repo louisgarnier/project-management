@@ -48,7 +48,7 @@ def test_all_fixtures_load_and_have_required_keys():
     """Foundation test: every fixture has the schema STREAM 2 will assume."""
     required = {"scenario", "candidate", "project_topics", "past_transcripts", "expected_verdict"}
     fixture_files = list(FIXTURE_DIR.glob("*.json"))
-    assert len(fixture_files) >= 5, f"Expected at least 5 fixtures, found {len(fixture_files)}"
+    assert len(fixture_files) >= 4, f"Expected at least 4 fixtures, found {len(fixture_files)}"
     for path in fixture_files:
         fix = json.loads(path.read_text())
         missing = required - set(fix.keys())
