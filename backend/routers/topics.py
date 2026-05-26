@@ -847,30 +847,19 @@ async def _run_verify_new_background(call_id: str) -> None:
 
             return gid, r
 
-        results = await asyncio.gather(*[_verify_group(num, g) for num, g in x0_groups_indexed])
+        # SERIAL execution so the narrative log reads cleanly one group at a time
+        # (parallel execution interleaved the lines and made the log unreadable).
+        results: list = []
+        for num, g in x0_groups_indexed:
+            results.append(await _verify_group(num, g))
+
         cache: dict = {}
         for gid, r in results:
             if gid and r is not None:
                 cache[gid] = r
-        cache["__progress__"] = plog.entries_snapshot()
         await plog.log("─" * 60)
         await plog.log(f"✅ Pass 1 complete — {len([r for _, r in results if r is not None])} verdict(s) ready. Review them on the cards above.")
         cache["__progress__"] = plog.entries_snapshot()
-        db.table("calls").update(
-            {"verify_new_cache": cache, "verify_new_status": "done"}
-        ).eq("id", call_id).execute()
-        logger.info(f"✅ [verify_new] done for call {call_id} ({len(x0_groups)} X:0 groups)")
-
-        results = await asyncio.gather(*[_verify_group(g) for g in x0_groups])
-        cache: dict = {}
-        for gid, r in results:
-            if gid and r is not None:
-                cache[gid] = r
-        cache["__progress__"] = plog.entries_snapshot()
-        cache["__progress__"].append({
-            "ts": __import__("datetime").datetime.utcnow().isoformat() + "Z",
-            "msg": f"Pass ① complete — {len([r for _, r in results if r is not None])} group verdict(s)",
-        })
         db.table("calls").update(
             {"verify_new_cache": cache, "verify_new_status": "done"}
         ).eq("id", call_id).execute()
