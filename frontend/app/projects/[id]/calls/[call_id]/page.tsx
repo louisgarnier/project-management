@@ -171,8 +171,12 @@ export default function CallDetailPage() {
   }, [loadCall]);
 
   // EPIC-19: load project + candidate topics when entering project_matching stage
+  // OR when manually viewing the matching card via ?view=project_matching (post-save historical view).
   useEffect(() => {
-    if (!call || call.kanban_stage !== "project_matching") return;
+    if (!call) return;
+    const isMatchingActive =
+      call.kanban_stage === "project_matching" || viewStage === "project_matching";
+    if (!isMatchingActive) return;
     Promise.all([
       topicsAPI.priorToCall(projectId, callId),
       topicsAPI.getPending(callId),
@@ -182,7 +186,7 @@ export default function CallDetailPage() {
     }).catch((err) => {
       logger.error("Failed to load matching topics", { component: "CallDetailPage", data: err });
     });
-  }, [call?.kanban_stage, callId, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [call?.kanban_stage, callId, projectId, viewStage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleLock() {
     setIsLocking(true);
