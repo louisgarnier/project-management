@@ -717,6 +717,103 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                   <div style={{ fontSize: 11, color: "#97a0af", fontStyle: "italic" }}>(no task-level bindings — topic-level group)</div>
                 )}
 
+                {/* LLM verdict detail + decision controls */}
+                {firstResult && groupId && (() => {
+                  const verdict = firstResult.verdict;
+                  const matchedId = firstResult.matched_topic_id;
+                  const matchedName = firstResult.matched_topic_name;
+                  const reasoning = firstResult.merge_reasoning;
+                  // Decision state keyed by group:id to avoid collision with legacy topic-name keys
+                  const decisionKey = `group:${groupId}`;
+                  const currentDecision = newDecisions[decisionKey];
+                  const isConfirmedNew = currentDecision?.action === "new" ||
+                    (!currentDecision && verdict === "truly_new");
+                  const isMergeAccepted = currentDecision?.action === "merge" &&
+                    currentDecision.merge_to_ids[0] === matchedId;
+                  const isMergeOther = currentDecision?.action === "merge" &&
+                    currentDecision.merge_to_ids[0] !== matchedId &&
+                    !!currentDecision.merge_to_ids[0];
+                  return (
+                    <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #f0f1f3" }}>
+                      {verdict === "should_be_merged_with" && matchedName && (
+                        <div style={{ marginBottom: 6 }}>
+                          <div style={{ fontSize: 11, color: "#42526e" }}>
+                            <strong>LLM suggests merging with:</strong>{" "}
+                            <span style={{ background: "#fff4e6", color: "#974f0c", padding: "1px 6px", borderRadius: 3 }}>
+                              {matchedName}
+                            </span>
+                          </div>
+                          {reasoning && (
+                            <div style={{ fontSize: 11, color: "#5e6c84", marginTop: 4, fontStyle: "italic" }}>
+                              &quot;{reasoning}&quot;
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {verdict === "truly_new" && (
+                        <div style={{ fontSize: 11, color: "#5e6c84", marginBottom: 6 }}>
+                          LLM agrees these tasks are new — no existing match found.
+                        </div>
+                      )}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                        <span style={{ fontSize: 10, color: "#5e6c84", fontWeight: 600, textTransform: "uppercase" }}>
+                          Your decision:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setNewDecisions((prev) => ({
+                            ...prev,
+                            [decisionKey]: { action: "new", merge_to_ids: [], merge_pending_names: [] },
+                          }))}
+                          style={isConfirmedNew ? decisionButtonSelected : decisionButton}
+                        >
+                          ✓ Confirm new
+                        </button>
+                        {matchedId && matchedName && (
+                          <button
+                            type="button"
+                            onClick={() => setNewDecisions((prev) => ({
+                              ...prev,
+                              [decisionKey]: { action: "merge", merge_to_ids: [matchedId], merge_pending_names: [] },
+                            }))}
+                            style={isMergeAccepted ? decisionButtonSelected : decisionButton}
+                          >
+                            ↻ Accept merge with &quot;{matchedName}&quot;
+                          </button>
+                        )}
+                        <select
+                          value={isMergeOther ? (currentDecision?.merge_to_ids[0] ?? "") : ""}
+                          onChange={(e) => {
+                            if (!e.target.value) return;
+                            setNewDecisions((prev) => ({
+                              ...prev,
+                              [decisionKey]: { action: "merge", merge_to_ids: [e.target.value], merge_pending_names: [] },
+                            }));
+                          }}
+                          style={{
+                            fontSize: 11,
+                            padding: "4px 8px",
+                            border: `1px solid ${isMergeOther ? "#0052cc" : "#dfe1e6"}`,
+                            borderRadius: 4,
+                            background: isMergeOther ? "#e9f0ff" : "white",
+                            color: "#172b4d",
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          <option value="">↻ Merge with a different topic…</option>
+                          {projectTopics
+                            .filter((t) => t.topic_id !== matchedId)
+                            .map((t) => (
+                              <option key={t.topic_id} value={t.topic_id ?? ""}>
+                                {t.name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })()}
+
               </div>
             );
           })}
