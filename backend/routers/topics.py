@@ -690,7 +690,7 @@ async def _run_verify_new_background(call_id: str) -> None:
     await plog.start()
 
     try:
-        await plog.log("EPIC-19 Pass 1: verifying NEW task groups (X:0)…")
+        await plog.log("🔍 Pass 1 — Verifying that your new task groups are really new (not continuations of past work).")
         groups = load_task_match_groups(call_id, db=db)
         x0_groups = [
             g for g in groups
@@ -698,14 +698,14 @@ async def _run_verify_new_background(call_id: str) -> None:
             and g.get("call_task_refs")
             and not g.get("project_task_refs")
         ]
-        await plog.log(f"Found {len(x0_groups)} X:0 group(s) to verify")
+        await plog.log(f"You marked {len(x0_groups)} group(s) as new in matching. I'll check each one against past calls.")
 
         if not x0_groups:
             db.table("calls").update({
                 "verify_new_cache": {"__progress__": plog.entries_snapshot()},
                 "verify_new_status": "done",
             }).eq("id", call_id).execute()
-            await plog.log("No X:0 groups — Pass 1 no-op")
+            await plog.log("No new groups to verify — nothing to do.")
             return
 
         # Load call context
@@ -724,7 +724,6 @@ async def _run_verify_new_background(call_id: str) -> None:
 
         # Existing project state (used as comparison pool for LLM)
         project_topics = get_project_topic_state(project_id, db=db)
-        await plog.log(f"Loaded {len(project_topics)} existing project topic(s) for comparison")
 
         # Past transcripts (line-numbered)
         all_calls = (
@@ -733,17 +732,21 @@ async def _run_verify_new_background(call_id: str) -> None:
         )
         past_calls = [c for c in all_calls if c["id"] != call_id and c.get("transcript")]
         transcripts = {c["id"]: ingest_transcript(c.get("transcript") or "") for c in past_calls}
-        await plog.log(f"Loaded {len(transcripts)} past transcript(s)")
 
         # LLM config
         llm, model = _resolve_workflow_llm_for_category(project_id, "verify_new_topic", db)
-        await plog.log(f"Calling LLM ({llm}/{model or 'default'}) per X:0 group, parallel")
+        await plog.log(f"📚 Looking at: {len(project_topics)} existing project topic(s) and {len(transcripts)} past call transcript(s).")
+        await plog.log(f"🤖 Using model: {llm}/{model or 'default'}.")
+        await plog.log("─" * 60)
+
+        # Stable order so log numbering matches what user sees
+        x0_groups_indexed = list(enumerate(x0_groups, start=1))
 
         # Per-group async helper
-        async def _verify_group(g):
+        async def _verify_group(group_num, g):
             gid = g.get("id")
             if not gid:
-                await plog.log("  ⚠ Group has no id — skipping (stale row?)")
+                await plog.log(f"⚠ Group #{group_num} has no id — skipping (was the row saved properly?)")
                 return None, None
             # Build a synthetic "candidate topic" from this group's tasks
             task_objs = []
@@ -752,9 +755,8 @@ async def _run_verify_new_background(call_id: str) -> None:
                 if t:
                     task_objs.append(t)
             if not task_objs:
-                await plog.log(f"  ⚠ Group {gid[:8]}…: no resolvable tasks — skipping")
+                await plog.log(f"⚠ Group #{group_num} has no resolvable tasks — skipping.")
                 return gid, None
-            # Synthetic candidate name from target_topic_name or first task's parent topic name
             cand_name = (
                 g.get("target_topic_name")
                 or (task_objs[0].get("_parent_topic") if task_objs else "(unnamed group)")
@@ -765,17 +767,29 @@ async def _run_verify_new_background(call_id: str) -> None:
                 "summary": "",
                 "tasks": task_objs,
             }
-            await plog.log(f"  → Group {gid[:8]}…: '{cand_name}' ({len(task_objs)} task(s))")
+
+            # ── Narrative: announce the group ──
+            await plog.log(f"")
+            await plog.log(f"━━━ Group #{group_num}: \"{cand_name}\" ━━━")
+            await plog.log(f"   Contains {len(task_objs)} task(s):")
+            for i, t in enumerate(task_objs, 1):
+                ttext = (t.get("task") or "(no task)").strip()
+                next_step = (t.get("next_step") or "").strip()
+                if next_step:
+                    await plog.log(f"      {i}. {ttext}  →  {next_step}")
+                else:
+                    await plog.log(f"      {i}. {ttext}")
 
             # Layer 1: mechanical pre-filter
-            from backend.services.topic_verification import lexical_precheck, compute_confidence as _conf, format_confidence_log_line as _conf_log
+            from backend.services.topic_verification import lexical_precheck, compute_confidence as _conf
             pre = lexical_precheck(candidate, project_topics, transcripts)
             qualified_ids = set(pre.get("qualified_topic_ids") or [])
             qualified_topics = [t for t in project_topics if t.get("topic_id") in qualified_ids]
-            await plog.log(f"      Layer 1: threshold={pre['threshold']}, {len(qualified_ids)} qualified — hint: {pre['verdict_hint']}")
 
+            await plog.log(f"   Step 1 — keyword pre-check: comparing the group's terms against existing project topics' terms.")
             if not qualified_topics:
-                await plog.log(f"  ✓ Group {gid[:8]}…: no existing topic qualified mechanically → verdict=truly_new (no LLM call)")
+                await plog.log(f"      No existing project topic has overlapping terms with this group.")
+                await plog.log(f"   ✓ VERDICT: TRULY NEW — these tasks don't appear to relate to any past work in this project. (No LLM call needed — confirmed by keyword check alone.)")
                 stub = {
                     "verdict": "truly_new",
                     "final_verdict": "truly_new",
@@ -792,20 +806,60 @@ async def _run_verify_new_background(call_id: str) -> None:
                     "kind": "new_topic_verification",
                 }
                 stub["confidence"] = _conf(stub)
-                await plog.log(f"      [{cand_name}] {_conf_log(stub['confidence'])}")
                 return gid, stub
 
-            # Layer 2: LLM judgment
-            await plog.log(f"  → Group {gid[:8]}…: Layer 2 LLM — {len(qualified_topics)} qualified candidate(s)…")
+            qual_names = ", ".join(f"\"{t.get('name', '?')}\"" for t in qualified_topics[:3])
+            more = f" + {len(qualified_topics) - 3} more" if len(qualified_topics) > 3 else ""
+            await plog.log(f"      {len(qualified_topics)} existing topic(s) share terms with this group: {qual_names}{more}.")
+            await plog.log(f"   Step 2 — asking the LLM to read past transcripts and decide: is this group genuinely new, or does its work continue any of those existing topics?")
+
+            # Layer 2: LLM judgment (suppress internal noise by passing a filter log_fn)
+            async def _quiet_log(msg: str):
+                # Forward only attempt + retry signals; suppress the deep technical lines
+                low = msg.lower()
+                if "attempt" in low and "retrying" in low:
+                    await plog.log(f"      (the LLM's first answer didn't include valid citations — retrying)")
+                # else: silently swallow
+
             r = await run_verify_new(
                 candidate, qualified_topics, transcripts,
-                llm=llm, model=model, log_fn=plog.log, precheck=pre,
+                llm=llm, model=model, log_fn=_quiet_log, precheck=pre,
             )
             if r:
                 r["kind"] = "new_topic_verification"
             verdict = (r or {}).get("verdict", "?")
-            await plog.log(f"  ✓ Group {gid[:8]}…: verdict={verdict}")
+            matched_name = (r or {}).get("matched_topic_name")
+            reasoning = (r or {}).get("merge_reasoning") or ""
+            needs_review = (r or {}).get("needs_manual_review")
+
+            # ── Narrative verdict ──
+            if verdict in ("truly_new", "confirmed_new"):
+                await plog.log(f"   ✓ VERDICT: TRULY NEW — the LLM agrees these tasks don't continue any existing work.")
+            elif verdict in ("should_be_merged_with", "suggest_merge_with"):
+                await plog.log(f"   ↻ VERDICT: SUGGEST MERGE — the LLM thinks these tasks continue \"{matched_name or '?'}\".")
+                if reasoning:
+                    await plog.log(f"      Reason: {reasoning.strip()}")
+            else:
+                await plog.log(f"   ? VERDICT: {verdict}")
+
+            if needs_review:
+                await plog.log(f"   ⚠ The LLM's evidence didn't fully check out (citations failed verification) — you'll want to review this manually.")
+
             return gid, r
+
+        results = await asyncio.gather(*[_verify_group(num, g) for num, g in x0_groups_indexed])
+        cache: dict = {}
+        for gid, r in results:
+            if gid and r is not None:
+                cache[gid] = r
+        cache["__progress__"] = plog.entries_snapshot()
+        await plog.log("─" * 60)
+        await plog.log(f"✅ Pass 1 complete — {len([r for _, r in results if r is not None])} verdict(s) ready. Review them on the cards above.")
+        cache["__progress__"] = plog.entries_snapshot()
+        db.table("calls").update(
+            {"verify_new_cache": cache, "verify_new_status": "done"}
+        ).eq("id", call_id).execute()
+        logger.info(f"✅ [verify_new] done for call {call_id} ({len(x0_groups)} X:0 groups)")
 
         results = await asyncio.gather(*[_verify_group(g) for g in x0_groups])
         cache: dict = {}
