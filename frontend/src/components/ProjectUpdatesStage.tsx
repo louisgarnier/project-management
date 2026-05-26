@@ -678,45 +678,6 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                   <div style={{ fontSize: 11, color: "#97a0af", fontStyle: "italic" }}>(no task-level bindings — topic-level group)</div>
                 )}
 
-                {/* Per-topic NewTopicCards for interactive LLM verdict / decision UI */}
-                {ng.candidateTopicNames.map((topicName) => {
-                  const t = sections.newTopics.find(
-                    (p) => p.name.toLowerCase().trim() === topicName.toLowerCase().trim()
-                  );
-                  if (!t) return null;
-                  const r = (eff.verify_new_cache ?? {})[t.name] as VerifyNewResult | undefined;
-                  const d = resolveNewDecision(t.name, r);
-                  const cache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
-                  const selfKey = t.name.toLowerCase().trim();
-                  const usedOldIds = new Set<string>();
-                  const usedPendingNames = new Set<string>();
-                  for (const p of pending) {
-                    if (p.name.toLowerCase().trim() === selfKey) continue;
-                    const otherD = resolveNewDecision(p.name, cache[p.name]);
-                    if (otherD.action !== "merge") continue;
-                    otherD.merge_to_ids.forEach((id) => usedOldIds.add(id));
-                    otherD.merge_pending_names.forEach((n) => usedPendingNames.add(n));
-                  }
-                  const availableProjectTopics = projectTopics.filter(
-                    (pt) => !usedOldIds.has(pt.topic_id ?? "")
-                  );
-                  const availableOtherPending = sections.newTopics.filter(
-                    (p) => p.name !== t.name && !usedPendingNames.has(p.name.toLowerCase().trim())
-                  );
-                  return (
-                    <NewTopicCard
-                      key={t.name}
-                      topic={t}
-                      result={r}
-                      decision={d}
-                      projectTopics={availableProjectTopics}
-                      otherPending={availableOtherPending}
-                      onDecisionChange={(next) =>
-                        setNewDecisions((prev) => ({ ...prev, [t.name.toLowerCase().trim()]: next }))
-                      }
-                    />
-                  );
-                })}
               </div>
             );
           })}
@@ -875,69 +836,6 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                   </div>
                 </div>
 
-                {/* Per-project-topic MergedTopicCards for interactive LLM verdict / decision UI */}
-                {effectiveProjectTopicIds.map((tid) => {
-                  const t = sections.merged.find((m) => m.topic_id === tid);
-                  if (!t) return null;
-                  const fromNewName = mergedFromNewSource.get(tid);
-                  const fromNewResult = fromNewName
-                    ? ((eff.verify_new_cache ?? {})[fromNewName] as VerifyNewResult | undefined)
-                    : undefined;
-                  const fromNewPending = fromNewName
-                    ? pending.find((p) => p.name === fromNewName)
-                    : undefined;
-                  return (
-                    <MergedTopicCard
-                      key={tid}
-                      projectTopic={t}
-                      callMatches={pending.filter((p) =>
-                        groups.some(
-                          (g) =>
-                            (g.project_topic_ids ?? []).includes(tid) &&
-                            g.call_topic_names.some(
-                              (n) => n.toLowerCase().trim() === p.name.toLowerCase().trim()
-                            )
-                        )
-                      )}
-                      matchingGroups={
-                        groups
-                          .filter((g) => (g.project_topic_ids ?? []).includes(tid))
-                          .map((g) => ({
-                            call_task_refs: g.call_task_refs ?? [],
-                            project_task_refs: g.project_task_refs ?? [],
-                            target_topic_name: g.target_topic_name ?? null,
-                          }))
-                      }
-                      extracted={(eff.extract_updates_cache ?? {})[tid]}
-                      fromNew={migratedFromNew.has(tid)}
-                      fromNotDiscussed={migratedFromNotDiscussed.has(tid)}
-                      callsById={callsById}
-                      fromNewSourceName={fromNewName}
-                      fromNewPending={fromNewPending}
-                      fromNewResult={fromNewResult}
-                      subordinateMergeNames={mergedFromNewSubordinateNames.get(tid) ?? []}
-                      projectTopics={projectTopics}
-                      onRevertFromNew={
-                        fromNewName
-                          ? () =>
-                              setNewDecisions((prev) => ({
-                                ...prev,
-                                [fromNewName.toLowerCase().trim()]: { action: "new", merge_to_ids: [], merge_pending_names: [] },
-                              }))
-                          : undefined
-                      }
-                      onChangeMergeTarget={
-                        fromNewName
-                          ? (new_id: string) =>
-                              setNewDecisions((prev) => ({
-                                ...prev,
-                                [fromNewName.toLowerCase().trim()]: { action: "merge", merge_to_ids: [new_id], merge_pending_names: [] },
-                              }))
-                          : undefined
-                      }
-                    />
-                  );
-                })}
               </div>
             );
           })}
