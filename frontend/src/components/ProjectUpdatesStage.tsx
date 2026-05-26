@@ -88,7 +88,11 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
   const [draggedGroupId, setDraggedGroupId] = useState<string | null>(null);
   const [dropTargetTopicId, setDropTargetTopicId] = useState<string | null>(null);
 
-  const reassignGroupToTopic = useCallback(async (groupId: string, newTargetTopicId: string) => {
+  const reassignGroupToTopic = useCallback(async (
+    groupId: string,
+    newTargetTopicId: string,
+    sourceGroupIdToRemove?: string,
+  ) => {
     const target = projectTopics.find((t) => t.topic_id === newTargetTopicId);
     if (!target) return;
     const newProjectTaskRefs = (target.tasks ?? [])
@@ -97,11 +101,16 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     const refs = newProjectTaskRefs.length > 0
       ? newProjectTaskRefs
       : [{ project_topic_id: newTargetTopicId, task_id: "" }];
-    const updated = groups.map((g) =>
+    let updated = groups.map((g) =>
       g.id === groupId
         ? { ...g, project_task_refs: refs, project_topic_ids: [newTargetTopicId] }
         : g
     );
+    // If dropping onto a 0:X "not discussed" card, ALSO remove that 0:X group
+    // (the topic is now being touched by the dragged sub-group — "not discussed" no longer holds).
+    if (sourceGroupIdToRemove) {
+      updated = updated.filter((g) => g.id !== sourceGroupIdToRemove);
+    }
     setGroups(updated);
     try {
       await topicsAPI.saveTaskMatches(call.id, updated as unknown as Parameters<typeof topicsAPI.saveTaskMatches>[1], true);
@@ -971,10 +980,43 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
           {/* 0:X groups — one card per group, color-coded like other sections */}
           {sections.oldGroups.map((og) => {
             const color = groupColor(og.groupIndex);
+            // Drop target = first project topic this 0:X group targets
+            const targetTopicId = (og.g.project_task_refs ?? [])
+              .map((r) => r.project_topic_id)
+              .find((x): x is string => !!x) ?? (og.g.project_topic_ids ?? [])[0];
+            const isDropTargetHere = !!targetTopicId && dropTargetTopicId === targetTopicId;
             return (
               <div
                 key={`old-group-${og.groupIndex}`}
-                style={{ ...cardStyle, borderColor: color.border, borderLeftWidth: 4, marginBottom: 8 }}
+                style={{
+                  ...cardStyle,
+                  borderColor: isDropTargetHere ? "#0052cc" : color.border,
+                  borderLeftWidth: 4,
+                  marginBottom: 8,
+                  outline: isDropTargetHere ? "2px dashed #0052cc" : "none",
+                  outlineOffset: isDropTargetHere ? -2 : 0,
+                  background: isDropTargetHere ? "#e9f0ff" : (cardStyle as React.CSSProperties).background ?? "white",
+                  transition: "background .12s, outline .12s",
+                }}
+                onDragOver={(e) => {
+                  if (!draggedGroupId || !targetTopicId) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dropTargetTopicId !== targetTopicId) setDropTargetTopicId(targetTopicId);
+                }}
+                onDragLeave={() => {
+                  if (dropTargetTopicId === targetTopicId) setDropTargetTopicId(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const gid = e.dataTransfer.getData("text/plain") || draggedGroupId;
+                  setDraggedGroupId(null);
+                  setDropTargetTopicId(null);
+                  if (!gid || !targetTopicId) return;
+                  // Drop on a 0:X card → reassign dragged group to this topic
+                  // AND remove the 0:X group itself ("not discussed" no longer holds).
+                  reassignGroupToTopic(gid, targetTopicId, og.g.id ?? undefined);
+                }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
                   <span
@@ -1018,21 +1060,53 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
               </div>
             );
           })}
-          {/* Legacy fallback: project topics with NO group at all (auto-detected untouched) */}
+          {/* Legacy fallback: project topics with NO group at all (auto-detected untouched).
+              Wrapped in drop-zone div so a section-3 sub-group can be dragged onto an
+              untouched topic — re-assigns the group's primary target to this topic
+              (no source group to remove since this card isn't backed by one). */}
           {sections.notInCall.map((t) => {
             const tid = t.topic_id ?? "";
             const r = (eff.verify_not_discussed_cache ?? {})[tid] as VerifyNotDiscussedResult | undefined;
             const d = resolveNdDecision(tid, r);
+            const isDropTargetHere = !!tid && dropTargetTopicId === tid;
             return (
-              <NotInCallCard
-                key={tid}
-                topic={t}
-                result={r}
-                decision={d}
-                onDecisionChange={(next) =>
-                  setNdDecisions((prev) => ({ ...prev, [tid]: next }))
-                }
-              />
+              <div
+                key={`nic-wrapper-${tid}`}
+                onDragOver={(e) => {
+                  if (!draggedGroupId || !tid) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dropTargetTopicId !== tid) setDropTargetTopicId(tid);
+                }}
+                onDragLeave={() => {
+                  if (dropTargetTopicId === tid) setDropTargetTopicId(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const gid = e.dataTransfer.getData("text/plain") || draggedGroupId;
+                  setDraggedGroupId(null);
+                  setDropTargetTopicId(null);
+                  if (!gid || !tid) return;
+                  reassignGroupToTopic(gid, tid);
+                }}
+                style={{
+                  outline: isDropTargetHere ? "2px dashed #0052cc" : "none",
+                  outlineOffset: isDropTargetHere ? -2 : 0,
+                  background: isDropTargetHere ? "#e9f0ff" : "transparent",
+                  transition: "background .12s, outline .12s",
+                  borderRadius: 6,
+                  marginBottom: 4,
+                }}
+              >
+                <NotInCallCard
+                  topic={t}
+                  result={r}
+                  decision={d}
+                  onDecisionChange={(next) =>
+                    setNdDecisions((prev) => ({ ...prev, [tid]: next }))
+                  }
+                />
+              </div>
             );
           })}
         </section>
