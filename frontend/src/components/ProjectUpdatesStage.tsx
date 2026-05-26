@@ -65,8 +65,6 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     const newProjectTaskRefs = (target.tasks ?? [])
       .filter((t) => t.task_id)
       .map((t) => ({ project_topic_id: targetTopicId, task_id: t.task_id as string }));
-    // If target has no tasks, still bind topic-only with empty task_id so
-    // the group has at least one project_task_ref (becomes M:N for routing).
     const refs = newProjectTaskRefs.length > 0
       ? newProjectTaskRefs
       : [{ project_topic_id: targetTopicId, task_id: "" }];
@@ -77,12 +75,38 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     );
     setGroups(updated);
     try {
-      // Persist via draft save (no kanban_stage advance). Cast through `unknown`
-      // because MatchGroup is the local frontend shape; saveTaskMatches expects
-      // the task-level TaskMatchGroup shape — structurally identical for our use.
       await topicsAPI.saveTaskMatches(call.id, updated as unknown as Parameters<typeof topicsAPI.saveTaskMatches>[1], true);
     } catch (e) {
       logger.error("[ProjectUpdatesStage] save failed after accept-merge", { data: e });
+    }
+  }, [projectTopics, groups, call.id]);
+
+  // EPIC-19: drag-and-drop in section 3 — drop a sub-group on a different
+  // merged-topic card to re-assign its primary target. Same persistence path
+  // as acceptMergeForGroup but doesn't drop the group's existing project_task_refs;
+  // just retargets them to the new topic's tasks.
+  const [draggedGroupId, setDraggedGroupId] = useState<string | null>(null);
+  const [dropTargetTopicId, setDropTargetTopicId] = useState<string | null>(null);
+
+  const reassignGroupToTopic = useCallback(async (groupId: string, newTargetTopicId: string) => {
+    const target = projectTopics.find((t) => t.topic_id === newTargetTopicId);
+    if (!target) return;
+    const newProjectTaskRefs = (target.tasks ?? [])
+      .filter((t) => t.task_id)
+      .map((t) => ({ project_topic_id: newTargetTopicId, task_id: t.task_id as string }));
+    const refs = newProjectTaskRefs.length > 0
+      ? newProjectTaskRefs
+      : [{ project_topic_id: newTargetTopicId, task_id: "" }];
+    const updated = groups.map((g) =>
+      g.id === groupId
+        ? { ...g, project_task_refs: refs, project_topic_ids: [newTargetTopicId] }
+        : g
+    );
+    setGroups(updated);
+    try {
+      await topicsAPI.saveTaskMatches(call.id, updated as unknown as Parameters<typeof topicsAPI.saveTaskMatches>[1], true);
+    } catch (e) {
+      logger.error("[ProjectUpdatesStage] save failed after drag-reassign", { data: e });
     }
   }, [projectTopics, groups, call.id]);
   const [busy, setBusy] = useState<null | "①" | "②" | "③">(null);
@@ -1035,12 +1059,41 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             active={busy === "③"}
           />
           {sections.mergedGroups.map((mt) => {
+            const isDropTarget = dropTargetTopicId === mt.projectTopicId;
             return (
               <div
                 key={`merged-topic-${mt.projectTopicId}`}
                 style={{
                   ...cardStyle,
                   marginBottom: 8,
+                  outline: isDropTarget ? "2px dashed #0052cc" : "none",
+                  outlineOffset: isDropTarget ? -2 : 0,
+                  background: isDropTarget ? "#e9f0ff" : (cardStyle as React.CSSProperties).background ?? "white",
+                  transition: "background .12s, outline .12s",
+                }}
+                onDragOver={(e) => {
+                  if (!draggedGroupId) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dropTargetTopicId !== mt.projectTopicId) {
+                    setDropTargetTopicId(mt.projectTopicId);
+                  }
+                }}
+                onDragLeave={() => {
+                  if (dropTargetTopicId === mt.projectTopicId) {
+                    setDropTargetTopicId(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const gid = e.dataTransfer.getData("text/plain") || draggedGroupId;
+                  setDraggedGroupId(null);
+                  setDropTargetTopicId(null);
+                  if (!gid) return;
+                  // No-op if dropped on the SAME topic the group already targets
+                  const alreadyHere = mt.subGroups.some((sg) => sg.g.id === gid);
+                  if (alreadyHere) return;
+                  reassignGroupToTopic(gid, mt.projectTopicId);
                 }}
               >
                 {/* Card header — TARGET PROJECT TOPIC */}
@@ -1078,15 +1131,31 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                 </div>
                 {mt.subGroups.map((sg) => {
                   const col = groupColor(sg.groupIndex);
+                  const isDragging = draggedGroupId === sg.g.id;
                   return (
                     <div
                       key={`sg-${sg.groupIndex}`}
+                      draggable={!!sg.g.id}
+                      onDragStart={(e) => {
+                        if (!sg.g.id) return;
+                        setDraggedGroupId(sg.g.id);
+                        e.dataTransfer.setData("text/plain", sg.g.id);
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragEnd={() => {
+                        setDraggedGroupId(null);
+                        setDropTargetTopicId(null);
+                      }}
+                      title={sg.g.id ? "Drag to another merged-topic card to re-assign" : ""}
                       style={{
                         borderLeft: `3px solid ${col.border}`,
                         background: col.bg,
                         padding: "6px 10px",
                         marginBottom: 4,
                         borderRadius: 2,
+                        cursor: sg.g.id ? "grab" : "default",
+                        opacity: isDragging ? 0.5 : 1,
+                        transition: "opacity .12s",
                       }}
                     >
                       <div style={{ fontSize: 10, fontWeight: 600, color: col.text, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>
