@@ -551,7 +551,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
         <section style={{ marginBottom: 24 }}>
           <SectionHeader
             title="1. New tasks in this call"
-            count={sections.newTopics.length}
+            count={sections.newTopics.reduce((sum, t) => sum + (t.tasks?.length ?? 0), 0)}
             button={
               <button
                 disabled={busy !== null || sections.newTopics.length === 0}
@@ -614,7 +614,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
         <section style={{ marginBottom: 24 }}>
           <SectionHeader
             title="2. Old tasks not discussed in this call"
-            count={sections.notInCall.length}
+            count={sections.notInCall.reduce((sum, t) => sum + (t.tasks?.length ?? 0), 0)}
             button={
               <button
                 disabled={!stage1Done || busy !== null || sections.notInCall.length === 0}
