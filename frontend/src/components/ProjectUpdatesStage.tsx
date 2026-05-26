@@ -115,9 +115,21 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     ])
       .then(([g, p, pr]) => {
         setGroups(
-          g.map((x: { project_topic_ids: string[]; call_topic_names: string[] }) => ({
+          g.map((x: {
+            project_topic_ids?: string[];
+            call_topic_names?: string[];
+            kind?: "binding" | "topic_merge";
+            call_task_refs?: Array<{ call_topic_name?: string; task_id?: string }>;
+            project_task_refs?: Array<{ project_topic_id?: string; task_id?: string }>;
+            target_topic_name?: string | null;
+          }) => ({
             project_topic_ids: x.project_topic_ids ?? [],
             call_topic_names: x.call_topic_names ?? [],
+            // EPIC-19: preserve the task-level fields so per-group rendering works
+            kind: x.kind ?? "binding",
+            call_task_refs: x.call_task_refs ?? [],
+            project_task_refs: x.project_task_refs ?? [],
+            target_topic_name: x.target_topic_name ?? null,
           }))
         );
         setPending(p);
