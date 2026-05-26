@@ -16,6 +16,7 @@ export interface Project {
 export type KanbanStage = "transcript" | "call_topics" | "project_matching" | "project_updates" | "artifacts" | "done";
 
 export type MatchGroup = {
+  kind?: "binding" | "topic_merge";   // EPIC-19: group kind; default "binding" if absent
   project_topic_ids: string[];        // empty = new project topic, 1+ = linked/merge
   call_topic_names: string[];         // names from pending call topics
   // EPIC-19: optional task-level refs (present when row was written by task_match_persistence)

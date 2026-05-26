@@ -15,6 +15,19 @@ import EvidenceTrail from "./EvidenceTrail";
 import ProgressLog, { type ProgressEntry } from "./ProgressLog";
 import ConfidenceGauge from "./ConfidenceGauge";
 
+// ── Group colour palette (mirrors ProjectMatchingStage) ───────────────────
+const GROUP_COLORS = [
+  { bg: "#e9f0ff", border: "#4c9aff", text: "#0052cc" },  // blue
+  { bg: "#e3fcef", border: "#57d9a3", text: "#006644" },  // green
+  { bg: "#fce4fa", border: "#cc57c5", text: "#6b2066" },  // purple
+  { bg: "#ffe8d6", border: "#ff8b00", text: "#bf4300" },  // orange
+  { bg: "#e6fcff", border: "#00b8d9", text: "#00668c" },  // cyan
+  { bg: "#ffd6d6", border: "#ff5630", text: "#ae2a19" },  // red
+];
+function groupColor(idx: number) {
+  return GROUP_COLORS[idx % GROUP_COLORS.length];
+}
+
 // Reserved key inside the *_cache JSONB columns where the backend writes its
 // step-by-step progress log. See backend/services/topic_verification.py::ProgressLogger.
 const PROGRESS_KEY = "__progress__";
@@ -227,35 +240,35 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
     // pending.name keeps original case. Normalise both sides to compare.
     const norm = (s: string) => s.toLowerCase().trim();
 
-    // A match_group with empty project_topic_ids = a "Mark as new" decision.
-    // A match_group with non-empty project_topic_ids = a "Link" or "Merge" decision.
-    const newGroupCallNames = new Set(
-      groups
-        .filter((g) => (g.project_topic_ids?.length ?? 0) === 0)
-        .flatMap((g) => g.call_topic_names.map(norm))
-    );
-    const matchedProjectIds = new Set(groups.flatMap((g) => g.project_topic_ids));
+    // ── Per-group display arrays (EPIC-19 restructure) ────────────────────
+    // Only "binding" kind groups participate in display (skip topic_merge rows).
+    const bindingGroups = groups.filter((g) => (g.kind ?? "binding") === "binding");
+    const markNewGroups = bindingGroups.filter((g) => (g.project_topic_ids?.length ?? 0) === 0);
+    const mergedBindingGroups = bindingGroups.filter((g) => (g.project_topic_ids?.length ?? 0) > 0);
 
-    // "New" section = pending topics that the user explicitly marked as New
-    // in matching (i.e. their name is in a group with no project_topic_ids).
-    // Then exclude those that ① later decided should be merged (they live in section 3).
-    const newCandidates = pending.filter((p) => newGroupCallNames.has(norm(p.name)));
-    const newTopics = newCandidates.filter((p) => {
-      // Hide candidates that have been absorbed by another candidate's M:N merge.
-      if (absorbedPendingNames.has(norm(p.name))) return false;
-      const r = (eff.verify_new_cache ?? {})[p.name];
-      const d = resolveNewDecision(p.name, r);
-      // Hide candidates whose own decision is to merge — with old topics OR
-      // with other pending candidates. Both routes leave Section 1.
-      return !(
-        d.action === "merge" &&
-        (d.merge_to_ids.length >= 1 || d.merge_pending_names.length >= 1)
-      );
-    });
+    // Helper: resolve task_id → task data from pending topics
+    const resolveCallTask = (taskId: string | undefined): { task: string; next_step?: string; owner?: string; task_id?: string; topicName: string } | null => {
+      if (!taskId) return null;
+      for (const p of pending) {
+        for (const t of (p.tasks ?? [])) {
+          if (t.task_id === taskId) return { ...t, topicName: p.name };
+        }
+      }
+      return null;
+    };
 
-    // Old project topics NOT in any match group AND not migrated to Merged by either pass.
-    // (Pass ① merges a new candidate INTO an existing project topic — that target
-    // belongs in Section 3, not Section 2.)
+    // SECTION 1: one item per mark-new group
+    const newGroups = markNewGroups.map((g, i) => ({
+      groupIndex: i,
+      g,
+      candidateTopicNames: g.call_topic_names ?? [],
+      candidateTasks: (g.call_task_refs ?? [])
+        .map((r) => resolveCallTask(r.task_id))
+        .filter((x): x is NonNullable<typeof x> => x !== null),
+    }));
+
+    // SECTION 2: project topics not in any binding group AND not migrated
+    const matchedProjectIds = new Set(bindingGroups.flatMap((g) => g.project_topic_ids));
     const notInCall = projectTopics.filter((t) => {
       const tid = t.topic_id ?? "";
       if (matchedProjectIds.has(tid)) return false;
@@ -264,10 +277,39 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       return true;
     });
 
-    // Merged topics = (a) matched project topics + (b) ② migrations + (c) ① migrations
-    // BUT exclude subordinate M:N merge targets (only the primary shows a card).
+    // SECTION 3: one card per merged binding group
+    const mergedGroups = mergedBindingGroups.map((g, i) => ({
+      groupIndex: markNewGroups.length + i,
+      g,
+      candidateTasks: (g.call_task_refs ?? [])
+        .map((r) => resolveCallTask(r.task_id))
+        .filter((x): x is NonNullable<typeof x> => x !== null),
+      projectTasks: (g.project_task_refs ?? [])
+        .map((r) => {
+          const topic = projectTopics.find((t) => t.topic_id === r.project_topic_id);
+          if (!topic) return null;
+          const task = (topic.tasks ?? []).find((t) => t.task_id === r.task_id);
+          if (!task) return null;
+          return { ...task, topicName: topic.name, topicId: topic.topic_id };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null),
+      targetTopicName: g.target_topic_name ?? null,
+    }));
+
+    // ── Topic-level arrays (kept for handleSaveContinue compatibility) ────
+    const newGroupCallNames = new Set(markNewGroups.flatMap((g) => g.call_topic_names.map(norm)));
+    const allMatchedProjectIds = new Set(groups.flatMap((g) => g.project_topic_ids));
+
+    const newCandidates = pending.filter((p) => newGroupCallNames.has(norm(p.name)));
+    const newTopics = newCandidates.filter((p) => {
+      if (absorbedPendingNames.has(norm(p.name))) return false;
+      const r = (eff.verify_new_cache ?? {})[p.name];
+      const d = resolveNewDecision(p.name, r);
+      return !(d.action === "merge" && (d.merge_to_ids.length >= 1 || d.merge_pending_names.length >= 1));
+    });
+
     const mergedSet = new Set<string>([
-      ...matchedProjectIds,
+      ...allMatchedProjectIds,
       ...migratedFromNotDiscussed,
       ...migratedFromNew,
     ]);
@@ -276,7 +318,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       return mergedSet.has(tid) && !subordinateMergeIds.has(tid);
     });
 
-    return { newTopics, notInCall, merged };
+    return { newGroups, notInCall, mergedGroups, newTopics, merged };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups, pending, projectTopics, eff.verify_new_cache, migratedFromNew, migratedFromNotDiscussed, subordinateMergeIds, absorbedPendingNames, newDecisions]);
 
@@ -446,7 +488,6 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
               ...fromNew.primary_pending,
               ...u,
               topic_id: null,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               _source_topic_ids: fromNew.all_targets,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             } as any);
@@ -547,14 +588,14 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       )}
 
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-        {/* Section 1 — New topics */}
+        {/* Section 1 — New groups (one card per mark-new binding group) */}
         <section style={{ marginBottom: 24 }}>
           <SectionHeader
             title="1. New tasks in this call"
-            count={sections.newTopics.reduce((sum, t) => sum + (t.tasks?.length ?? 0), 0)}
+            count={sections.newGroups.reduce((sum, ng) => sum + ng.candidateTasks.length, 0)}
             button={
               <button
-                disabled={busy !== null || sections.newTopics.length === 0}
+                disabled={busy !== null || sections.newGroups.length === 0}
                 onClick={() => triggerPass("①")}
                 style={passButton(stage1Done)}
               >
@@ -568,44 +609,115 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             entries={readProgress(eff.verify_new_cache)}
             active={busy === "①"}
           />
-          {sections.newTopics.map((t) => {
-            const r = (eff.verify_new_cache ?? {})[t.name] as VerifyNewResult | undefined;
-            const d = resolveNewDecision(t.name, r);
+          {sections.newGroups.map((ng) => {
+            const color = groupColor(ng.groupIndex);
+            // LLM results: look up by each candidate topic name (best-effort until Phase B)
+            const groupResults = ng.candidateTopicNames
+              .map((name) => (eff.verify_new_cache ?? {})[name] as VerifyNewResult | undefined)
+              .filter((r): r is VerifyNewResult => r !== undefined);
+            const firstResult = groupResults[0];
 
-            // Exclude topics/candidates already engaged in OTHER candidates' merges,
-            // so the user can't double-book a target. Self-selections are kept
-            // visible so the user can uncheck them.
-            const cache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
-            const selfKey = t.name.toLowerCase().trim();
-            const usedOldIds = new Set<string>();
-            const usedPendingNames = new Set<string>();
-            for (const p of pending) {
-              if (p.name.toLowerCase().trim() === selfKey) continue;
-              const otherD = resolveNewDecision(p.name, cache[p.name]);
-              if (otherD.action !== "merge") continue;
-              otherD.merge_to_ids.forEach((id) => usedOldIds.add(id));
-              otherD.merge_pending_names.forEach((n) => usedPendingNames.add(n));
-            }
-            const availableProjectTopics = projectTopics.filter(
-              (pt) => !usedOldIds.has(pt.topic_id ?? "")
-            );
-            const availableOtherPending = sections.newTopics.filter(
-              (p) =>
-                p.name !== t.name &&
-                !usedPendingNames.has(p.name.toLowerCase().trim())
-            );
             return (
-              <NewTopicCard
-                key={t.name}
-                topic={t}
-                result={r}
-                decision={d}
-                projectTopics={availableProjectTopics}
-                otherPending={availableOtherPending}
-                onDecisionChange={(next) =>
-                  setNewDecisions((prev) => ({ ...prev, [t.name.toLowerCase().trim()]: next }))
-                }
-              />
+              <div
+                key={`new-group-${ng.groupIndex}`}
+                style={{
+                  ...cardStyle,
+                  borderColor: color.border,
+                  borderLeftWidth: 4,
+                }}
+              >
+                {/* Card header */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: "2px 8px",
+                      borderRadius: 3,
+                      background: color.bg,
+                      color: color.text,
+                      border: `1px solid ${color.border}`,
+                    }}
+                  >
+                    New group {ng.groupIndex + 1}
+                  </span>
+                  {ng.candidateTopicNames.length > 0 && (
+                    <span style={{ fontSize: 11, color: "#42526e" }}>
+                      {ng.candidateTopicNames.join(", ")}
+                    </span>
+                  )}
+                  {firstResult?.verdict === "truly_new" && !firstResult.needs_manual_review && (
+                    <span style={badgeGreen}>LLM: ✓ truly new</span>
+                  )}
+                  {firstResult?.verdict === "should_be_merged_with" && !firstResult.needs_manual_review && (
+                    <span style={badgeAmber}>LLM: ↻ merge suggested</span>
+                  )}
+                  {firstResult?.needs_manual_review && (
+                    <span style={badgeRed}>⚠ needs manual review</span>
+                  )}
+                </div>
+
+                {/* Candidate tasks */}
+                {ng.candidateTasks.length > 0 ? (
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "#5e6c84", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>
+                      New tasks ({ng.candidateTasks.length})
+                    </div>
+                    <ul style={{ fontSize: 12, color: "#42526e", margin: 0, paddingLeft: 16 }}>
+                      {ng.candidateTasks.map((t, i) => (
+                        <li key={i} style={{ marginBottom: 2 }}>
+                          <span style={{ color: "#97a0af", fontSize: 10 }}>[{t.topicName}]</span>{" "}
+                          {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                          {t.next_step && <span style={{ color: "#5e6c84" }}> → {t.next_step}</span>}
+                          {t.owner && <span style={{ color: "#97a0af", fontSize: 10 }}> ({t.owner})</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, color: "#97a0af", fontStyle: "italic" }}>(no task-level bindings — topic-level group)</div>
+                )}
+
+                {/* Per-topic NewTopicCards for interactive LLM verdict / decision UI */}
+                {ng.candidateTopicNames.map((topicName) => {
+                  const t = sections.newTopics.find(
+                    (p) => p.name.toLowerCase().trim() === topicName.toLowerCase().trim()
+                  );
+                  if (!t) return null;
+                  const r = (eff.verify_new_cache ?? {})[t.name] as VerifyNewResult | undefined;
+                  const d = resolveNewDecision(t.name, r);
+                  const cache = (eff.verify_new_cache ?? {}) as Record<string, VerifyNewResult>;
+                  const selfKey = t.name.toLowerCase().trim();
+                  const usedOldIds = new Set<string>();
+                  const usedPendingNames = new Set<string>();
+                  for (const p of pending) {
+                    if (p.name.toLowerCase().trim() === selfKey) continue;
+                    const otherD = resolveNewDecision(p.name, cache[p.name]);
+                    if (otherD.action !== "merge") continue;
+                    otherD.merge_to_ids.forEach((id) => usedOldIds.add(id));
+                    otherD.merge_pending_names.forEach((n) => usedPendingNames.add(n));
+                  }
+                  const availableProjectTopics = projectTopics.filter(
+                    (pt) => !usedOldIds.has(pt.topic_id ?? "")
+                  );
+                  const availableOtherPending = sections.newTopics.filter(
+                    (p) => p.name !== t.name && !usedPendingNames.has(p.name.toLowerCase().trim())
+                  );
+                  return (
+                    <NewTopicCard
+                      key={t.name}
+                      topic={t}
+                      result={r}
+                      decision={d}
+                      projectTopics={availableProjectTopics}
+                      otherPending={availableOtherPending}
+                      onDecisionChange={(next) =>
+                        setNewDecisions((prev) => ({ ...prev, [t.name.toLowerCase().trim()]: next }))
+                      }
+                    />
+                  );
+                })}
+              </div>
             );
           })}
         </section>
@@ -649,14 +761,14 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
           })}
         </section>
 
-        {/* Section 3 — Merged */}
+        {/* Section 3 — Merged groups (one card per merged binding group) */}
         <section style={{ marginBottom: 24 }}>
           <SectionHeader
             title="3. Merged topics"
-            count={sections.merged.length}
+            count={sections.mergedGroups.length}
             button={
               <button
-                disabled={!stage2Done || busy !== null || sections.merged.length === 0}
+                disabled={!stage2Done || busy !== null || sections.mergedGroups.length === 0}
                 onClick={() => triggerPass("③")}
                 style={passButton(stage3Done)}
               >
@@ -670,65 +782,163 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             entries={readProgress(eff.extract_updates_cache)}
             active={busy === "③"}
           />
-          {sections.merged.map((t) => {
-            const tid = t.topic_id ?? "";
-            const fromNewName = mergedFromNewSource.get(tid);
-            const fromNewResult = fromNewName
-              ? ((eff.verify_new_cache ?? {})[fromNewName] as VerifyNewResult | undefined)
-              : undefined;
-            const fromNewPending = fromNewName
-              ? pending.find((p) => p.name === fromNewName)
-              : undefined;
+          {sections.mergedGroups.map((mg) => {
+            const color = groupColor(mg.groupIndex);
+
+            // For MergedTopicCard compat: collect the project topics from this group's project_task_refs
+            const groupProjectTopicIds = [...new Set((mg.g.project_task_refs ?? []).map((r) => r.project_topic_id).filter(Boolean) as string[])];
+            // Fallback to project_topic_ids if no project_task_refs
+            const effectiveProjectTopicIds = groupProjectTopicIds.length > 0
+              ? groupProjectTopicIds
+              : (mg.g.project_topic_ids ?? []);
+
             return (
-              <MergedTopicCard
-                key={tid}
-                projectTopic={t}
-                callMatches={pending.filter((p) =>
-                  groups.some(
-                    (g) =>
-                      (g.project_topic_ids ?? []).includes(tid) &&
-                      g.call_topic_names.some(
-                        (n) => n.toLowerCase().trim() === p.name.toLowerCase().trim()
-                      )
-                  )
-                )}
-                matchingGroups={
-                  groups
-                    .filter((g) => (g.project_topic_ids ?? []).includes(tid))
-                    .map((g) => ({
-                      call_task_refs: g.call_task_refs ?? [],
-                      project_task_refs: g.project_task_refs ?? [],
-                      target_topic_name: g.target_topic_name ?? null,
-                    }))
-                }
-                extracted={(eff.extract_updates_cache ?? {})[tid]}
-                fromNew={migratedFromNew.has(tid)}
-                fromNotDiscussed={migratedFromNotDiscussed.has(tid)}
-                callsById={callsById}
-                fromNewSourceName={fromNewName}
-                fromNewPending={fromNewPending}
-                fromNewResult={fromNewResult}
-                subordinateMergeNames={mergedFromNewSubordinateNames.get(tid) ?? []}
-                projectTopics={projectTopics}
-                onRevertFromNew={
-                  fromNewName
-                    ? () =>
-                        setNewDecisions((prev) => ({
-                          ...prev,
-                          [fromNewName.toLowerCase().trim()]: { action: "new", merge_to_ids: [], merge_pending_names: [] },
-                        }))
-                    : undefined
-                }
-                onChangeMergeTarget={
-                  fromNewName
-                    ? (new_id: string) =>
-                        setNewDecisions((prev) => ({
-                          ...prev,
-                          [fromNewName.toLowerCase().trim()]: { action: "merge", merge_to_ids: [new_id], merge_pending_names: [] },
-                        }))
-                    : undefined
-                }
-              />
+              <div
+                key={`merged-group-${mg.groupIndex}`}
+                style={{
+                  ...cardStyle,
+                  borderColor: color.border,
+                  borderLeftWidth: 4,
+                  marginBottom: 8,
+                }}
+              >
+                {/* Card header */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: "2px 8px",
+                      borderRadius: 3,
+                      background: color.bg,
+                      color: color.text,
+                      border: `1px solid ${color.border}`,
+                    }}
+                  >
+                    Merged group {mg.groupIndex + 1}
+                  </span>
+                  {mg.targetTopicName && (
+                    <span style={{ fontSize: 11, color: "#974f0c", fontWeight: 600 }}>
+                      → new topic: &quot;{mg.targetTopicName}&quot;
+                    </span>
+                  )}
+                  {(mg.g.call_topic_names ?? []).length > 0 && (
+                    <span style={{ fontSize: 11, color: "#42526e" }}>
+                      {mg.g.call_topic_names.join(", ")}
+                    </span>
+                  )}
+                </div>
+
+                {/* Two-column: PREVIOUS (project tasks) | THIS CALL (candidate tasks) */}
+                <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
+                  {/* Left: project tasks */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, color: "#5e6c84", fontSize: 10, textTransform: "uppercase", marginBottom: 4 }}>
+                      Previous ({mg.projectTasks.length} task{mg.projectTasks.length === 1 ? "" : "s"})
+                    </div>
+                    {mg.projectTasks.length > 0 ? (
+                      <ul style={{ fontSize: 11, color: "#5e6c84", margin: 0, paddingLeft: 16 }}>
+                        {mg.projectTasks.map((t, i) => (
+                          <li key={i} style={{ marginBottom: 2 }}>
+                            <span style={{ color: "#97a0af", fontSize: 10 }}>[{t.topicName}]</span>{" "}
+                            {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                            {t.next_step && <span style={{ color: "#97a0af" }}> → {t.next_step}</span>}
+                            {t.owner && <span style={{ color: "#97a0af", fontSize: 10 }}> ({t.owner})</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div style={{ fontSize: 11, color: "#97a0af", fontStyle: "italic" }}>(no task-level bindings)</div>
+                    )}
+                  </div>
+                  {/* Divider */}
+                  <div style={{ width: 1, background: "#ebecf0", flexShrink: 0 }} />
+                  {/* Right: candidate tasks from this call */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, color: "#5e6c84", fontSize: 10, textTransform: "uppercase", marginBottom: 4 }}>
+                      This call ({mg.candidateTasks.length} task{mg.candidateTasks.length === 1 ? "" : "s"})
+                    </div>
+                    {mg.candidateTasks.length > 0 ? (
+                      <ul style={{ fontSize: 11, color: "#42526e", margin: 0, paddingLeft: 16 }}>
+                        {mg.candidateTasks.map((t, i) => (
+                          <li key={i} style={{ marginBottom: 2 }}>
+                            <span style={{ color: "#97a0af", fontSize: 10 }}>[{t.topicName}]</span>{" "}
+                            {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                            {t.next_step && <span style={{ color: "#5e6c84" }}> → {t.next_step}</span>}
+                            {t.owner && <span style={{ color: "#97a0af", fontSize: 10 }}> ({t.owner})</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div style={{ fontSize: 11, color: "#97a0af", fontStyle: "italic" }}>(no task-level bindings)</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Per-project-topic MergedTopicCards for interactive LLM verdict / decision UI */}
+                {effectiveProjectTopicIds.map((tid) => {
+                  const t = sections.merged.find((m) => m.topic_id === tid);
+                  if (!t) return null;
+                  const fromNewName = mergedFromNewSource.get(tid);
+                  const fromNewResult = fromNewName
+                    ? ((eff.verify_new_cache ?? {})[fromNewName] as VerifyNewResult | undefined)
+                    : undefined;
+                  const fromNewPending = fromNewName
+                    ? pending.find((p) => p.name === fromNewName)
+                    : undefined;
+                  return (
+                    <MergedTopicCard
+                      key={tid}
+                      projectTopic={t}
+                      callMatches={pending.filter((p) =>
+                        groups.some(
+                          (g) =>
+                            (g.project_topic_ids ?? []).includes(tid) &&
+                            g.call_topic_names.some(
+                              (n) => n.toLowerCase().trim() === p.name.toLowerCase().trim()
+                            )
+                        )
+                      )}
+                      matchingGroups={
+                        groups
+                          .filter((g) => (g.project_topic_ids ?? []).includes(tid))
+                          .map((g) => ({
+                            call_task_refs: g.call_task_refs ?? [],
+                            project_task_refs: g.project_task_refs ?? [],
+                            target_topic_name: g.target_topic_name ?? null,
+                          }))
+                      }
+                      extracted={(eff.extract_updates_cache ?? {})[tid]}
+                      fromNew={migratedFromNew.has(tid)}
+                      fromNotDiscussed={migratedFromNotDiscussed.has(tid)}
+                      callsById={callsById}
+                      fromNewSourceName={fromNewName}
+                      fromNewPending={fromNewPending}
+                      fromNewResult={fromNewResult}
+                      subordinateMergeNames={mergedFromNewSubordinateNames.get(tid) ?? []}
+                      projectTopics={projectTopics}
+                      onRevertFromNew={
+                        fromNewName
+                          ? () =>
+                              setNewDecisions((prev) => ({
+                                ...prev,
+                                [fromNewName.toLowerCase().trim()]: { action: "new", merge_to_ids: [], merge_pending_names: [] },
+                              }))
+                          : undefined
+                      }
+                      onChangeMergeTarget={
+                        fromNewName
+                          ? (new_id: string) =>
+                              setNewDecisions((prev) => ({
+                                ...prev,
+                                [fromNewName.toLowerCase().trim()]: { action: "merge", merge_to_ids: [new_id], merge_pending_names: [] },
+                              }))
+                          : undefined
+                      }
+                    />
+                  );
+                })}
+              </div>
             );
           })}
         </section>
