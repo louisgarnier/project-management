@@ -352,18 +352,64 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       return true;
     });
 
-    // SECTION 3: one card per merged binding group (M:N)
-    const mergedGroups = mergedBindingGroups.map((g, i) => ({
-      groupIndex: markNewGroups.length + oldUntouchedGroups.length + i,
-      g,
-      candidateTasks: (g.call_task_refs ?? [])
+    // SECTION 3: COLLAPSED by target project topic — one card per target topic,
+    // each card has sub-groups inside (one per binding group targeting that topic).
+    // This way "Accept merge with X" doesn't create a separate card — it adds
+    // a new sub-group inside X's existing card.
+    type MergedSubGroup = {
+      groupIndex: number;
+      g: typeof bindingGroups[number];
+      targetTopicName: string | null;
+      candidateTasks: Array<{ task: string; next_step?: string; owner?: string; task_id?: string; topicName: string }>;
+    };
+    type MergedTopicCard = {
+      projectTopicId: string;
+      projectTopicName: string;
+      existingTasks: Array<{ task: string; next_step?: string; owner?: string; task_id?: string; topicName: string; topicId?: string }>;
+      subGroups: MergedSubGroup[];
+    };
+    const mergedByTopic = new Map<string, MergedTopicCard>();
+    mergedBindingGroups.forEach((g, i) => {
+      const groupIndex = markNewGroups.length + oldUntouchedGroups.length + i;
+      const candidateTasks = (g.call_task_refs ?? [])
         .map((r) => resolveCallTask(r.task_id))
-        .filter((x): x is NonNullable<typeof x> => x !== null),
-      projectTasks: (g.project_task_refs ?? [])
-        .map((r) => resolveProjectTask(r.project_topic_id, r.task_id))
-        .filter((x): x is NonNullable<typeof x> => x !== null),
-      targetTopicName: g.target_topic_name ?? null,
-    }));
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+      // Determine which project topic(s) this group targets
+      const targetIds = new Set<string>();
+      for (const r of (g.project_task_refs ?? [])) {
+        if (r.project_topic_id) targetIds.add(r.project_topic_id);
+      }
+      for (const ptid of targetIds) {
+        let card = mergedByTopic.get(ptid);
+        if (!card) {
+          const topic = projectTopics.find((t) => t.topic_id === ptid);
+          const existingTasks = (topic?.tasks ?? [])
+            .filter((t) => t.task_id)
+            .map((t) => ({
+              task: t.task ?? "",
+              next_step: t.next_step,
+              owner: t.owner,
+              task_id: t.task_id,
+              topicName: topic?.name ?? "?",
+              topicId: ptid,
+            }));
+          card = {
+            projectTopicId: ptid,
+            projectTopicName: topic?.name ?? "(unknown topic)",
+            existingTasks,
+            subGroups: [],
+          };
+          mergedByTopic.set(ptid, card);
+        }
+        card.subGroups.push({
+          groupIndex,
+          g,
+          targetTopicName: g.target_topic_name ?? null,
+          candidateTasks,
+        });
+      }
+    });
+    const mergedGroups = Array.from(mergedByTopic.values());
 
     // ── Topic-level arrays (kept for handleSaveContinue compatibility) ────
     const newGroupCallNames = new Set(markNewGroups.flatMap((g) => g.call_topic_names.map(norm)));
@@ -960,98 +1006,86 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             entries={readProgress(eff.extract_updates_cache)}
             active={busy === "③"}
           />
-          {sections.mergedGroups.map((mg) => {
-            const color = groupColor(mg.groupIndex);
-
-            // For MergedTopicCard compat: collect the project topics from this group's project_task_refs
-            const groupProjectTopicIds = [...new Set((mg.g.project_task_refs ?? []).map((r) => r.project_topic_id).filter(Boolean) as string[])];
-            // Fallback to project_topic_ids if no project_task_refs
-            const effectiveProjectTopicIds = groupProjectTopicIds.length > 0
-              ? groupProjectTopicIds
-              : (mg.g.project_topic_ids ?? []);
-
+          {sections.mergedGroups.map((mt) => {
             return (
               <div
-                key={`merged-group-${mg.groupIndex}`}
+                key={`merged-topic-${mt.projectTopicId}`}
                 style={{
                   ...cardStyle,
-                  borderColor: color.border,
-                  borderLeftWidth: 4,
                   marginBottom: 8,
                 }}
               >
-                {/* Card header */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      padding: "2px 8px",
-                      borderRadius: 3,
-                      background: color.bg,
-                      color: color.text,
-                      border: `1px solid ${color.border}`,
-                    }}
-                  >
-                    Merged group {mg.groupIndex + 1}
+                {/* Card header — TARGET PROJECT TOPIC */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <span style={{ fontSize: 10, color: "#5e6c84", textTransform: "uppercase", letterSpacing: ".04em" }}>
+                    Target topic:
                   </span>
-                  {mg.targetTopicName && (
-                    <span style={{ fontSize: 11, color: "#974f0c", fontWeight: 600 }}>
-                      → new topic: &quot;{mg.targetTopicName}&quot;
-                    </span>
-                  )}
-                  {(mg.g.call_topic_names ?? []).length > 0 && (
-                    <span style={{ fontSize: 11, color: "#42526e" }}>
-                      {mg.g.call_topic_names.join(", ")}
-                    </span>
-                  )}
+                  <strong style={{ fontSize: 14, color: "#172b4d" }}>{mt.projectTopicName}</strong>
+                  <span style={{ fontSize: 10, color: "#97a0af" }}>
+                    {mt.subGroups.length} sub-group{mt.subGroups.length === 1 ? "" : "s"} contributing
+                  </span>
                 </div>
 
-                {/* Two-column: PREVIOUS (project tasks) | THIS CALL (candidate tasks) */}
-                <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
-                  {/* Left: project tasks */}
-                  <div style={{ flex: 1 }}>
+                {/* Existing topic tasks (the "previous" side, shared across all sub-groups) */}
+                {mt.existingTasks.length > 0 && (
+                  <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #f0f1f3" }}>
                     <div style={{ fontWeight: 600, color: "#5e6c84", fontSize: 10, textTransform: "uppercase", marginBottom: 4 }}>
-                      Previous ({mg.projectTasks.length} task{mg.projectTasks.length === 1 ? "" : "s"})
+                      Existing tasks in this topic ({mt.existingTasks.length})
                     </div>
-                    {mg.projectTasks.length > 0 ? (
-                      <ul style={{ fontSize: 11, color: "#5e6c84", margin: 0, paddingLeft: 16 }}>
-                        {mg.projectTasks.map((t, i) => (
-                          <li key={i} style={{ marginBottom: 2 }}>
-                            <span style={{ color: "#97a0af", fontSize: 10 }}>[{t.topicName}]</span>{" "}
-                            {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
-                            {t.next_step && <span style={{ color: "#97a0af" }}> → {t.next_step}</span>}
-                            {t.owner && <span style={{ color: "#97a0af", fontSize: 10 }}> ({t.owner})</span>}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div style={{ fontSize: 11, color: "#97a0af", fontStyle: "italic" }}>(no task-level bindings)</div>
-                    )}
+                    <ul style={{ fontSize: 11, color: "#5e6c84", margin: 0, paddingLeft: 16 }}>
+                      {mt.existingTasks.map((t, i) => (
+                        <li key={`et-${i}`} style={{ marginBottom: 2 }}>
+                          {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                          {t.next_step && <span style={{ color: "#97a0af" }}> → {t.next_step}</span>}
+                          {t.owner && <span style={{ color: "#97a0af", fontSize: 10 }}> ({t.owner})</span>}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  {/* Divider */}
-                  <div style={{ width: 1, background: "#ebecf0", flexShrink: 0 }} />
-                  {/* Right: candidate tasks from this call */}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, color: "#5e6c84", fontSize: 10, textTransform: "uppercase", marginBottom: 4 }}>
-                      This call ({mg.candidateTasks.length} task{mg.candidateTasks.length === 1 ? "" : "s"})
-                    </div>
-                    {mg.candidateTasks.length > 0 ? (
-                      <ul style={{ fontSize: 11, color: "#42526e", margin: 0, paddingLeft: 16 }}>
-                        {mg.candidateTasks.map((t, i) => (
-                          <li key={i} style={{ marginBottom: 2 }}>
-                            <span style={{ color: "#97a0af", fontSize: 10 }}>[{t.topicName}]</span>{" "}
-                            {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
-                            {t.next_step && <span style={{ color: "#5e6c84" }}> → {t.next_step}</span>}
-                            {t.owner && <span style={{ color: "#97a0af", fontSize: 10 }}> ({t.owner})</span>}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div style={{ fontSize: 11, color: "#97a0af", fontStyle: "italic" }}>(no task-level bindings)</div>
-                    )}
-                  </div>
+                )}
+
+                {/* Sub-groups — one per binding group targeting this topic */}
+                <div style={{ fontWeight: 600, color: "#5e6c84", fontSize: 10, textTransform: "uppercase", marginBottom: 4 }}>
+                  This call adds ({mt.subGroups.reduce((s, sg) => s + sg.candidateTasks.length, 0)} task{mt.subGroups.reduce((s, sg) => s + sg.candidateTasks.length, 0) === 1 ? "" : "s"}):
                 </div>
+                {mt.subGroups.map((sg) => {
+                  const col = groupColor(sg.groupIndex);
+                  return (
+                    <div
+                      key={`sg-${sg.groupIndex}`}
+                      style={{
+                        borderLeft: `3px solid ${col.border}`,
+                        background: col.bg,
+                        padding: "6px 10px",
+                        marginBottom: 4,
+                        borderRadius: 2,
+                      }}
+                    >
+                      <div style={{ fontSize: 10, fontWeight: 600, color: col.text, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>
+                        Sub-group {sg.groupIndex + 1}
+                        {sg.targetTopicName && (
+                          <span style={{ marginLeft: 6, color: "#974f0c", textTransform: "none", letterSpacing: 0 }}>
+                            → new topic name: &quot;{sg.targetTopicName}&quot;
+                          </span>
+                        )}
+                      </div>
+                      {sg.candidateTasks.length > 0 ? (
+                        <ul style={{ fontSize: 11, color: "#42526e", margin: 0, paddingLeft: 16 }}>
+                          {sg.candidateTasks.map((t, i) => (
+                            <li key={`sgt-${i}`} style={{ marginBottom: 2 }}>
+                              <span style={{ color: "#97a0af", fontSize: 10 }}>[{t.topicName}]</span>{" "}
+                              {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                              {t.next_step && <span style={{ color: "#5e6c84" }}> → {t.next_step}</span>}
+                              {t.owner && <span style={{ color: "#97a0af", fontSize: 10 }}> ({t.owner})</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div style={{ fontSize: 11, color: "#97a0af", fontStyle: "italic" }}>(no task-level bindings)</div>
+                      )}
+                    </div>
+                  );
+                })}
 
               </div>
             );
