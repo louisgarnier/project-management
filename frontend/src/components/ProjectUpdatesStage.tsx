@@ -550,7 +550,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
         {/* Section 1 — New topics */}
         <section style={{ marginBottom: 24 }}>
           <SectionHeader
-            title="1. New topics from this call"
+            title="1. New tasks in this call"
             count={sections.newTopics.length}
             button={
               <button
@@ -613,7 +613,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
         {/* Section 2 — Not in call */}
         <section style={{ marginBottom: 24 }}>
           <SectionHeader
-            title="2. Old topics not in this call"
+            title="2. Old tasks not discussed in this call"
             count={sections.notInCall.length}
             button={
               <button
@@ -851,6 +851,9 @@ function NewTopicCard({
   return (
     <div style={cardStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, color: "#97a0af", textTransform: "uppercase", letterSpacing: ".04em" }}>
+          from topic:
+        </span>
         <strong style={{ fontSize: 13, color: "#172b4d" }}>{topic.name}</strong>
         {result?.verdict === "truly_new" && !result.needs_manual_review && (
           <span style={badgeGreen}>LLM: ✓ truly new</span>
@@ -862,6 +865,24 @@ function NewTopicCard({
           <span style={badgeRed}>⚠ LLM uncertain — manual decision needed</span>
         )}
       </div>
+
+      {/* EPIC-19: show the actual tasks the user marked as new, prominently */}
+      {topic.tasks && topic.tasks.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: "#5e6c84", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>
+            New tasks ({topic.tasks.length})
+          </div>
+          <ul style={{ fontSize: 12, color: "#42526e", margin: 0, paddingLeft: 16 }}>
+            {topic.tasks.map((t, i) => (
+              <li key={i} style={{ marginBottom: 2 }}>
+                {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                {t.next_step && <span style={{ color: "#5e6c84" }}> → {t.next_step}</span>}
+                {t.owner && <span style={{ color: "#97a0af", fontSize: 10 }}> ({t.owner})</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <ConfidenceGauge result={result} />
 
@@ -1366,6 +1387,9 @@ function NotInCallCard({
   return (
     <div style={cardStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, color: "#97a0af", textTransform: "uppercase", letterSpacing: ".04em" }}>
+          from topic:
+        </span>
         <strong style={{ fontSize: 13, color: "#172b4d" }}>{topic.name}</strong>
         {result?.verdict === "not_discussed" && !result.needs_manual_review && (
           <span style={badgeGreen}>LLM: ✓ not discussed</span>
@@ -1378,6 +1402,23 @@ function NotInCallCard({
       {topic.summary && (
         <div style={{ fontSize: 11, color: "#5e6c84", marginTop: 6 }}>
           Latest snapshot: {topic.summary}
+        </div>
+      )}
+      {/* EPIC-19: show the existing tasks that were not bound in this call */}
+      {topic.tasks && topic.tasks.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: "#5e6c84", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>
+            Existing tasks not touched this call ({topic.tasks.length})
+          </div>
+          <ul style={{ fontSize: 12, color: "#42526e", margin: 0, paddingLeft: 16 }}>
+            {topic.tasks.map((t, i) => (
+              <li key={i} style={{ marginBottom: 2 }}>
+                {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                {t.next_step && <span style={{ color: "#5e6c84" }}> → {t.next_step}</span>}
+                {t.owner && <span style={{ color: "#97a0af", fontSize: 10 }}> ({t.owner})</span>}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {result?.verdict === "actually_discussed" && result.citation && (
