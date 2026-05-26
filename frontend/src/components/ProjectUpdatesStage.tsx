@@ -361,6 +361,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       g: typeof bindingGroups[number];
       targetTopicName: string | null;
       candidateTasks: Array<{ task: string; next_step?: string; owner?: string; task_id?: string; topicName: string }>;
+      secondaryTopicNames?: string[];
     };
     type MergedTopicCard = {
       projectTopicId: string;
@@ -369,45 +370,72 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       subGroups: MergedSubGroup[];
     };
     const mergedByTopic = new Map<string, MergedTopicCard>();
+
+    // Determine the PRIMARY project topic per group = topic with the most
+    // task refs. Ties broken by first encountered. This ensures each binding
+    // group appears as a sub-group under exactly ONE topic card (no duplicates).
+    const primaryTopicForGroup = (g: typeof bindingGroups[number]): string | null => {
+      const counts = new Map<string, number>();
+      for (const r of (g.project_task_refs ?? [])) {
+        if (r.project_topic_id) {
+          counts.set(r.project_topic_id, (counts.get(r.project_topic_id) ?? 0) + 1);
+        }
+      }
+      let best: string | null = null;
+      let bestCount = -1;
+      for (const [pid, c] of counts.entries()) {
+        if (c > bestCount) {
+          best = pid;
+          bestCount = c;
+        }
+      }
+      return best;
+    };
+
     mergedBindingGroups.forEach((g, i) => {
       const groupIndex = markNewGroups.length + oldUntouchedGroups.length + i;
       const candidateTasks = (g.call_task_refs ?? [])
         .map((r) => resolveCallTask(r.task_id))
         .filter((x): x is NonNullable<typeof x> => x !== null);
-      // Determine which project topic(s) this group targets
-      const targetIds = new Set<string>();
+      const primaryTopicId = primaryTopicForGroup(g);
+      if (!primaryTopicId) return;
+      // Collect ALL targeted topic IDs for the "also relates to" annotation
+      const allTargetIds = new Set<string>();
       for (const r of (g.project_task_refs ?? [])) {
-        if (r.project_topic_id) targetIds.add(r.project_topic_id);
+        if (r.project_topic_id) allTargetIds.add(r.project_topic_id);
       }
-      for (const ptid of targetIds) {
-        let card = mergedByTopic.get(ptid);
-        if (!card) {
-          const topic = projectTopics.find((t) => t.topic_id === ptid);
-          const existingTasks = (topic?.tasks ?? [])
-            .filter((t) => t.task_id)
-            .map((t) => ({
-              task: t.task ?? "",
-              next_step: t.next_step,
-              owner: t.owner,
-              task_id: t.task_id,
-              topicName: topic?.name ?? "?",
-              topicId: ptid,
-            }));
-          card = {
-            projectTopicId: ptid,
-            projectTopicName: topic?.name ?? "(unknown topic)",
-            existingTasks,
-            subGroups: [],
-          };
-          mergedByTopic.set(ptid, card);
-        }
-        card.subGroups.push({
-          groupIndex,
-          g,
-          targetTopicName: g.target_topic_name ?? null,
-          candidateTasks,
-        });
+      const secondaryTopicNames = Array.from(allTargetIds)
+        .filter((pid) => pid !== primaryTopicId)
+        .map((pid) => projectTopics.find((t) => t.topic_id === pid)?.name ?? pid);
+
+      let card = mergedByTopic.get(primaryTopicId);
+      if (!card) {
+        const topic = projectTopics.find((t) => t.topic_id === primaryTopicId);
+        const existingTasks = (topic?.tasks ?? [])
+          .filter((t) => t.task_id)
+          .map((t) => ({
+            task: t.task ?? "",
+            next_step: t.next_step,
+            owner: t.owner,
+            task_id: t.task_id,
+            topicName: topic?.name ?? "?",
+            topicId: primaryTopicId,
+          }));
+        card = {
+          projectTopicId: primaryTopicId,
+          projectTopicName: topic?.name ?? "(unknown topic)",
+          existingTasks,
+          subGroups: [],
+        };
+        mergedByTopic.set(primaryTopicId, card);
       }
+      card.subGroups.push({
+        groupIndex,
+        g,
+        targetTopicName: g.target_topic_name ?? null,
+        candidateTasks,
+        secondaryTopicNames,
+      });
     });
     const mergedGroups = Array.from(mergedByTopic.values());
 
@@ -1066,6 +1094,11 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                         {sg.targetTopicName && (
                           <span style={{ marginLeft: 6, color: "#974f0c", textTransform: "none", letterSpacing: 0 }}>
                             → new topic name: &quot;{sg.targetTopicName}&quot;
+                          </span>
+                        )}
+                        {sg.secondaryTopicNames && sg.secondaryTopicNames.length > 0 && (
+                          <span style={{ marginLeft: 6, color: "#5e6c84", textTransform: "none", letterSpacing: 0, fontWeight: 400, fontStyle: "italic" }}>
+                            also relates to: {sg.secondaryTopicNames.join(", ")}
                           </span>
                         )}
                       </div>
