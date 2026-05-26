@@ -254,9 +254,16 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
 
     // ── Per-group display arrays (EPIC-19 restructure) ────────────────────
     // Only "binding" kind groups participate in display (skip topic_merge rows).
+    // Three buckets by group SHAPE:
+    //   X:0 (call only)    → NEW         (section 1)
+    //   0:X (project only) → OLD         (section 2)
+    //   M:N (both sides)   → MERGED      (section 3)
     const bindingGroups = groups.filter((g) => (g.kind ?? "binding") === "binding");
-    const markNewGroups = bindingGroups.filter((g) => (g.project_topic_ids?.length ?? 0) === 0);
-    const mergedBindingGroups = bindingGroups.filter((g) => (g.project_topic_ids?.length ?? 0) > 0);
+    const hasCall = (g: typeof bindingGroups[number]) => (g.call_task_refs?.length ?? 0) > 0;
+    const hasProj = (g: typeof bindingGroups[number]) => (g.project_task_refs?.length ?? 0) > 0;
+    const markNewGroups = bindingGroups.filter((g) => hasCall(g) && !hasProj(g));
+    const oldUntouchedGroups = bindingGroups.filter((g) => !hasCall(g) && hasProj(g));
+    const mergedBindingGroups = bindingGroups.filter((g) => hasCall(g) && hasProj(g));
 
     // Helper: resolve task_id → task data from pending topics
     const resolveCallTask = (taskId: string | undefined): { task: string; next_step?: string; owner?: string; task_id?: string; topicName: string } | null => {
@@ -269,7 +276,17 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       return null;
     };
 
-    // SECTION 1: one item per mark-new group
+    // Helper: resolve project task_id → task data from project topics
+    const resolveProjectTask = (projectTopicId: string | undefined, taskId: string | undefined) => {
+      if (!projectTopicId || !taskId) return null;
+      const topic = projectTopics.find((t) => t.topic_id === projectTopicId);
+      if (!topic) return null;
+      const task = (topic.tasks ?? []).find((t) => t.task_id === taskId);
+      if (!task) return null;
+      return { ...task, topicName: topic.name, topicId: topic.topic_id };
+    };
+
+    // SECTION 1: one card per mark-new group (X:0)
     const newGroups = markNewGroups.map((g, i) => ({
       groupIndex: i,
       g,
@@ -279,31 +296,39 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
         .filter((x): x is NonNullable<typeof x> => x !== null),
     }));
 
-    // SECTION 2: project topics not in any binding group AND not migrated
-    const matchedProjectIds = new Set(bindingGroups.flatMap((g) => g.project_topic_ids));
+    // SECTION 2: one card per old-untouched group (0:X)
+    const oldGroups = oldUntouchedGroups.map((g, i) => ({
+      groupIndex: markNewGroups.length + i,
+      g,
+      projectTopicNames: g.project_topic_ids
+        .map((pid) => projectTopics.find((t) => t.topic_id === pid)?.name ?? pid)
+        .filter(Boolean),
+      projectTasks: (g.project_task_refs ?? [])
+        .map((r) => resolveProjectTask(r.project_topic_id, r.task_id))
+        .filter((x): x is NonNullable<typeof x> => x !== null),
+    }));
+
+    // Legacy notInCall (project topics NOT in any group at all). Kept as a
+    // fallback for project topics the user didn't explicitly address; surfaced
+    // in section 2 below the explicit 0:X groups.
+    const allGroupProjectIds = new Set(bindingGroups.flatMap((g) => g.project_topic_ids));
     const notInCall = projectTopics.filter((t) => {
       const tid = t.topic_id ?? "";
-      if (matchedProjectIds.has(tid)) return false;
+      if (allGroupProjectIds.has(tid)) return false;
       if (migratedFromNotDiscussed.has(tid)) return false;
       if (migratedFromNew.has(tid)) return false;
       return true;
     });
 
-    // SECTION 3: one card per merged binding group
+    // SECTION 3: one card per merged binding group (M:N)
     const mergedGroups = mergedBindingGroups.map((g, i) => ({
-      groupIndex: markNewGroups.length + i,
+      groupIndex: markNewGroups.length + oldUntouchedGroups.length + i,
       g,
       candidateTasks: (g.call_task_refs ?? [])
         .map((r) => resolveCallTask(r.task_id))
         .filter((x): x is NonNullable<typeof x> => x !== null),
       projectTasks: (g.project_task_refs ?? [])
-        .map((r) => {
-          const topic = projectTopics.find((t) => t.topic_id === r.project_topic_id);
-          if (!topic) return null;
-          const task = (topic.tasks ?? []).find((t) => t.task_id === r.task_id);
-          if (!task) return null;
-          return { ...task, topicName: topic.name, topicId: topic.topic_id };
-        })
+        .map((r) => resolveProjectTask(r.project_topic_id, r.task_id))
         .filter((x): x is NonNullable<typeof x> => x !== null),
       targetTopicName: g.target_topic_name ?? null,
     }));
@@ -330,7 +355,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       return mergedSet.has(tid) && !subordinateMergeIds.has(tid);
     });
 
-    return { newGroups, notInCall, mergedGroups, newTopics, merged };
+    return { newGroups, oldGroups, notInCall, mergedGroups, newTopics, merged };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups, pending, projectTopics, eff.verify_new_cache, migratedFromNew, migratedFromNotDiscussed, subordinateMergeIds, absorbedPendingNames, newDecisions]);
 
@@ -695,14 +720,17 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
           })}
         </section>
 
-        {/* Section 2 — Not in call */}
+        {/* Section 2 — Old not discussed (0:X groups + untouched topics fallback) */}
         <section style={{ marginBottom: 24 }}>
           <SectionHeader
             title="2. Old tasks not discussed in this call"
-            count={sections.notInCall.reduce((sum, t) => sum + (t.tasks?.length ?? 0), 0)}
+            count={
+              sections.oldGroups.reduce((sum, og) => sum + og.projectTasks.length, 0) +
+              sections.notInCall.reduce((sum, t) => sum + (t.tasks?.length ?? 0), 0)
+            }
             button={
               <button
-                disabled={!stage1Done || busy !== null || sections.notInCall.length === 0}
+                disabled={!stage1Done || busy !== null || (sections.oldGroups.length === 0 && sections.notInCall.length === 0)}
                 onClick={() => triggerPass("②")}
                 style={passButton(stage2Done)}
               >
@@ -716,6 +744,57 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             entries={readProgress(eff.verify_not_discussed_cache)}
             active={busy === "②"}
           />
+          {/* 0:X groups — one card per group, color-coded like other sections */}
+          {sections.oldGroups.map((og) => {
+            const color = groupColor(og.groupIndex);
+            return (
+              <div
+                key={`old-group-${og.groupIndex}`}
+                style={{ ...cardStyle, borderColor: color.border, borderLeftWidth: 4, marginBottom: 8 }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: "2px 8px",
+                      borderRadius: 3,
+                      background: color.bg,
+                      color: color.text,
+                      border: `1px solid ${color.border}`,
+                    }}
+                  >
+                    Old group {og.groupIndex + 1}
+                  </span>
+                  {og.projectTopicNames.length > 0 && (
+                    <span style={{ fontSize: 11, color: "#42526e" }}>
+                      {og.projectTopicNames.join(", ")}
+                    </span>
+                  )}
+                </div>
+                {og.projectTasks.length > 0 ? (
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "#5e6c84", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>
+                      Existing tasks marked as not discussed ({og.projectTasks.length})
+                    </div>
+                    <ul style={{ fontSize: 12, color: "#42526e", margin: 0, paddingLeft: 16 }}>
+                      {og.projectTasks.map((t, i) => (
+                        <li key={i} style={{ marginBottom: 2 }}>
+                          <span style={{ color: "#97a0af", fontSize: 10 }}>[{t.topicName}]</span>{" "}
+                          {t.task || <em style={{ color: "#97a0af" }}>(no task)</em>}
+                          {t.next_step && <span style={{ color: "#5e6c84" }}> → {t.next_step}</span>}
+                          {t.owner && <span style={{ color: "#97a0af", fontSize: 10 }}> ({t.owner})</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, color: "#97a0af", fontStyle: "italic" }}>(no task-level bindings)</div>
+                )}
+              </div>
+            );
+          })}
+          {/* Legacy fallback: project topics with NO group at all (auto-detected untouched) */}
           {sections.notInCall.map((t) => {
             const tid = t.topic_id ?? "";
             const r = (eff.verify_not_discussed_cache ?? {})[tid] as VerifyNotDiscussedResult | undefined;
