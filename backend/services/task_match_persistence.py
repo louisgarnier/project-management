@@ -21,6 +21,7 @@ class TaskRef(TypedDict, total=False):
 
 
 class TaskMatchGroup(TypedDict, total=False):
+    id: str  # EPIC-19 Phase B: DB row UUID, useful as a cache key
     kind: Literal["binding", "topic_merge"]
     call_task_refs: list[TaskRef]
     project_task_refs: list[TaskRef]
@@ -57,13 +58,14 @@ def load_task_match_groups(call_id: str, *, db=None) -> list[TaskMatchGroup]:
     client = db if db is not None else get_client()
     rows = (
         client.table("topic_match_groups")
-        .select("kind, call_task_refs, project_task_refs, target_topic_name")
+        .select("id, kind, call_task_refs, project_task_refs, target_topic_name")
         .eq("call_id", call_id)
         .execute()
         .data
     ) or []
     return [
         TaskMatchGroup(
+            id=r.get("id"),
             kind=r.get("kind") or "binding",
             call_task_refs=r.get("call_task_refs") or [],
             project_task_refs=r.get("project_task_refs") or [],

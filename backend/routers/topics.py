@@ -247,7 +247,7 @@ async def get_match_groups(call_id: str):
 
     groups = (
         db.table("topic_match_groups")
-        .select("kind, call_task_refs, project_task_refs, call_topic_names, project_topic_ids")
+        .select("id, kind, call_task_refs, project_task_refs, call_topic_names, project_topic_ids")
         .eq("call_id", call_id)
         .execute()
         .data
@@ -262,6 +262,7 @@ async def get_match_groups(call_id: str):
             if row:
                 names.append(row[0]["name"])
         result.append({
+            "id": g.get("id"),
             "kind": g.get("kind", "binding"),
             "call_task_refs": g.get("call_task_refs") or [],
             "project_task_refs": g.get("project_task_refs") or [],
@@ -672,106 +673,109 @@ from backend.services.topic_verification import run_verify_new as _run_verify_ne
 
 
 async def _run_verify_new_background(call_id: str) -> None:
-    """Run Pass ① for every new topic in this call's pending_topics, persist to verify_new_cache."""
+    """EPIC-19 Pass 1: per X:0 group verification.
+
+    Each X:0 binding group (call_task_refs only, no project_task_refs) becomes
+    one LLM call. The verdict is stored keyed by group ID.
+    """
     import asyncio
+    from backend.services.task_match_persistence import load_task_match_groups
+    from backend.services.topic_verification import run_verify_new, ProgressLogger
+    from backend.services.call_topics_v5.stage_0_ingest import ingest_transcript
+    from backend.services.project_topic_state import get_project_topic_state
     from backend.services.topics_service import _resolve_workflow_llm_for_category
-    from backend.services.topic_verification import ProgressLogger
+
     db = get_client()
     plog = ProgressLogger(db, call_id, "verify_new_cache")
+    await plog.start()
+
     try:
-        await plog.start()
-        await plog.log("Starting Pass ① — Verify new topics")
+        await plog.log("EPIC-19 Pass 1: verifying NEW task groups (X:0)…")
+        groups = load_task_match_groups(call_id, db=db)
+        x0_groups = [
+            g for g in groups
+            if g.get("kind") == "binding"
+            and g.get("call_task_refs")
+            and not g.get("project_task_refs")
+        ]
+        await plog.log(f"Found {len(x0_groups)} X:0 group(s) to verify")
+
+        if not x0_groups:
+            db.table("calls").update({
+                "verify_new_cache": {"__progress__": plog.entries_snapshot()},
+                "verify_new_status": "done",
+            }).eq("id", call_id).execute()
+            await plog.log("No X:0 groups — Pass 1 no-op")
+            return
+
+        # Load call context
         call_row = db.table("calls").select("project_id, pending_topics").eq("id", call_id).execute().data
         if not call_row:
             return
         project_id = call_row[0]["project_id"]
         pending = call_row[0].get("pending_topics") or []
 
-        # EPIC-19: task-level match groups replace topic-level bucketization
-        from backend.services.task_match_persistence import load_task_match_groups
-        groups = load_task_match_groups(call_id, db=db)
+        # Build a flat map: task_id → task dict (with parent topic name attached)
+        pending_task_by_id: dict = {}
+        for p in pending:
+            for t in (p.get("tasks") or []):
+                if t.get("task_id"):
+                    pending_task_by_id[t["task_id"]] = {**t, "_parent_topic": p.get("name")}
 
-        # "new_candidates" = pending topics with NO bindings in any group
-        # (i.e., no project_task_refs anywhere that reference their tasks)
-        bound_call_topic_names = set()
-        for g in groups:
-            if g.get("kind") != "binding":
-                continue
-            # If this group has project_task_refs (i.e., binds to existing), candidate is NOT new
-            if g.get("project_task_refs"):
-                for r in g.get("call_task_refs", []):
-                    if r.get("call_topic_name"):
-                        bound_call_topic_names.add(r["call_topic_name"].lower().strip())
+        # Existing project state (used as comparison pool for LLM)
+        project_topics = get_project_topic_state(project_id, db=db)
+        await plog.log(f"Loaded {len(project_topics)} existing project topic(s) for comparison")
 
-        new_candidates = [
-            t for t in pending
-            if (t.get("name") or "").lower().strip() not in bound_call_topic_names
-        ]
-        await plog.log(f"Found {len(new_candidates)} new-topic candidate(s) to verify")
-
-        await plog.log("Loading past transcripts (calls before this one)…")
-        calls = (
-            db.table("calls").select("id, transcript, title")
+        # Past transcripts (line-numbered)
+        all_calls = (
+            db.table("calls").select("id, transcript, created_at")
             .eq("project_id", project_id).order("created_at").execute().data
         )
-        # Pass ① compares the candidate against PAST calls only. The current call's
-        # transcript is what produced the candidate — it doesn't help answer
-        # "was this raised before?". Exclude it.
-        past_calls = [c for c in calls if c["id"] != call_id]
-        from backend.services.call_topics_v5.stage_0_ingest import ingest_transcript
-        transcripts = {
-            c["id"]: ingest_transcript(c.get("transcript") or "")
-            for c in past_calls
-            if c.get("transcript")
-        }
-        # Map call UUID → human-readable label for log messages.
-        call_label = {c["id"]: f"Call {i+1}" for i, c in enumerate(calls)}
-        past_labels = ", ".join(call_label[c["id"]] for c in past_calls)
-        await plog.log(f"Loaded {len(transcripts)} past transcript(s) — {past_labels or '(none — first call of project)'}")
+        past_calls = [c for c in all_calls if c["id"] != call_id and c.get("transcript")]
+        transcripts = {c["id"]: ingest_transcript(c.get("transcript") or "") for c in past_calls}
+        await plog.log(f"Loaded {len(transcripts)} past transcript(s)")
 
-        # Pass ① v2 (task-fit): send FULL tasks/OQ/decisions for each existing
-        # topic so the LLM can do the work-continuity test (would candidate's
-        # tasks naturally fit on this topic's task list?) rather than just
-        # surface-similarity matching. Verbose but precise.
-        from backend.services.topics_service import _get_previous_topics
-        previous = _get_previous_topics(project_id, db)
-        project_topics = []
-        for t in previous:
-            project_topics.append({
-                "topic_id": t.get("topic_id"),
-                "name": t.get("name"),
-                "key_terms": t.get("key_terms") or [],
-                "summary": t.get("summary") or "",
-                "tasks": t.get("tasks") or [],
-                "open_questions": t.get("open_questions") or [],
-                "decisions": t.get("decisions") or [],
-            })
-        await plog.log(f"Loaded {len(project_topics)} reference topic(s) with FULL tasks + open_questions + decisions (for task-fit comparison: 'would the candidate's items belong on this topic's task list?'). NOT verified — just the comparison pool.")
-
+        # LLM config
         llm, model = _resolve_workflow_llm_for_category(project_id, "verify_new_topic", db)
-        await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(new_candidates)} topic(s) in parallel — this can take 30-60s")
+        await plog.log(f"Calling LLM ({llm}/{model or 'default'}) per X:0 group, parallel")
 
-        async def _one(c):
-            # ── Layer 1: mechanical pre-filter (IDF-weighted scoring) ──
-            from backend.services.topic_verification import lexical_precheck
-            pre = lexical_precheck(c, project_topics, transcripts)
-            scored = pre.get("scored_topics") or []
+        # Per-group async helper
+        async def _verify_group(g):
+            gid = g.get("id")
+            if not gid:
+                await plog.log("  ⚠ Group has no id — skipping (stale row?)")
+                return None, None
+            # Build a synthetic "candidate topic" from this group's tasks
+            task_objs = []
+            for r in (g.get("call_task_refs") or []):
+                t = pending_task_by_id.get(r.get("task_id"))
+                if t:
+                    task_objs.append(t)
+            if not task_objs:
+                await plog.log(f"  ⚠ Group {gid[:8]}…: no resolvable tasks — skipping")
+                return gid, None
+            # Synthetic candidate name from target_topic_name or first task's parent topic name
+            cand_name = (
+                g.get("target_topic_name")
+                or (task_objs[0].get("_parent_topic") if task_objs else "(unnamed group)")
+            )
+            candidate = {
+                "topic_id": gid,
+                "name": cand_name,
+                "summary": "",
+                "tasks": task_objs,
+            }
+            await plog.log(f"  → Group {gid[:8]}…: '{cand_name}' ({len(task_objs)} task(s))")
+
+            # Layer 1: mechanical pre-filter
+            from backend.services.topic_verification import lexical_precheck, compute_confidence as _conf, format_confidence_log_line as _conf_log
+            pre = lexical_precheck(candidate, project_topics, transcripts)
             qualified_ids = set(pre.get("qualified_topic_ids") or [])
             qualified_topics = [t for t in project_topics if t.get("topic_id") in qualified_ids]
+            await plog.log(f"      Layer 1: threshold={pre['threshold']}, {len(qualified_ids)} qualified — hint: {pre['verdict_hint']}")
 
-            await plog.log(f"  → Topic \"{c['name']}\": Layer 1 (mechanical pre-filter, IDF-weighted):")
-            for s in scored[:5]:
-                tag = "✓ qualified" if s.get("qualified") else "✗ rejected"
-                breakdown = f"IDF-Jaccard={s['score_idf_jaccard']}, task-subj={s['score_task_subject']}, mentions={s['score_transcript_mentions']}"
-                rare = (", rare-shared: " + ", ".join(s["shared_terms_rare"])) if s.get("shared_terms_rare") else ""
-                await plog.log(f"      {tag} | \"{s['name']}\" → combined={s['combined_score']} ({breakdown}{rare})")
-            await plog.log(f"      threshold={pre['threshold']}, top_k={pre['top_k']} → {len(qualified_ids)} qualified candidate(s)")
-            await plog.log(f"      mechanical verdict hint: {pre['verdict_hint']}")
-
-            # ── Step 3: pre-filter outcome ──
             if not qualified_topics:
-                from backend.services.topic_verification import compute_confidence as _conf, format_confidence_log_line as _conf_log
-                await plog.log(f"  ✓ Topic \"{c['name']}\": no existing topic qualified mechanically → verdict=truly_new (no LLM call needed)")
+                await plog.log(f"  ✓ Group {gid[:8]}…: no existing topic qualified mechanically → verdict=truly_new (no LLM call)")
                 stub = {
                     "verdict": "truly_new",
                     "final_verdict": "truly_new",
@@ -785,72 +789,38 @@ async def _run_verify_new_background(call_id: str) -> None:
                     "needs_manual_review": False,
                     "lexical_precheck": {k: v for k, v in pre.items() if not k.startswith("_")},
                     "mechanical_skip": True,
+                    "kind": "new_topic_verification",
                 }
                 stub["confidence"] = _conf(stub)
-                await plog.log(f"      [{c['name']}] {_conf_log(stub['confidence'])}")
-                return stub
+                await plog.log(f"      [{cand_name}] {_conf_log(stub['confidence'])}")
+                return gid, stub
 
-            # ── Layer 2: LLM judgment (only on qualified candidates) ──
-            await plog.log(f"  → Topic \"{c['name']}\": Layer 2 (LLM judgment) — sending top {len(qualified_topics)} qualified candidate(s) to LLM…")
-            r = await _run_verify_new(c, qualified_topics, transcripts, llm=llm, model=model, log_fn=plog.log, precheck=pre)
+            # Layer 2: LLM judgment
+            await plog.log(f"  → Group {gid[:8]}…: Layer 2 LLM — {len(qualified_topics)} qualified candidate(s)…")
+            r = await run_verify_new(
+                candidate, qualified_topics, transcripts,
+                llm=llm, model=model, log_fn=plog.log, precheck=pre,
+            )
+            if r:
+                r["kind"] = "new_topic_verification"
             verdict = (r or {}).get("verdict", "?")
-            need_review = (r or {}).get("needs_manual_review")
-            n_cits = len((r or {}).get("citations") or [])
-            n_trans = len(transcripts)
-            n_topics = len(project_topics)
-            if need_review:
-                fails = (r or {}).get("failed_citations") or []
-                # Aggregate by call: "3 in Call 1, 2 in Call 2"
-                per_call: dict = {}
-                for f in fails:
-                    for cid, label in call_label.items():
-                        if cid in f:
-                            per_call[label] = per_call.get(label, 0) + 1
-                            break
-                    else:
-                        per_call["?"] = per_call.get("?", 0) + 1
-                pieces = ", ".join(f"{n} in {lbl}" for lbl, n in per_call.items())
-                await plog.log(
-                    f"  ⚠ Topic \"{c['name']}\": needs manual review — the LLM cited supporting quotes "
-                    f"that couldn't be found verbatim in the transcripts ({pieces}). "
-                    f"The LLM probably paraphrased instead of copy-pasting — its verdict can't be trusted automatically."
-                )
-            elif verdict == "truly_new":
-                ung = (r or {}).get("ungrounded_items") or []
-                msg = f"  ✓ Topic \"{c['name']}\": read {n_trans} past transcript(s), compared against {n_topics} existing topic(s) → confirmed NEW ({n_cits} citation(s))"
-                if ung:
-                    items = ", ".join((u.get("text") or "?")[:60] for u in ung[:3])
-                    msg += f"  ⚠ but {len(ung)} extracted item(s) not grounded in transcript: {items}"
-                await plog.log(msg)
-            elif verdict == "should_be_merged_with":
-                tname = (r or {}).get("matched_topic_name") or "?"
-                await plog.log(f"  ↻ Topic \"{c['name']}\": read {n_trans} past transcript(s) → matches existing topic \"{tname}\" (suggesting merge)")
-                sanity = (r or {}).get("sanity_flag")
-                if sanity == "llm_recommends_merge_but_no_overlap":
-                    await plog.log(f"      ⚠ SANITY FLAG: lexical pre-check found 0 key_terms overlap with \"{tname}\" AND 0 mentions in past transcripts. LLM recommendation likely WRONG — review carefully.")
-            # Also surface sanity flag for truly_new
-            if (r or {}).get("sanity_flag") == "llm_says_new_but_strong_overlap_exists":
-                await plog.log(f"      ⚠ SANITY FLAG: LLM said new, but lexical pre-check shows strong key_terms overlap with an existing topic — possible missed merge.")
-            else:
-                await plog.log(f"  ✓ Topic \"{c['name']}\": {verdict}")
-            return r
+            await plog.log(f"  ✓ Group {gid[:8]}…: verdict={verdict}")
+            return gid, r
 
-        results = await asyncio.gather(*[_one(c) for c in new_candidates])
-        # Each new-topic result is stored as a flat dict (existing shape) plus a `kind` tag.
+        results = await asyncio.gather(*[_verify_group(g) for g in x0_groups])
         cache: dict = {}
-        for c, r in zip(new_candidates, results):
-            entry = dict(r) if isinstance(r, dict) else {}
-            entry["kind"] = "new_topic_verification"
-            cache[c["name"]] = entry
-
+        for gid, r in results:
+            if gid and r is not None:
+                cache[gid] = r
         cache["__progress__"] = plog.entries_snapshot()
-        total_verified = len(results)
-        cache["__progress__"].append({"ts": __import__("datetime").datetime.utcnow().isoformat() + "Z", "msg": f"Pass ① complete — {total_verified} new topic(s) verified"})
-
+        cache["__progress__"].append({
+            "ts": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+            "msg": f"Pass ① complete — {len([r for _, r in results if r is not None])} group verdict(s)",
+        })
         db.table("calls").update(
             {"verify_new_cache": cache, "verify_new_status": "done"}
         ).eq("id", call_id).execute()
-        logger.info(f"✅ [verify_new] done for call {call_id} ({len(results)} candidates)")
+        logger.info(f"✅ [verify_new] done for call {call_id} ({len(x0_groups)} X:0 groups)")
     except Exception as e:
         logger.exception(f"❌ [verify_new] failed for call {call_id}: {e}")
         try:

@@ -116,6 +116,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
       .then(([g, p, pr]) => {
         setGroups(
           g.map((x: {
+            id?: string;
             project_topic_ids?: string[];
             call_topic_names?: string[];
             kind?: "binding" | "topic_merge";
@@ -123,6 +124,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             project_task_refs?: Array<{ project_topic_id?: string; task_id?: string }>;
             target_topic_name?: string | null;
           }) => ({
+            id: x.id,  // EPIC-19 Phase B: preserve DB id for per-group verdict lookup
             project_topic_ids: x.project_topic_ids ?? [],
             call_topic_names: x.call_topic_names ?? [],
             // EPIC-19: preserve the task-level fields so per-group rendering works
@@ -648,11 +650,11 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
           />
           {sections.newGroups.map((ng) => {
             const color = groupColor(ng.groupIndex);
-            // LLM results: look up by each candidate topic name (best-effort until Phase B)
-            const groupResults = ng.candidateTopicNames
-              .map((name) => (eff.verify_new_cache ?? {})[name] as VerifyNewResult | undefined)
-              .filter((r): r is VerifyNewResult => r !== undefined);
-            const firstResult = groupResults[0];
+            // EPIC-19 Phase B: look up verdict by stable group DB id
+            const groupId = ng.g.id;
+            const firstResult = groupId
+              ? ((eff.verify_new_cache ?? {})[groupId] as VerifyNewResult | undefined)
+              : undefined;
 
             return (
               <div

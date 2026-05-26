@@ -16,6 +16,7 @@ export interface Project {
 export type KanbanStage = "transcript" | "call_topics" | "project_matching" | "project_updates" | "artifacts" | "done";
 
 export type MatchGroup = {
+  id?: string;                        // EPIC-19 Phase B: stable DB UUID, used as Pass 1 verdict cache key
   kind?: "binding" | "topic_merge";   // EPIC-19: group kind; default "binding" if absent
   project_topic_ids: string[];        // empty = new project topic, 1+ = linked/merge
   call_topic_names: string[];         // names from pending call topics
@@ -556,6 +557,7 @@ export interface TaskRef {
 export type BindingKind = 'binding' | 'topic_merge';
 
 export interface TaskMatchGroup {
+  id?: string;  // EPIC-19 Phase B: stable DB UUID, used as Pass 1 verdict cache key
   kind: BindingKind;
   call_task_refs: TaskRef[];
   project_task_refs: TaskRef[];
