@@ -508,9 +508,106 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   const exactMatchCount = Array.from(matchHints.values()).filter(h => h === 'exact').length;
   const bindingGroupCount = groups.filter(g => g.kind === 'binding').length;
 
+  // ── Preview: how groups will look in project_updates ─────────────────────────
+
+  const preview = useMemo(() => {
+    const bindingGroups = groups.filter(g => g.kind === 'binding');
+
+    // Build a task lookup from candidates + existing
+    const candidateTaskById = new Map<string, { task: string; next_step?: string; owner?: string; topicName: string }>();
+    for (const ct of candidateTopics) {
+      for (const t of ct.tasks) {
+        if (t.task_id) {
+          candidateTaskById.set(t.task_id, { task: t.task, next_step: t.next_step, owner: t.owner, topicName: ct.name });
+        }
+      }
+    }
+    const existingTaskById = new Map<string, { task: string; next_step?: string; owner?: string; topicId: string; topicName: string }>();
+    for (const et of existingTopics) {
+      for (const t of et.tasks) {
+        if (t.task_id) {
+          existingTaskById.set(t.task_id, { task: t.task, next_step: t.next_step, owner: t.owner, topicId: et.topic_id, topicName: et.name });
+        }
+      }
+    }
+
+    // MERGED: group by project_topic_id
+    type MergedSubGroup = {
+      groupIndex: number;
+      target_topic_name?: string | null;
+      candidateTasks: Array<{ task: string; next_step?: string; owner?: string; topicName: string }>;
+    };
+    type MergedTopicPreview = {
+      topicId: string;
+      topicName: string;
+      subGroups: MergedSubGroup[];
+    };
+    const mergedByTopicId = new Map<string, MergedTopicPreview>();
+
+    bindingGroups.forEach((g, gi) => {
+      if (!g.project_task_refs || g.project_task_refs.length === 0) return;
+      const projectTopicIds = new Set<string>();
+      for (const r of g.project_task_refs) {
+        if (r.project_topic_id) projectTopicIds.add(r.project_topic_id);
+      }
+      for (const ptid of projectTopicIds) {
+        let entry = mergedByTopicId.get(ptid);
+        if (!entry) {
+          const projectTopic = existingTopics.find(t => t.topic_id === ptid);
+          entry = { topicId: ptid, topicName: projectTopic?.name || ptid, subGroups: [] };
+          mergedByTopicId.set(ptid, entry);
+        }
+        const candTasks = (g.call_task_refs || [])
+          .map(r => r.task_id ? candidateTaskById.get(r.task_id) : null)
+          .filter((x): x is { task: string; next_step?: string; owner?: string; topicName: string } => !!x);
+        if (candTasks.length > 0) {
+          entry.subGroups.push({
+            groupIndex: gi,
+            target_topic_name: g.target_topic_name ?? null,
+            candidateTasks: candTasks,
+          });
+        }
+      }
+    });
+
+    // NEW: candidate topics with mark-new tasks (groups with empty project_task_refs)
+    type NewTopicPreview = { topicName: string; tasks: Array<{ task: string; next_step?: string; owner?: string }> };
+    const newByTopicName = new Map<string, NewTopicPreview>();
+    bindingGroups.forEach((g) => {
+      if (g.project_task_refs && g.project_task_refs.length > 0) return; // skip merged
+      for (const r of g.call_task_refs || []) {
+        if (!r.task_id) continue;
+        const task = candidateTaskById.get(r.task_id);
+        if (!task) continue;
+        let entry = newByTopicName.get(task.topicName);
+        if (!entry) {
+          entry = { topicName: task.topicName, tasks: [] };
+          newByTopicName.set(task.topicName, entry);
+        }
+        entry.tasks.push({ task: task.task, next_step: task.next_step, owner: task.owner });
+      }
+    });
+
+    // OLD: project topics with no bindings from any group
+    const touchedProjectIds = new Set(mergedByTopicId.keys());
+    const oldUntouched = existingTopics
+      .filter(t => !touchedProjectIds.has(t.topic_id))
+      .map(t => ({ topicId: t.topic_id, topicName: t.name, taskCount: t.tasks.length }));
+
+    // suppress unused-variable warning — existingTaskById is built for potential future use
+    void existingTaskById;
+
+    return {
+      merged: Array.from(mergedByTopicId.values()),
+      newTopics: Array.from(newByTopicName.values()),
+      oldUntouched,
+    };
+  }, [groups, existingTopics, candidateTopics]);
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
+    <>
     <div className="flex gap-4 p-4">
       {contextMenu && (() => {
         const bindingGroups = groups.filter(g => g.kind === 'binding');
@@ -756,6 +853,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
           Groups: {bindingGroupCount}
         </div>
 
+        <div style={{ maxHeight: '40vh', overflowY: 'auto', marginBottom: 8 }}>
         {groups.flatMap((g, fullIdx) => {
           if (g.kind !== 'binding') return [];
           // idx among binding-only groups (for color cycling)
@@ -789,6 +887,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
             </div>
           )];
         })}
+        </div>
 
         <hr className="my-2" />
         <button
@@ -804,5 +903,112 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
         </div>
       </div>
     </div>
+
+    {/* Project Updates Preview — what the groups will look like post-save */}
+    <div style={{ borderTop: '2px solid #e5e7eb', padding: '16px', background: '#fafbfc' }}>
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: '#172b4d', margin: '0 0 12px' }}>
+        📋 Project Updates preview
+        <span style={{ marginLeft: 12, fontSize: 10, color: '#6b7280', fontWeight: 400 }}>
+          How this will look after Save matches → Project updates
+        </span>
+      </h3>
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        {/* NEW */}
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#5e6c84', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>
+            1. NEW topics ({preview.newTopics.length})
+          </div>
+          {preview.newTopics.length === 0 ? (
+            <div style={{ fontSize: 11, color: '#97a0af', fontStyle: 'italic' }}>None — no &quot;Mark new&quot; groups yet</div>
+          ) : (
+            preview.newTopics.map((n) => (
+              <div key={n.topicName} style={{ marginBottom: 8, fontSize: 12 }}>
+                <div style={{ fontWeight: 600, color: '#42526e' }}>{n.topicName}</div>
+                <ul style={{ fontSize: 11, color: '#5e6c84', margin: '2px 0', paddingLeft: 16 }}>
+                  {n.tasks.map((t, ti) => (
+                    <li key={ti}>
+                      {t.task}
+                      {t.next_step && <span style={{ color: '#97a0af' }}> → {t.next_step}</span>}
+                      {t.owner && <span style={{ color: '#97a0af' }}> ({t.owner})</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* OLD NOT TOUCHED */}
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#5e6c84', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>
+            2. OLD topics not touched ({preview.oldUntouched.length})
+          </div>
+          {preview.oldUntouched.length === 0 ? (
+            <div style={{ fontSize: 11, color: '#97a0af', fontStyle: 'italic' }}>None — every existing topic is bound</div>
+          ) : (
+            preview.oldUntouched.map((o) => (
+              <div key={o.topicId} style={{ marginBottom: 4, fontSize: 12, color: '#42526e' }}>
+                <strong>{o.topicName}</strong>
+                <span style={{ color: '#97a0af', fontSize: 10, marginLeft: 6 }}>
+                  ({o.taskCount} existing task{o.taskCount === 1 ? '' : 's'})
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* MERGED */}
+        <div style={{ flex: 2, minWidth: 320 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#5e6c84', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>
+            3. MERGED topics ({preview.merged.length})
+          </div>
+          {preview.merged.length === 0 ? (
+            <div style={{ fontSize: 11, color: '#97a0af', fontStyle: 'italic' }}>None — no bindings to existing tasks yet</div>
+          ) : (
+            preview.merged.map((m) => (
+              <div key={m.topicId} style={{ marginBottom: 10, padding: 8, border: '1px solid #e5e7eb', borderRadius: 4, background: 'white' }}>
+                <div style={{ fontWeight: 700, color: '#172b4d', fontSize: 13, marginBottom: 4 }}>{m.topicName}</div>
+                <div style={{ fontSize: 10, color: '#6b7280' }}>THIS CALL ({m.subGroups.length} sub-group{m.subGroups.length === 1 ? '' : 's'})</div>
+                {m.subGroups.map((sg, sgi) => {
+                  const col = groupColor(sg.groupIndex);
+                  return (
+                    <div key={sgi} style={{
+                      borderLeft: `3px solid ${col.border}`,
+                      background: sgi % 2 === 0 ? '#fafbfc' : '#f4f5f7',
+                      paddingLeft: 8,
+                      paddingTop: 4,
+                      paddingBottom: 4,
+                      marginTop: 4,
+                      borderRadius: 2,
+                    }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: col.text, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                        Sub-group {sg.groupIndex + 1}
+                        {sg.target_topic_name && (
+                          <span style={{ marginLeft: 6, color: '#974f0c', textTransform: 'none', letterSpacing: 0 }}>
+                            → new topic: &quot;{sg.target_topic_name}&quot;
+                          </span>
+                        )}
+                      </div>
+                      <ul style={{ fontSize: 11, color: '#5e6c84', margin: 0, paddingLeft: 16 }}>
+                        {sg.candidateTasks.map((t, ti) => (
+                          <li key={ti}>
+                            <span style={{ color: '#42526e' }}>[{t.topicName}]</span>{' '}
+                            {t.task}
+                            {t.next_step && <span style={{ color: '#97a0af' }}> → {t.next_step}</span>}
+                            {t.owner && <span style={{ color: '#97a0af' }}> ({t.owner})</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+    </>
   );
 }
