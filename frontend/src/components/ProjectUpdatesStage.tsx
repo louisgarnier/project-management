@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { callsAPI, topicsAPI } from "@/api/client";
 import { logger } from "@/utils/logger";
 import type {
@@ -55,6 +55,36 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
   const [projectTopics, setProjectTopics] = useState<TopicData[]>([]);
   const [pending, setPending] = useState<TopicData[]>([]);
   const [groups, setGroups] = useState<MatchGroup[]>([]);
+
+  // EPIC-19: when user accepts an LLM merge suggestion in section 1, mutate
+  // the group's project_task_refs to bind ALL existing tasks of the target
+  // topic, then persist via draft save. Group moves from section 1 → section 3.
+  const acceptMergeForGroup = useCallback(async (groupId: string, targetTopicId: string) => {
+    const target = projectTopics.find((t) => t.topic_id === targetTopicId);
+    if (!target) return;
+    const newProjectTaskRefs = (target.tasks ?? [])
+      .filter((t) => t.task_id)
+      .map((t) => ({ project_topic_id: targetTopicId, task_id: t.task_id as string }));
+    // If target has no tasks, still bind topic-only with empty task_id so
+    // the group has at least one project_task_ref (becomes M:N for routing).
+    const refs = newProjectTaskRefs.length > 0
+      ? newProjectTaskRefs
+      : [{ project_topic_id: targetTopicId, task_id: "" }];
+    const updated = groups.map((g) =>
+      g.id === groupId
+        ? { ...g, project_task_refs: refs, project_topic_ids: [targetTopicId] }
+        : g
+    );
+    setGroups(updated);
+    try {
+      // Persist via draft save (no kanban_stage advance). Cast through `unknown`
+      // because MatchGroup is the local frontend shape; saveTaskMatches expects
+      // the task-level TaskMatchGroup shape — structurally identical for our use.
+      await topicsAPI.saveTaskMatches(call.id, updated as unknown as Parameters<typeof topicsAPI.saveTaskMatches>[1], true);
+    } catch (e) {
+      logger.error("[ProjectUpdatesStage] save failed after accept-merge", { data: e });
+    }
+  }, [projectTopics, groups, call.id]);
   const [busy, setBusy] = useState<null | "①" | "②" | "③">(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -761,10 +791,13 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                         </span>
                         <button
                           type="button"
-                          onClick={() => setNewDecisions((prev) => ({
-                            ...prev,
-                            [decisionKey]: { action: "new", merge_to_ids: [], merge_pending_names: [] },
-                          }))}
+                          onClick={() => {
+                            setNewDecisions((prev) => ({
+                              ...prev,
+                              [decisionKey]: { action: "new", merge_to_ids: [], merge_pending_names: [] },
+                            }));
+                            // No DB change needed — group already mark-new
+                          }}
                           style={isConfirmedNew ? decisionButtonSelected : decisionButton}
                         >
                           ✓ Confirm new
@@ -772,10 +805,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                         {matchedId && matchedName && (
                           <button
                             type="button"
-                            onClick={() => setNewDecisions((prev) => ({
-                              ...prev,
-                              [decisionKey]: { action: "merge", merge_to_ids: [matchedId], merge_pending_names: [] },
-                            }))}
+                            onClick={() => acceptMergeForGroup(groupId, matchedId)}
                             style={isMergeAccepted ? decisionButtonSelected : decisionButton}
                           >
                             ↻ Accept merge with &quot;{matchedName}&quot;
@@ -785,10 +815,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                           value={isMergeOther ? (currentDecision?.merge_to_ids[0] ?? "") : ""}
                           onChange={(e) => {
                             if (!e.target.value) return;
-                            setNewDecisions((prev) => ({
-                              ...prev,
-                              [decisionKey]: { action: "merge", merge_to_ids: [e.target.value], merge_pending_names: [] },
-                            }));
+                            acceptMergeForGroup(groupId, e.target.value);
                           }}
                           style={{
                             fontSize: 11,
