@@ -984,23 +984,6 @@ function NewTopicCard({
         </details>
       )}
 
-      {/* Candidate tasks */}
-      {topic.tasks && topic.tasks.length > 0 && (
-        <div style={{ marginTop: 6 }}>
-          <div style={{ fontSize: 10, color: "#5e6c84", fontWeight: 600, textTransform: "uppercase" }}>
-            Candidate tasks:
-          </div>
-          <ul style={{ fontSize: 12, color: "#42526e", paddingLeft: 20, marginTop: 2 }}>
-            {topic.tasks.map((t, i) => (
-              <li key={i}>
-                {t.task}
-                {t.next_step && <> → {t.next_step}</>}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       {/* LLM reasoning — citations that support the verdict */}
       {result && verdictCitations.length > 0 && (
         <details open style={{ marginTop: 8, fontSize: 11 }}>
