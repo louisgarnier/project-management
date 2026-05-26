@@ -345,7 +345,36 @@ export default function CallDetailPage() {
             </button>
           </div>
         </div>
-        <ProjectMatchingHistoricalView callId={callId} projectId={projectId} />
+        <TaskMatchingStage
+          callId={callId}
+          existingTopics={matchingExistingTopics
+            .filter(t => t.topic_id && (t.tasks ?? []).length > 0)
+            .map(t => ({
+              topic_id: t.topic_id!,
+              name: t.name,
+              tasks: (t.tasks ?? []).map(task => ({
+                task_id: task.task_id,
+                task: task.task,
+                next_step: task.next_step || undefined,
+                owner: task.owner || undefined,
+                key_terms: task.key_terms,
+              })),
+            }))}
+          candidateTopics={matchingCandidateTopics
+            .filter(t => (t.tasks ?? []).length > 0)
+            .map(t => ({
+              name: t.name,
+              tasks: (t.tasks ?? []).map(task => ({
+                task_id: task.task_id,
+                task: task.task,
+                next_step: task.next_step || undefined,
+                owner: task.owner || undefined,
+                key_terms: task.key_terms,
+              })),
+            }))}
+          onAdvance={() => {}}
+          readonly
+        />
         {renderRollbackModal()}
       </div>
     );

@@ -39,6 +39,7 @@ interface Props {
   existingTopics: ExistingTopic[];
   candidateTopics: CandidateTopic[];
   onAdvance: () => void;
+  readonly?: boolean;  // read-only mode for historical view
 }
 
 type FocusPos = {
@@ -56,7 +57,7 @@ type ContextMenuState = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onAdvance }: Props) {
+export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onAdvance, readonly = false }: Props) {
   const [groups, setGroups] = useState<TaskMatchGroup[]>([]);
   const [selectedExisting, setSelectedExisting] = useState<Set<string>>(new Set()); // task_id set
   const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set()); // task_id set
@@ -106,6 +107,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   // ── Auto-save on group changes (debounced, draft mode) ───────────────────────
 
   useEffect(() => {
+    if (readonly) return;
     // Skip the very first render (and right after load-on-mount hydration)
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -117,7 +119,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
       });
     }, 500); // 500ms debounce
     return () => clearTimeout(handle);
-  }, [groups, callId]);
+  }, [groups, callId, readonly]);
 
   // ── Match hints ──────────────────────────────────────────────────────────────
 
@@ -166,6 +168,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   // ── Toggle handlers ──────────────────────────────────────────────────────────
 
   function toggleExisting(taskId: string) {
+    if (readonly) return;
     if (isInAnyGroup(taskId)) return;
     setSelectedExisting(prev => {
       const next = new Set(prev);
@@ -176,6 +179,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   }
 
   function toggleCandidate(taskId: string) {
+    if (readonly) return;
     if (isInAnyGroup(taskId)) return;
     setSelectedCandidates(prev => {
       const next = new Set(prev);
@@ -212,6 +216,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   // ── Commit group ─────────────────────────────────────────────────────────────
 
   function commitGroup() {
+    if (readonly) return;
     const candidateRefs = Array.from(selectedCandidates)
       .map(findCandidateRef)
       .filter((r): r is TaskRef => r !== null);
@@ -260,6 +265,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
     topicMergeDecision?: 'keep_existing' | 'keep_candidate' | 'merge' | 'create_new',
     newTopicName?: string,
   ) {
+    if (readonly) return;
     const newGroups: TaskMatchGroup[] = [
       ...groups,
       {
@@ -297,11 +303,13 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   // ── Context menu ─────────────────────────────────────────────────────────────
 
   function handleContextMenu(e: React.MouseEvent, taskId: string, side: 'existing' | 'candidate') {
+    if (readonly) return;
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, taskId, side });
   }
 
   function addTaskToGroup(taskId: string, side: 'existing' | 'candidate', targetBindingGroupIdx: number) {
+    if (readonly) return;
     // Remove the task from any group it is already in
     const newGroups = groups.map(g => {
       if (g.kind !== 'binding') return g;
@@ -339,6 +347,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   }
 
   function removeTaskFromCurrentGroup(taskId: string) {
+    if (readonly) return;
     const newGroups = groups.map(g => {
       if (g.kind !== 'binding') return g;
       return {
@@ -411,6 +420,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (readonly) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (showCrossTopicModal) {
         if (e.key === 'Escape') {
@@ -459,7 +469,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCandidates, selectedExisting, focusPos, showCrossTopicModal, existingTopics, candidateTopics, groups]);
+  }, [selectedCandidates, selectedExisting, focusPos, showCrossTopicModal, existingTopics, candidateTopics, groups, readonly]);
 
   // ── Context menu close on click-outside / Escape ─────────────────────────────
 
@@ -484,6 +494,7 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
   // ── Save ─────────────────────────────────────────────────────────────────────
 
   async function save() {
+    if (readonly) return;
     setSaving(true);
     try {
       await topicsAPI.saveTaskMatches(callId, groups);
@@ -787,65 +798,69 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
 
       {/* Action panel */}
       <div className="w-56 sticky top-4 self-start">
-        <h3 className="font-semibold mb-2">Actions</h3>
+        <h3 className="font-semibold mb-2">{readonly ? 'Read-only view' : 'Actions'}</h3>
 
-        <button
-          disabled={selectedCandidates.size === 0 && selectedExisting.size === 0}
-          onClick={commitGroup}
-          className="w-full p-2 bg-blue-500 text-white rounded disabled:bg-gray-300 mb-2 text-sm"
-        >
-          Link ({selectedCandidates.size} ↔ {selectedExisting.size})
-        </button>
+        {!readonly && (
+          <>
+            <button
+              disabled={selectedCandidates.size === 0 && selectedExisting.size === 0}
+              onClick={commitGroup}
+              className="w-full p-2 bg-blue-500 text-white rounded disabled:bg-gray-300 mb-2 text-sm"
+            >
+              Link ({selectedCandidates.size} ↔ {selectedExisting.size})
+            </button>
 
-        <button
-          disabled={selectedCandidates.size === 0}
-          onClick={() => {
-            const candidateRefs = Array.from(selectedCandidates)
-              .map(findCandidateRef)
-              .filter((r): r is TaskRef => r !== null);
-            doCommitGroup(candidateRefs, []);
-          }}
-          className="w-full p-2 bg-green-500 text-white rounded disabled:bg-gray-300 mb-2 text-sm"
-        >
-          Mark {selectedCandidates.size} candidate{selectedCandidates.size === 1 ? '' : 's'} NEW
-        </button>
+            <button
+              disabled={selectedCandidates.size === 0}
+              onClick={() => {
+                const candidateRefs = Array.from(selectedCandidates)
+                  .map(findCandidateRef)
+                  .filter((r): r is TaskRef => r !== null);
+                doCommitGroup(candidateRefs, []);
+              }}
+              className="w-full p-2 bg-green-500 text-white rounded disabled:bg-gray-300 mb-2 text-sm"
+            >
+              Mark {selectedCandidates.size} candidate{selectedCandidates.size === 1 ? '' : 's'} NEW
+            </button>
 
-        <button
-          onClick={clearSelection}
-          className="w-full p-2 bg-gray-200 rounded mb-4 text-sm"
-        >
-          Clear selection
-        </button>
+            <button
+              onClick={clearSelection}
+              className="w-full p-2 bg-gray-200 rounded mb-4 text-sm"
+            >
+              Clear selection
+            </button>
 
-        {exactMatchCount > 0 && (
-          <button
-            onClick={() => {
-              const autoGroups: TaskMatchGroup[] = [];
-              for (const ct of candidateTopics) {
-                for (const task of ct.tasks) {
-                  if (matchHints.get(task.task_id) !== 'exact') continue;
-                  if (isInAnyGroup(task.task_id)) continue;
-                  const candidateText = task.task.trim().toLowerCase();
-                  outer: for (const et of existingTopics) {
-                    for (const etask of et.tasks) {
-                      if (etask.task.trim().toLowerCase() === candidateText && !isInAnyGroup(etask.task_id)) {
-                        autoGroups.push({
-                          kind: 'binding',
-                          call_task_refs: [{ call_topic_name: ct.name, task_id: task.task_id }],
-                          project_task_refs: [{ project_topic_id: et.topic_id, task_id: etask.task_id }],
-                        });
-                        break outer;
+            {exactMatchCount > 0 && (
+              <button
+                onClick={() => {
+                  const autoGroups: TaskMatchGroup[] = [];
+                  for (const ct of candidateTopics) {
+                    for (const task of ct.tasks) {
+                      if (matchHints.get(task.task_id) !== 'exact') continue;
+                      if (isInAnyGroup(task.task_id)) continue;
+                      const candidateText = task.task.trim().toLowerCase();
+                      outer: for (const et of existingTopics) {
+                        for (const etask of et.tasks) {
+                          if (etask.task.trim().toLowerCase() === candidateText && !isInAnyGroup(etask.task_id)) {
+                            autoGroups.push({
+                              kind: 'binding',
+                              call_task_refs: [{ call_topic_name: ct.name, task_id: task.task_id }],
+                              project_task_refs: [{ project_topic_id: et.topic_id, task_id: etask.task_id }],
+                            });
+                            break outer;
+                          }
+                        }
                       }
                     }
                   }
-                }
-              }
-              setGroups(g => [...g, ...autoGroups]);
-            }}
-            className="w-full p-2 bg-yellow-500 text-white rounded text-sm mb-2"
-          >
-            Auto-bind {exactMatchCount} exact matches
-          </button>
+                  setGroups(g => [...g, ...autoGroups]);
+                }}
+                className="w-full p-2 bg-yellow-500 text-white rounded text-sm mb-2"
+              >
+                Auto-bind {exactMatchCount} exact matches
+              </button>
+            )}
+          </>
         )}
 
         <hr className="my-2" />
@@ -878,29 +893,40 @@ export function TaskMatchingStage({ callId, existingTopics, candidateTopics, onA
               <span>
                 Group {bindingIdx + 1}: {g.call_task_refs.length} ↔ {g.project_task_refs.length}
               </span>
-              <button
-                onClick={() => setGroups(prev => prev.filter((_, i) => i !== fullIdx))}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit' }}
-              >
-                ×
-              </button>
+              {!readonly && (
+                <button
+                  onClick={() => setGroups(prev => prev.filter((_, i) => i !== fullIdx))}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit' }}
+                >
+                  ×
+                </button>
+              )}
             </div>
           )];
         })}
         </div>
 
-        <hr className="my-2" />
-        <button
-          onClick={save}
-          disabled={saving}
-          className="w-full p-2 bg-purple-600 text-white rounded text-sm disabled:bg-gray-400"
-        >
-          {saving ? 'Saving…' : 'Save matches → Project updates'}
-        </button>
-        <div className="text-xs text-gray-500 mt-2">
-          Keyboard: j/k = up/down, h/l = column, Enter = toggle, space = link, n = mark new, esc = clear<br/>
-          Right-click any task to add/move/remove to an existing group
-        </div>
+        {!readonly && (
+          <>
+            <hr className="my-2" />
+            <button
+              onClick={save}
+              disabled={saving}
+              className="w-full p-2 bg-purple-600 text-white rounded text-sm disabled:bg-gray-400"
+            >
+              {saving ? 'Saving…' : 'Save matches → Project updates'}
+            </button>
+            <div className="text-xs text-gray-500 mt-2">
+              Keyboard: j/k = up/down, h/l = column, Enter = toggle, space = link, n = mark new, esc = clear<br/>
+              Right-click any task to add/move/remove to an existing group
+            </div>
+          </>
+        )}
+        {readonly && (
+          <div className="text-xs text-gray-500 mt-2">
+            Read-only view. To edit, click ✏️ Edit at the top of the page (rolls back to project_matching stage).
+          </div>
+        )}
       </div>
     </div>
 
