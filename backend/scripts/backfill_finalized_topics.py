@@ -32,18 +32,30 @@ def _resolve_topic_name(db, group: dict) -> tuple[str, str | None]:
 
     Priority:
       1. target_topic_name (EPIC-19 user-chosen new topic name)
-      2. topic_registry.name for project_topic_ids[0]
-      3. fallback '(unnamed)'
+      2. topics.name for project_topic_ids[0] (operational table)
+      3. topic_registry.name for project_topic_ids[0] (vocabulary table)
+      4. fallback '(unnamed)'
     """
     name = (group.get("target_topic_name") or "").strip()
     project_ids = group.get("project_topic_ids") or []
     primary_topic_id = project_ids[0] if project_ids else None
     if not name and primary_topic_id:
+        # Try `topics` table first (project_topic_ids contains topics.id, not topic_registry.id)
         try:
-            t = db.table("topic_registry").select("name").eq("id", primary_topic_id).single().execute()
-            name = ((t.data or {}).get("name") or "").strip()
-        except Exception as e:
-            logger.warning("⚠️  topic_registry lookup failed for %s: %s", primary_topic_id, e)
+            t = db.table("topics").select("name").eq("id", primary_topic_id).execute()
+            rows = t.data or []
+            if rows:
+                name = (rows[0].get("name") or "").strip()
+        except Exception:
+            pass
+        if not name:
+            try:
+                t = db.table("topic_registry").select("name").eq("id", primary_topic_id).execute()
+                rows = t.data or []
+                if rows:
+                    name = (rows[0].get("name") or "").strip()
+            except Exception:
+                pass
     if not name:
         name = "(unnamed)"
     return name, primary_topic_id
@@ -68,18 +80,33 @@ def backfill_call(call_id: str, *, dry_run: bool) -> dict:
         logger.info("call %s: no groups, skip", call_id)
         return {"topics": 0, "groups": 0, "skipped": 0}
 
-    # 1. Collect distinct topics (first-encounter wins for source/topic_id)
+    # 1. Collect distinct topics (first-encounter wins for source/topic_id).
+    # Resolve registry FK: call_finalized_topics.topic_id references topic_registry.id,
+    # but project_topic_ids historically held topics.id (operational table).
+    # Map name → topic_registry.id by case-insensitive lookup; NULL when no registry row exists.
     topics_in_order: list[dict] = []
     seen_names: set[str] = set()
     for g in groups:
-        name, topic_id = _resolve_topic_name(db, g)
+        name, topics_table_id = _resolve_topic_name(db, g)
         if name in seen_names:
             continue
         seen_names.add(name)
+        registry_id = None
+        if topics_table_id:
+            try:
+                # Find project_id of the call to scope the registry lookup
+                cl = db.table("calls").select("project_id").eq("id", call_id).execute().data or []
+                if cl:
+                    proj_id = cl[0]["project_id"]
+                    reg = db.table("topic_registry").select("id").eq("project_id", proj_id).ilike("name", name).execute().data or []
+                    if reg:
+                        registry_id = reg[0]["id"]
+            except Exception:
+                registry_id = None
         topics_in_order.append({
             "name": name,
-            "source": "existing" if topic_id else "new",
-            "topic_id": topic_id,
+            "source": "existing" if topics_table_id else "new",
+            "topic_id": registry_id,  # may be NULL — FK allows it
         })
 
     if dry_run:
