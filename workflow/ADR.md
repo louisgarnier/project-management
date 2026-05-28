@@ -17,6 +17,41 @@
 | ADR-004 | Line-number citation pattern for all cross-call verification (Pass 1) | Accepted | 2026-05-24 | EPIC-18 |
 | ADR-005 | Task-level manual matching at project_matching stage | Accepted | 2026-05-25 | EPIC-19 |
 | ADR-006 | Pass 3 as synthesis from bound tasks, not re-extraction | Accepted | 2026-05-25 | EPIC-19 |
+| ADR-007 | Three-stage call processing — Topic Confirmation → Task Grouping → Project Updates | Accepted | 2026-05-28 | EPIC-20 |
+
+---
+
+## ADR-007 — Three-stage call processing
+
+**Date:** 2026-05-28
+**Epic:** EPIC-20
+**Status:** Accepted (supersedes EPIC-19's single-screen matching UX, NOT its data model)
+
+### Context
+EPIC-19 shipped task-level matching in one screen. In practice the user mashed three orthogonal decisions into one UI: (1) which topics are still alive for this call, (2) how to group tasks by workstream, (3) how each group binds to existing project tasks. Real-data testing showed this was slow — the LLM had no constraint reduction, and the multi-topic primary-target hack we added for groups spanning topics produced confusing duplication.
+
+### Decision
+Split call processing into three sequenced kanban stages:
+
+1. **`topic_confirmation`** (NEW) — user reviews `project_topic_state` + v5 new-topic candidates, decides which topics are alive. Output: `call_finalized_topics` rows (one per topic kept). Topics not in the finalized list are archived. Renames propagate to `topic_registry.name` immediately (not per-call alias).
+
+2. **`project_matching`** (renamed semantics, same kanban key) — driven by `TaskGroupingStage`. LLM cluster+route runs against finalized topics (fixed enum) → groups of cohesive tasks, each assigned to ONE topic. User drags tasks between groups, drags whole groups between topics, creates new groups from orphans. Group → topic is 1:1 by construction (no multi-topic groups). `group_kind` enum (`new_only` / `old_only` / `mixed`) is computed from refs and persisted on `topic_match_groups`.
+
+3. **`project_updates`** — Pass 1/2/3 routed by `group_kind`: Pass 1 fires on `new_only`, Pass 2 on `old_only`, Pass 3 on `mixed`. No more topic-level fanout; everything is per-group.
+
+### Consequence
+- LLM scope is narrow (fixed topic enum + fixed task list).
+- The multi-topic primary-target hack is dead (kept inert for rollback safety).
+- Pass routing is mechanical (`group_kind` enum read).
+- Topic archiving is user-driven at Stage 1 — no auto-preserve safety net (user-stated: "if a topic isn't preserved on a new call, it wasn't a coherent topic").
+
+### Migration
+- Migration 037 adds `call_finalized_topics` table; migration 038 adds `finalized_topic_id` + `group_kind` columns to `topic_match_groups`. Old EPIC-19 columns retained for back-compat reads.
+- Backfill script (`backfill_finalized_topics.py`) populates EPIC-20 columns from EPIC-19 data so existing calls keep working.
+
+### Open questions deferred
+- Old-only sub-clustering (currently one bag per topic — confirm in smoke).
+- Stage 2 LLM call vs cache invalidation on Stage 1 edits.
 
 ---
 

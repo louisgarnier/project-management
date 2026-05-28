@@ -1,5 +1,57 @@
 # Build Log — Call Tracker
 
+### 2026-05-28 — EPIC-20: Three-Stage Call Processing (code-complete / pending browser smoke)
+
+**Goal:** Split call processing into 3 sequenced kanban stages (Topic Confirmation → Task Grouping → Project Updates) so each LLM and user decision has a narrow, well-defined scope. Replaces EPIC-19's single mashed-up matching screen.
+
+**Phase 1 — Data model & migrations (Tasks 1-5):**
+- Migration 037: `call_finalized_topics` table (per-call topic lifecycle decisions)
+- Migration 038: `topic_match_groups` extended with `finalized_topic_id` + `group_kind` enum (`new_only` | `old_only` | `mixed`)
+- `backend/services/finalized_topics_service.py`: `load_finalized_topics` + `save_finalized_topics` (4 unit tests)
+- `task_match_persistence.py` extended with `finalized_topic_id` + `group_kind` + `_infer_group_kind` helper (6 unit tests, EPIC-19 tests still green)
+- `backend/scripts/backfill_finalized_topics.py`: populates EPIC-20 columns from existing EPIC-19 data (idempotent; `--dry-run`, `--call`, `--all`)
+
+**Phase 2 — Stage 1 backend + UI (Tasks 6-9):**
+- `topic_confirmation` kanban stage inserted between `call_topics` and `project_matching` (both `STAGE_ORDER` definitions updated)
+- `topics_service.rollback_to_stage`: new `topic_confirmation` branch + `_delete_finalized_topics` helper called when rolling back to `call_topics` / `transcript`
+- `GET /api/calls/{id}/topic-confirmation` returns `{existing, new_candidates, finalized}`
+- `POST /api/calls/{id}/topic-confirmation/save` persists list + propagates renames to `topic_registry.name` AND `topics.name` (EPIC-20 decision: immediate propagation)
+- `frontend/src/components/TopicConfirmationStage.tsx`: 3-column UI (existing | v5 candidates | finalized) with inline rename + remove + "introduce manually" + duplicate detection
+- Page wiring routes `topic_confirmation` kanban stage and `?view=topic_confirmation` historical viewing
+
+**Phase 3 — Stage 2 LLM cluster+route + drag-drop UI (Tasks 10-14):**
+- `backend/prompts/group_tasks.py`: narrow prompt — fixed topic enum + tasks → groups with target_topic
+- `backend/services/task_grouping_service.py`: `run_task_grouping` (9 unit tests)
+- 3 endpoints: `GET /task-grouping/state`, `POST /task-grouping/run`, `POST /task-grouping/save`
+- `_collect_tasks_for_grouping` helper resolves previous-call tasks (via `project_topic_state`) + new tasks (via `call_topics_v5_payload.synthesized_topics`)
+- `frontend/src/components/TaskGroupingStage.tsx`: drag-drop UI with topic columns + group cards + orphan bin + Re-cluster button + advance gate (orphan-bin must be empty)
+- Auto-save (debounced 800ms) keeps draft state in sync
+
+**Phase 4 — Stage 3 wiring + cleanup (Tasks 15-18):**
+- Pass 1 trigger routes by `group_kind == "new_only"` (legacy `kind=binding` fallback preserved)
+- Pass 2 trigger: EPIC-20 mode (when any group has `finalized_topic_id`) iterates `old_only` groups; legacy mode iterates not-discussed topics by exclusion
+- Pass 3 trigger routes by `group_kind == "mixed"`
+- EPIC-19 multi-topic primary-target plumbing in ProjectUpdatesStage left inert (no code path produces multi-topic groups under EPIC-20)
+- ADR-007 written; build-log + codebase updated
+
+**Tests:** 24/24 EPIC-20 unit tests pass. Full suite: 422 passed (1 unrelated artifact flake), 13 skipped. `npx tsc --noEmit` clean.
+
+**Manual steps remaining for user:**
+1. Apply migration 037 + 038 in Supabase Dashboard
+2. `NOTIFY pgrst, 'reload schema';`
+3. `python3 -m backend.scripts.backfill_finalized_topics --all` (when DNS resolves — currently blocked by macOS `getaddrinfo` issue)
+4. Browser smoke against project a + project b: upload → Stage 1 (confirm topics) → Stage 2 (drag-drop) → Stage 3 (3 passes)
+
+**Locked decisions (from brainstorm):**
+1. Old-only groups = one bag per topic
+2. Stage 2 LLM scope = global single call
+3. Topic renames propagate immediately to `topic_registry`
+4. Re-cluster only on explicit user click
+5. LLM proposals persist immediately as draft
+6. Stage 1 UI = two columns + simple toggles
+
+---
+
 ### 2026-05-25 — EPIC-19: Task-Level Project Matching + Narrowed 3-Pass Synthesis (code-complete / pending smoke)
 
 **Goal:** Pivot from EPIC-18's topic-level verification (18-30% confidence on real data) to task-level manual matching with narrowed LLM safety-net + synthesis roles.

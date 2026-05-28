@@ -1090,11 +1090,16 @@ async def _run_verify_new_background(call_id: str) -> None:
     try:
         await plog.log("🔍 Pass 1 — Verifying that your new task groups are really new (not continuations of past work).")
         groups = load_task_match_groups(call_id, db=db)
+        # EPIC-20: prefer group_kind enum when present; fall back to legacy EPIC-19 shape inference.
         x0_groups = [
             g for g in groups
-            if g.get("kind") == "binding"
-            and g.get("call_task_refs")
-            and not g.get("project_task_refs")
+            if (g.get("group_kind") == "new_only")
+            or (
+                not g.get("group_kind")
+                and g.get("kind") == "binding"
+                and g.get("call_task_refs")
+                and not g.get("project_task_refs")
+            )
         ]
         await plog.log(f"You marked {len(x0_groups)} group(s) as new in matching. I'll check each one against past calls.")
 
@@ -1311,12 +1316,40 @@ async def _run_verify_not_discussed_background(call_id: str) -> None:
         ingested = ingest_transcript(transcript_raw)
         await plog.log(f"Loaded transcript for current call ({ingested['line_count']} lines)")
 
-        groups = db.table("topic_match_groups").select("project_topic_ids").eq("call_id", call_id).execute().data
-        matched_ids = {pid for g in groups for pid in (g.get("project_topic_ids") or [])}
-
+        # EPIC-20: prefer per-group routing when finalized_topic_id is set.
+        # 'old_only' groups represent specific previous-call tasks the user
+        # said weren't progressed this call → Pass 2 verifies that claim.
+        all_groups = load_task_match_groups(call_id, db=db)
+        epic20_mode = any(g.get("finalized_topic_id") for g in all_groups)
         previous = _get_previous_topics(project_id, db)
-        not_discussed_candidates = [t for t in previous if t["topic_id"] not in matched_ids]
-        await plog.log(f"Found {len(not_discussed_candidates)} candidate topic(s) marked not-discussed")
+
+        if epic20_mode:
+            old_only_groups = [g for g in all_groups if g.get("group_kind") == "old_only"]
+            # For each old_only group, treat it as a synthetic "topic" for Pass 2.
+            not_discussed_candidates = []
+            previous_by_topic_id = {p["topic_id"]: p for p in previous}
+            for g in old_only_groups:
+                refs = g.get("project_task_refs") or []
+                if not refs:
+                    continue
+                # Group's nominal topic: take first ref's project_topic_id
+                ptid = refs[0].get("project_topic_id")
+                src_topic = previous_by_topic_id.get(ptid) or {"topic_id": ptid, "name": "(unknown)", "tasks": []}
+                # Build a topic-shaped row with ONLY the group's tasks (subset)
+                ref_task_ids = {r.get("task_id") for r in refs if r.get("task_id")}
+                gtopic_tasks = [t for t in (src_topic.get("tasks") or []) if t.get("task_id") in ref_task_ids]
+                not_discussed_candidates.append({
+                    "topic_id": g.get("id"),       # cache key = group_id in EPIC-20 mode
+                    "name": src_topic["name"],
+                    "tasks": gtopic_tasks,
+                    "_source_project_topic_id": ptid,
+                })
+            await plog.log(f"EPIC-20: {len(not_discussed_candidates)} old-only group(s) to verify")
+        else:
+            # Legacy: topic is a not-discussed candidate when no match group references it.
+            matched_ids = {pid for g in all_groups for pid in (g.get("project_topic_ids") or [])}
+            not_discussed_candidates = [t for t in previous if t["topic_id"] not in matched_ids]
+            await plog.log(f"Found {len(not_discussed_candidates)} candidate topic(s) marked not-discussed")
 
         llm, model = _resolve_workflow_llm_for_category(project_id, "verify_not_discussed", db)
         await plog.log(f"Calling LLM ({llm}/{model or 'default'}) on {len(not_discussed_candidates)} topic(s) in parallel")
@@ -1394,10 +1427,20 @@ async def _run_extract_updates_background(call_id: str) -> None:
     try:
         await plog.log("Loading task-level match groups…")
         groups = load_task_match_groups(call_id, db=db)
-        binding_groups = [g for g in groups if g.get("kind") == "binding" and g.get("project_task_refs")]
+        # EPIC-20: Pass 3 fires on 'mixed' groups (call+project tasks both present).
+        # Legacy: 'binding' kind with project_task_refs.
+        binding_groups = [
+            g for g in groups
+            if (g.get("group_kind") == "mixed")
+            or (
+                not g.get("group_kind")
+                and g.get("kind") == "binding"
+                and g.get("project_task_refs")
+            )
+        ]
         merged_topic_ids = set()
         for g in binding_groups:
-            for r in g["project_task_refs"]:
+            for r in g.get("project_task_refs") or []:
                 if r.get("project_topic_id"):
                     merged_topic_ids.add(r["project_topic_id"])
 
