@@ -20,6 +20,7 @@ import ProjectMatchingHistoricalView from "@/components/ProjectMatchingHistorica
 import ProjectUpdatesHistoricalView from "@/components/ProjectUpdatesHistoricalView";
 import CallTopicsHistoricalView from "@/components/CallTopicsHistoricalView";
 import TopicConfirmationStage from "@/components/TopicConfirmationStage";
+import TaskGroupingStage from "@/components/TaskGroupingStage";
 
 const STAGES = ["transcript", "call_topics", "topic_confirmation", "project_matching", "project_updates", "artifacts", "done"] as const;
 
@@ -520,35 +521,10 @@ export default function CallDetailPage() {
       {call.kanban_stage === "project_matching" || call.kanban_stage === "project_updates" ? (
         <div className="flex-1 overflow-hidden flex flex-col">
           {call.kanban_stage === "project_matching" && (
-            <TaskMatchingStage
-              callId={call.id}
-              existingTopics={matchingExistingTopics
-                .filter(t => t.topic_id && (t.tasks ?? []).length > 0)
-                .map(t => ({
-                  topic_id: t.topic_id!,
-                  name: t.name,
-                  tasks: (t.tasks ?? []).map(task => ({
-                    task_id: task.task_id,
-                    task: task.task,
-                    next_step: task.next_step || undefined,
-                    owner: task.owner || undefined,
-                    key_terms: task.key_terms,
-                  })),
-                }))}
-              candidateTopics={matchingCandidateTopics
-                .filter(t => (t.tasks ?? []).length > 0)
-                .map(t => ({
-                  name: t.name,
-                  tasks: (t.tasks ?? []).map(task => ({
-                    task_id: task.task_id,
-                    task: task.task,
-                    next_step: task.next_step || undefined,
-                    owner: task.owner || undefined,
-                    key_terms: task.key_terms,
-                  })),
-                }))}
-              onAdvance={() => loadCall()}
-            />
+            // EPIC-20: project_matching is now driven by the new TaskGroupingStage
+            // (Stage 2 of the 3-stage flow). The old TaskMatchingStage is kept only
+            // for the historical viewStage=project_matching read-only path.
+            <TaskGroupingStage callId={call.id} onAdvance={() => loadCall()} />
           )}
           {call.kanban_stage === "project_updates" && (
             <ProjectUpdatesStage

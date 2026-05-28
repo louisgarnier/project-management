@@ -506,3 +506,46 @@ export const topicConfirmationAPI = {
       },
     ),
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EPIC-20 Stage 2: Task grouping
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type GroupingTopic = { id: string; name: string };
+export type GroupingTask = {
+  id: string;           // prefixed "new:<uuid>" or "prev:<uuid>"
+  text: string;
+  origin: "new" | "previous";
+  topic_name: string;
+};
+export type GroupingGroup = {
+  id?: string;
+  finalized_topic_id: string;
+  group_kind: "new_only" | "old_only" | "mixed";
+  task_ids: string[];
+};
+
+export const taskGroupingAPI = {
+  state: (callId: string) =>
+    proxyFetch<{
+      topics: GroupingTopic[];
+      tasks: GroupingTask[];
+      groups: GroupingGroup[];
+      orphans: string[];
+    }>(`/api/calls/${callId}/task-grouping/state`),
+
+  run: (callId: string) =>
+    proxyFetch<{ groups_count: number; unassigned: string[]; rejected: string[] }>(
+      `/api/calls/${callId}/task-grouping/run`,
+      { method: "POST" },
+    ),
+
+  save: (callId: string, groups: GroupingGroup[]) =>
+    proxyFetch<{ saved: number; orphans: string[]; advanced: boolean }>(
+      `/api/calls/${callId}/task-grouping/save`,
+      {
+        method: "POST",
+        body: JSON.stringify({ groups }),
+      },
+    ),
+};

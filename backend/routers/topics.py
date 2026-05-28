@@ -21,6 +21,12 @@ from backend.services.finalized_topics_service import (
     save_finalized_topics,
 )
 from backend.services.project_topic_state import get_project_topic_state
+from backend.services.task_grouping_service import run_task_grouping
+from backend.services.task_match_persistence import (
+    TaskMatchGroup,
+    load_task_match_groups,
+    save_task_match_groups,
+)
 from backend.utils.logger import get_logger
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from openai import APIStatusError as OpenAIStatusError
@@ -412,6 +418,261 @@ async def save_topic_confirmation(call_id: str, payload: TopicConfirmationSavePa
 
     logger.info(f"✅ [Topics] Stage 1 saved: {result['saved']} topics, {renames_applied} renames")
     return {"saved": result["saved"], "renames_applied": renames_applied}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EPIC-20 Stage 2: Task grouping (cluster + route + drag UX)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _collect_tasks_for_grouping(db, call_id: str, finalized: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Build the prev/new task lists for Stage 2.
+
+    Returns (prev_tasks, new_tasks). Each task has:
+      - id: prefixed local identifier ("prev:<uuid>" or "new:<uuid>")
+      - text: task text
+      - origin: 'previous' | 'new'
+      - _task_id / _topic_id (prev) | _unit_id (new): raw identifiers for routing back
+      - _topic_name: source topic name (for context)
+    """
+    prev_tasks: list[dict] = []
+    for ft in finalized:
+        if ft.get("source") != "existing" or not ft.get("topic_id"):
+            continue
+        try:
+            state_rows = (
+                db.table("project_topic_state")
+                .select("tasks")
+                .eq("topic_id", ft["topic_id"])
+                .execute()
+                .data
+            )
+        except Exception:
+            state_rows = []
+        for sr in state_rows or []:
+            for pt in (sr.get("tasks") or []):
+                tid = pt.get("task_id")
+                if not tid:
+                    continue
+                prev_tasks.append({
+                    "id": f"prev:{tid}",
+                    "text": (pt.get("task") or "").strip(),
+                    "origin": "previous",
+                    "_task_id": tid,
+                    "_topic_id": ft["topic_id"],
+                    "_topic_name": ft["name"],
+                })
+
+    call_row = db.table("calls").select("call_topics_v5_payload, extraction_cache").eq("id", call_id).execute().data
+    v5 = (call_row[0] or {}).get("call_topics_v5_payload") or {} if call_row else {}
+    # Prefer synthesized_topics (task-level, post stage 8) over raw atomic_units
+    new_tasks: list[dict] = []
+    for st in (v5.get("synthesized_topics") or []):
+        topic_name = (st.get("topic_name") or "").strip()
+        for tk in (st.get("tasks") or []):
+            tid = tk.get("task_id")
+            if not tid:
+                continue
+            new_tasks.append({
+                "id": f"new:{tid}",
+                "text": (tk.get("task") or "").strip(),
+                "origin": "new",
+                "_unit_id": tid,
+                "_topic_name": topic_name,
+            })
+    # Fallback: if synthesized_topics is empty, pull from extraction_cache (v4-shape)
+    if not new_tasks:
+        for st in ((call_row[0] or {}).get("extraction_cache") or []) if call_row else []:
+            for tk in (st.get("tasks") or []):
+                tid = tk.get("task_id")
+                if not tid:
+                    continue
+                new_tasks.append({
+                    "id": f"new:{tid}",
+                    "text": (tk.get("task") or "").strip(),
+                    "origin": "new",
+                    "_unit_id": tid,
+                    "_topic_name": (st.get("name") or "").strip(),
+                })
+    return prev_tasks, new_tasks
+
+
+@router.get("/calls/{call_id}/task-grouping/state")
+async def get_task_grouping_state(call_id: str):
+    """Stage 2 state for the UI: topics, all tasks (prev+new), existing groups, orphans."""
+    logger.info(f"📥 [TaskGrouping] state requested: call={call_id}")
+    db = get_client()
+    finalized = load_finalized_topics(call_id, db=db)
+    topics_out = [{"id": t["id"], "name": t["name"]} for t in finalized]
+
+    prev_tasks, new_tasks = _collect_tasks_for_grouping(db, call_id, finalized)
+    all_tasks = prev_tasks + new_tasks
+    tasks_out = [
+        {"id": t["id"], "text": t["text"], "origin": t["origin"], "topic_name": t.get("_topic_name", "")}
+        for t in all_tasks
+    ]
+
+    # Load existing groups → convert to local prefixed IDs
+    groups_db = load_task_match_groups(call_id, db=db)
+    groups_out: list[dict] = []
+    assigned: set[str] = set()
+    for g in groups_db:
+        task_ids: list[str] = []
+        for r in (g.get("call_task_refs") or []):
+            tid = r.get("task_id")
+            if tid:
+                task_ids.append(f"new:{tid}")
+        for r in (g.get("project_task_refs") or []):
+            tid = r.get("task_id")
+            if tid:
+                task_ids.append(f"prev:{tid}")
+        assigned.update(task_ids)
+        groups_out.append({
+            "id": g.get("id"),
+            "finalized_topic_id": g.get("finalized_topic_id"),
+            "group_kind": g.get("group_kind") or "new_only",
+            "task_ids": task_ids,
+        })
+    orphans = [t["id"] for t in all_tasks if t["id"] not in assigned]
+    logger.info(
+        f"✅ [TaskGrouping] state: {len(topics_out)} topics, {len(all_tasks)} tasks, "
+        f"{len(groups_out)} groups, {len(orphans)} orphans"
+    )
+    return {"topics": topics_out, "tasks": tasks_out, "groups": groups_out, "orphans": orphans}
+
+
+def _resolve_project_default_llm(db, call_id: str) -> tuple[str, str | None]:
+    """Look up project default_llm / default_model. Fallback: openrouter sonnet."""
+    try:
+        call_row = db.table("calls").select("project_id").eq("id", call_id).single().execute().data or {}
+        proj_id = call_row.get("project_id")
+        if proj_id:
+            proj = db.table("projects").select("default_llm, default_model").eq("id", proj_id).single().execute().data or {}
+            llm = proj.get("default_llm") or "openrouter"
+            model = proj.get("default_model") or "anthropic/claude-sonnet-4-6"
+            return llm, model
+    except Exception as e:
+        logger.warning(f"⚠️ [TaskGrouping] LLM lookup failed: {e}")
+    return "openrouter", "anthropic/claude-sonnet-4-6"
+
+
+@router.post("/calls/{call_id}/task-grouping/run")
+async def run_task_grouping_endpoint(call_id: str):
+    """Stage 2 LLM cluster+route. Persists groups as draft topic_match_groups."""
+    logger.info(f"📥 [TaskGrouping] LLM run: call={call_id}")
+    db = get_client()
+    finalized = load_finalized_topics(call_id, db=db)
+    if not finalized:
+        raise HTTPException(status_code=400, detail="No finalized topics — complete Stage 1 first")
+    topic_names = [t["name"] for t in finalized]
+    ft_by_name = {t["name"]: t["id"] for t in finalized}
+
+    prev_tasks, new_tasks = _collect_tasks_for_grouping(db, call_id, finalized)
+    all_tasks = prev_tasks + new_tasks
+    if not all_tasks:
+        return {"groups": [], "unassigned": [], "rejected": ["no tasks to group"]}
+
+    llm, model = _resolve_project_default_llm(db, call_id)
+    result = await run_task_grouping(topic_names, all_tasks, llm=llm, model=model)
+
+    # Convert LLM output → TaskMatchGroup rows and persist as draft
+    tasks_by_id = {t["id"]: t for t in all_tasks}
+    groups_to_save: list[TaskMatchGroup] = []
+    for g in result["groups"]:
+        ftid = ft_by_name.get(g["target_topic"])
+        if not ftid:
+            continue
+        call_refs, proj_refs = [], []
+        for tid in g["task_ids"]:
+            t = tasks_by_id.get(tid)
+            if not t:
+                continue
+            if t["origin"] == "new":
+                call_refs.append({"task_id": t["_unit_id"]})
+            else:
+                proj_refs.append({"project_topic_id": t["_topic_id"], "task_id": t["_task_id"]})
+        if not call_refs and not proj_refs:
+            continue
+        kind = "mixed" if (call_refs and proj_refs) else ("new_only" if call_refs else "old_only")
+        groups_to_save.append(TaskMatchGroup(
+            finalized_topic_id=ftid,
+            group_kind=kind,
+            call_task_refs=call_refs,
+            project_task_refs=proj_refs,
+        ))
+    save_task_match_groups(call_id, groups_to_save, db=db)
+    logger.info(
+        f"✅ [TaskGrouping] LLM produced {len(result['groups'])} groups, "
+        f"{len(result['unassigned'])} unassigned, persisted {len(groups_to_save)}"
+    )
+    return {
+        "groups_count": len(groups_to_save),
+        "unassigned": result["unassigned"],
+        "rejected": result["rejected"],
+    }
+
+
+class TaskGroupingSavePayload(PydanticBaseModel):
+    groups: list[dict]
+
+
+@router.post("/calls/{call_id}/task-grouping/save")
+async def save_task_grouping_endpoint(call_id: str, payload: TaskGroupingSavePayload):
+    """Persist user-edited groups (after drag-drop). Idempotent (delete-then-insert).
+
+    Optionally advances kanban stage to project_updates when called with no orphans
+    and all task_ids are placed in a group.
+    """
+    logger.info(f"📥 [TaskGrouping] save: call={call_id}, {len(payload.groups)} groups")
+    db = get_client()
+    finalized = load_finalized_topics(call_id, db=db)
+    if not finalized:
+        raise HTTPException(status_code=400, detail="No finalized topics")
+    prev_tasks, new_tasks = _collect_tasks_for_grouping(db, call_id, finalized)
+    tasks_by_id = {t["id"]: t for t in prev_tasks + new_tasks}
+    all_task_ids = set(tasks_by_id.keys())
+    placed: set[str] = set()
+
+    groups_to_save: list[TaskMatchGroup] = []
+    for g in payload.groups:
+        ftid = g.get("finalized_topic_id")
+        if not ftid:
+            continue
+        call_refs, proj_refs = [], []
+        for tid in (g.get("task_ids") or []):
+            t = tasks_by_id.get(tid)
+            if not t:
+                continue
+            if t["origin"] == "new":
+                call_refs.append({"task_id": t["_unit_id"]})
+            else:
+                proj_refs.append({"project_topic_id": t["_topic_id"], "task_id": t["_task_id"]})
+            placed.add(tid)
+        if not call_refs and not proj_refs:
+            continue
+        kind = "mixed" if (call_refs and proj_refs) else ("new_only" if call_refs else "old_only")
+        groups_to_save.append(TaskMatchGroup(
+            id=g.get("id"),
+            finalized_topic_id=ftid,
+            group_kind=kind,
+            call_task_refs=call_refs,
+            project_task_refs=proj_refs,
+        ))
+    save_task_match_groups(call_id, groups_to_save, db=db)
+
+    orphans = sorted(all_task_ids - placed)
+    advanced = False
+    if not orphans and groups_to_save:
+        try:
+            db.table("calls").update({"kanban_stage": "project_updates"}).eq("id", call_id).execute()
+            advanced = True
+        except Exception as e:
+            logger.warning(f"⚠️ [TaskGrouping] stage advance failed: {e}")
+
+    logger.info(
+        f"✅ [TaskGrouping] saved {len(groups_to_save)} groups, {len(orphans)} orphans, advanced={advanced}"
+    )
+    return {"saved": len(groups_to_save), "orphans": orphans, "advanced": advanced}
 
 
 @router.post("/calls/{call_id}/topics/validate-updates")
