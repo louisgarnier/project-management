@@ -13,7 +13,7 @@ export interface Project {
   created_at: string;
 }
 
-export type KanbanStage = "transcript" | "call_topics" | "project_matching" | "project_updates" | "artifacts" | "done";
+export type KanbanStage = "transcript" | "call_topics" | "topic_confirmation" | "project_matching" | "project_updates" | "artifacts" | "done";
 
 export type MatchGroup = {
   id?: string;                        // EPIC-19 Phase B: stable DB UUID, used as Pass 1 verdict cache key

@@ -1577,6 +1577,15 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         db.table("topic_match_groups").delete().eq("call_id", call_id).execute()
         logger.info(f"🗄️ [Rollback] Deleted topic_match_groups for call {call_id}")
 
+    def _delete_finalized_topics() -> None:
+        """EPIC-20: clear call_finalized_topics for this call."""
+        try:
+            db.table("call_finalized_topics").delete().eq("call_id", call_id).execute()
+            logger.info(f"🗄️ [Rollback] Deleted call_finalized_topics for call {call_id}")
+        except Exception as e:
+            # Migration 037 may not be applied yet — non-fatal
+            logger.warning(f"⚠️ [Rollback] Could not delete finalized_topics (non-fatal): {e}")
+
     def _clear_extraction_fields() -> None:
         """Clear pending_topics, extraction_cache, extraction_status via raw HTTP (None-safe)."""
         payload = json.dumps(
@@ -1823,6 +1832,18 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         _clear_verification_fields()
         _clear_rag_pass_fields()
 
+    elif target_stage == "topic_confirmation":
+        # EPIC-20 Stage 1: keep call_finalized_topics — that IS this stage's content.
+        # Clear everything after: match_groups (Stage 2), topic_updates, merge, verification, artifacts.
+        _un_merge_topics()
+        _rebuild_pending_topics()
+        _delete_topic_updates()
+        _delete_match_groups()
+        _mark_artifacts_stale()
+        _clear_merge_fields()
+        _clear_verification_fields()
+        _clear_rag_pass_fields()
+
     elif target_stage == "call_topics":
         # Restore extraction_cache FIRST — topic_updates may be the only source (Call 1 auto-advance
         # path), so we must read them before deleting them below.
@@ -1897,6 +1918,7 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
         # "Project Matching, Project Updates, Artifacts" will be cleared.
         _un_merge_topics()
         _delete_match_groups()
+        _delete_finalized_topics()
         _clear_merge_fields()
         _clear_verification_fields()
         _clear_rag_pass_fields()
@@ -1904,11 +1926,12 @@ def rollback_to_stage(call_id: str, target_stage: str) -> dict:
 
     elif target_stage == "transcript":
         # Keep transcript — that IS the transcript content.
-        # Clear everything after: extraction, match_groups, topic_updates, merge, verification, artifacts.
+        # Clear everything after: extraction, finalized_topics, match_groups, topic_updates, merge, verification, artifacts.
         _un_merge_topics()
         _delete_topic_updates()
         _mark_artifacts_stale()
         _delete_match_groups()
+        _delete_finalized_topics()
         _clear_extraction_fields()
         _clear_merge_fields()
         _clear_verification_fields()

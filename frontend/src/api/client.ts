@@ -472,3 +472,37 @@ export const topicsAPI = {
   deleteTopic: (call_id: string, topic_id: string): Promise<void> =>
     proxyFetch<void>(`/api/calls/${call_id}/topics/${topic_id}`, { method: "DELETE" }),
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EPIC-20 Stage 1: Topic confirmation
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ExistingTopicEntry = { topic_id: string; name: string; tasks_count: number };
+export type NewTopicCandidate = { name: string; v5_cluster_id: string | null; task_count: number };
+export type FinalizedTopic = {
+  id?: string;
+  name: string;
+  source: "existing" | "new";
+  topic_id: string | null;
+  v5_cluster_id?: string | null;
+  position?: number;
+  _original_name?: string;
+};
+
+export const topicConfirmationAPI = {
+  load: (callId: string) =>
+    proxyFetch<{
+      existing: ExistingTopicEntry[];
+      new_candidates: NewTopicCandidate[];
+      finalized: FinalizedTopic[];
+    }>(`/api/calls/${callId}/topic-confirmation`),
+
+  save: (callId: string, topics: FinalizedTopic[]) =>
+    proxyFetch<{ saved: number; renames_applied: number }>(
+      `/api/calls/${callId}/topic-confirmation/save`,
+      {
+        method: "POST",
+        body: JSON.stringify({ topics }),
+      },
+    ),
+};

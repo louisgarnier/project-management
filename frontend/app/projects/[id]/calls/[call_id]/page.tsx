@@ -19,24 +19,27 @@ import ProjectUpdatesStage from "@/components/ProjectUpdatesStage";
 import ProjectMatchingHistoricalView from "@/components/ProjectMatchingHistoricalView";
 import ProjectUpdatesHistoricalView from "@/components/ProjectUpdatesHistoricalView";
 import CallTopicsHistoricalView from "@/components/CallTopicsHistoricalView";
+import TopicConfirmationStage from "@/components/TopicConfirmationStage";
 
-const STAGES = ["transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"] as const;
+const STAGES = ["transcript", "call_topics", "topic_confirmation", "project_matching", "project_updates", "artifacts", "done"] as const;
 
 const STAGE_LABELS: Record<string, string> = {
-  transcript:       "Transcript",
-  call_topics:      "Call Topics",
-  project_matching: "Project Matching",
-  project_updates:  "Project Updates",
-  artifacts:        "Artifacts",
-  done:             "Done",
+  transcript:         "Transcript",
+  call_topics:        "Call Topics",
+  topic_confirmation: "Topic Confirmation",
+  project_matching:   "Project Matching",
+  project_updates:    "Project Updates",
+  artifacts:          "Artifacts",
+  done:               "Done",
 };
 
 const ROLLBACK_CLEARS: Record<string, string[]> = {
-  transcript:       ["Call Topics", "Project Matching", "Project Updates", "Artifacts"],
-  call_topics:      ["Project Matching", "Project Updates", "Artifacts"],
-  project_matching: ["Project Updates", "Artifacts"],
-  project_updates:  ["Artifacts"],
-  artifacts:        ["Artifacts"],
+  transcript:         ["Call Topics", "Topic Confirmation", "Project Matching", "Project Updates", "Artifacts"],
+  call_topics:        ["Topic Confirmation", "Project Matching", "Project Updates", "Artifacts"],
+  topic_confirmation: ["Project Matching", "Project Updates", "Artifacts"],
+  project_matching:   ["Project Updates", "Artifacts"],
+  project_updates:    ["Artifacts"],
+  artifacts:          ["Artifacts"],
 };
 
 export default function CallDetailPage() {
@@ -321,6 +324,37 @@ export default function CallDetailPage() {
           </div>
         </div>
         <CallTopicsHistoricalView callId={callId} call={call} />
+        {renderRollbackModal()}
+      </div>
+    );
+  }
+
+  // EPIC-20 Stage 1: Topic confirmation
+  if (viewStage === "topic_confirmation" || (!viewStage && call.kanban_stage === "topic_confirmation")) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="px-5 pt-4 pb-3 bg-white border-b border-[#dfe1e6] flex-shrink-0">
+          <button
+            onClick={() => router.push(`/projects/${projectId}/board`)}
+            className="text-[12px] text-[#5e6c84] hover:text-[#0052cc] hover:underline mb-2 block"
+          >
+            ← Board
+          </button>
+          <div className="flex items-center justify-between">
+            <h1 className="text-[18px] font-bold text-[#172b4d]">{call.title}</h1>
+            {viewStage && (
+              <button
+                onClick={() => setRollbackTarget(viewStage!)}
+                className="text-[12px] font-medium px-3 py-1.5 rounded border border-[#dfe1e6] text-[#5e6c84] hover:border-[#0052cc] hover:text-[#0052cc] transition-colors"
+              >
+                ✏️ Edit
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto">
+          <TopicConfirmationStage callId={callId} onAdvance={() => loadCall()} />
+        </div>
         {renderRollbackModal()}
       </div>
     );

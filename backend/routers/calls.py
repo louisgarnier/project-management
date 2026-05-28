@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api", tags=["calls"])
 
-STAGE_ORDER = ["transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"]
+STAGE_ORDER = ["transcript", "call_topics", "topic_confirmation", "project_matching", "project_updates", "artifacts", "done"]
 
 
 class CallCreate(BaseModel):

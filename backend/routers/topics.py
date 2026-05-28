@@ -15,6 +15,12 @@ from backend.services.topics_service import (
     TopicUpdate,
     _stamp_item_ids, _status_rollup,
 )
+from backend.services.finalized_topics_service import (
+    FinalizedTopic,
+    load_finalized_topics,
+    save_finalized_topics,
+)
+from backend.services.project_topic_state import get_project_topic_state
 from backend.utils.logger import get_logger
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from openai import APIStatusError as OpenAIStatusError
@@ -111,7 +117,7 @@ async def save(call_id: str, topics: list[TopicUpdate]):
             # Roll back later calls that are past call_topics
             project_id = call_row[0]["project_id"]
             created_at = call_row[0]["created_at"]
-            _STAGE_ORDER = ["transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"]
+            _STAGE_ORDER = ["transcript", "call_topics", "topic_confirmation", "project_matching", "project_updates", "artifacts", "done"]
             later_calls = (
                 db.table("calls")
                 .select("id, kanban_stage")
@@ -275,6 +281,137 @@ async def get_match_groups(call_id: str):
     return result
 
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EPIC-20 Stage 1: Topic confirmation
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/calls/{call_id}/topic-confirmation")
+async def get_topic_confirmation(call_id: str):
+    """Stage 1 payload: existing project topics + v5 new-topic candidates + saved finalized.
+
+    - existing       : project topics with progression history (project_topic_state)
+    - new_candidates : v5-introduced topic names for this call (synthesized_topics
+                       where new_topic=true)
+    - finalized      : already-saved finalized list (empty on first visit)
+    """
+    logger.info(f"📥 [Topics] Stage 1 payload requested: call={call_id}")
+    db = get_client()
+
+    call_row = (
+        db.table("calls")
+        .select("project_id, call_topics_v5_payload")
+        .eq("id", call_id)
+        .execute()
+        .data
+    )
+    if not call_row:
+        raise HTTPException(status_code=404, detail=f"Call {call_id} not found")
+    project_id = call_row[0]["project_id"]
+
+    # Existing topics (project history)
+    existing = []
+    try:
+        for t in get_project_topic_state(project_id, db=db):
+            existing.append({
+                "topic_id": t["topic_id"],
+                "name": t["name"],
+                "tasks_count": len(t.get("tasks") or []),
+            })
+    except Exception as e:
+        logger.warning(f"⚠️ [Topics] Stage 1 existing-topics load failed: {e}")
+
+    # v5 new-topic candidates from this call
+    v5_payload = call_row[0].get("call_topics_v5_payload") or {}
+    synthesized = v5_payload.get("synthesized_topics") or []
+    existing_names_lower = {(t["name"] or "").lower() for t in existing}
+    new_candidates = []
+    for s in synthesized:
+        name = (s.get("topic_name") or "").strip()
+        if not name:
+            continue
+        # v5 'new_topic' flag, OR fallback: a name not present in project_topic_state
+        is_new = s.get("new_topic") or (name.lower() not in existing_names_lower)
+        if is_new:
+            new_candidates.append({
+                "name": name,
+                "v5_cluster_id": s.get("registry_id") or s.get("cluster_id"),
+                "task_count": len(s.get("tasks") or []),
+            })
+
+    # Existing finalized list (empty on first visit)
+    try:
+        finalized = load_finalized_topics(call_id, db=db)
+    except Exception as e:
+        logger.warning(f"⚠️ [Topics] Stage 1 load_finalized failed (migration 037 not applied?): {e}")
+        finalized = []
+
+    logger.info(
+        f"✅ [Topics] Stage 1 payload: {len(existing)} existing, "
+        f"{len(new_candidates)} new candidates, {len(finalized)} already-finalized"
+    )
+    return {"existing": existing, "new_candidates": new_candidates, "finalized": finalized}
+
+
+class TopicConfirmationSavePayload(PydanticBaseModel):
+    topics: list[dict]  # each: {name, source, topic_id?, v5_cluster_id?, _original_name?}
+
+
+@router.post("/calls/{call_id}/topic-confirmation/save")
+async def save_topic_confirmation(call_id: str, payload: TopicConfirmationSavePayload):
+    """Persist the finalized topic list AND propagate renames to topic_registry.
+
+    Renames are detected by comparing _original_name (sent by client) vs name.
+    Renaming an 'existing' entry updates the canonical name in topic_registry
+    (EPIC-20 decision: immediate propagation, not per-call alias).
+    """
+    logger.info(f"📥 [Topics] Stage 1 save: call={call_id}, {len(payload.topics)} topics")
+    db = get_client()
+
+    renames_applied = 0
+    for t in payload.topics:
+        orig = (t.get("_original_name") or "").strip()
+        new_name = (t.get("name") or "").strip()
+        topic_id = t.get("topic_id")
+        if orig and topic_id and new_name and orig != new_name:
+            try:
+                # Update topics.name (the operational table); topic_registry is
+                # the vocabulary table — update it too if the row exists.
+                db.table("topics").update({"name": new_name}).eq("id", topic_id).execute()
+                # topic_registry: lookup by current (orig) name in this project,
+                # update if present (operational topic_id != registry id, names align).
+                call_row = db.table("calls").select("project_id").eq("id", call_id).execute().data
+                if call_row:
+                    proj_id = call_row[0]["project_id"]
+                    db.table("topic_registry").update({"name": new_name}).eq(
+                        "project_id", proj_id
+                    ).ilike("name", orig).execute()
+                renames_applied += 1
+                logger.info(f"🗄️ [Topics] Renamed topic {topic_id}: {orig!r} → {new_name!r}")
+            except Exception as e:
+                logger.warning(f"⚠️ [Topics] Rename failed for {topic_id}: {e}")
+
+    # Build clean finalized rows
+    clean: list[FinalizedTopic] = []
+    for t in payload.topics:
+        clean.append(FinalizedTopic(
+            name=(t["name"] or "").strip(),
+            source=t.get("source", "existing"),
+            topic_id=t.get("topic_id"),
+            v5_cluster_id=t.get("v5_cluster_id"),
+        ))
+    result = save_finalized_topics(call_id, clean, db=db)
+
+    # Advance kanban stage: topic_confirmation → project_matching
+    try:
+        db.table("calls").update({"kanban_stage": "project_matching"}).eq("id", call_id).execute()
+    except Exception as e:
+        logger.warning(f"⚠️ [Topics] Advance to project_matching failed: {e}")
+
+    logger.info(f"✅ [Topics] Stage 1 saved: {result['saved']} topics, {renames_applied} renames")
+    return {"saved": result["saved"], "renames_applied": renames_applied}
 
 
 @router.post("/calls/{call_id}/topics/validate-updates")
