@@ -308,6 +308,7 @@ def clear_topics_stale(call_id: str):
 _ROLLBACK_STAGE_ORDER = [
     "transcript",
     "call_topics",
+    "topic_confirmation",
     "project_matching",
     "project_updates",
     "artifacts",
@@ -317,7 +318,12 @@ _ROLLBACK_STAGE_ORDER = [
 
 class RollbackPayload(BaseModel):
     target_stage: Literal[
-        "transcript", "call_topics", "project_matching", "project_updates", "artifacts"
+        "transcript",
+        "call_topics",
+        "topic_confirmation",
+        "project_matching",
+        "project_updates",
+        "artifacts",
     ]
 
 

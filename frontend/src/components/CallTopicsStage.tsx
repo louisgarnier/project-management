@@ -241,6 +241,49 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
     }
   };
 
+  // EPIC-20 UX: move a task from one topic to another (drag-and-drop)
+  const moveTaskBetweenTopics = async (sourceTi: number, sourceRi: number, targetTi: number) => {
+    if (sourceTi === targetTi) return;
+    const srcTopic = topics[sourceTi];
+    const tgtTopic = topics[targetTi];
+    const srcTasks = srcTopic.tasks ?? [];
+    const tgtTasks = tgtTopic.tasks ?? [];
+    const task = srcTasks[sourceRi];
+    if (!task) return;
+
+    const newSrcTasks = srcTasks.filter((_, i) => i !== sourceRi);
+    const newTgtTasks = [...tgtTasks, task];
+
+    // Optimistic local update
+    const nextTopics = topics.map((t, i) => {
+      if (i === sourceTi) return { ...t, tasks: newSrcTasks };
+      if (i === targetTi) return { ...t, tasks: newTgtTasks };
+      return t;
+    });
+    setTopics(nextTopics);
+
+    // Persist: source + target
+    const srcId = srcTopic.id ?? srcTopic.topic_id;
+    const tgtId = tgtTopic.id ?? tgtTopic.topic_id;
+    if (!srcId && !tgtId) {
+      await persistExtractionCache(nextTopics);
+      return;
+    }
+    try {
+      const ops: Promise<unknown>[] = [];
+      if (srcId) ops.push(topicsAPI.patch(srcId, { tasks: newSrcTasks }));
+      else ops.push(persistExtractionCache(nextTopics));
+      if (tgtId) ops.push(topicsAPI.patch(tgtId, { tasks: newTgtTasks }));
+      await Promise.all(ops);
+    } catch (e: unknown) {
+      logger.error("[CallTopicsStage] moveTaskBetweenTopics patch failed", { data: e });
+    }
+  };
+
+  // Drag state — tracks where the user grabbed from
+  const [dragSource, setDragSource] = useState<{ ti: number; ri: number } | null>(null);
+  const [dropTargetTi, setDropTargetTi] = useState<number | null>(null);
+
   const updateOpenQuestions = async (
     idx: number,
     newOQ: OpenQuestionData[],
@@ -740,10 +783,57 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                       : isLastTopic
                         ? "none"
                         : "2px solid #dfe1e6"; // topic separator
+                    const isDropTargetTopic = dropTargetTi === ti && dragSource !== null && dragSource.ti !== ti;
+                    const isThisRowDragging = dragSource && dragSource.ti === ti && dragSource.ri === ri;
+                    // Card styling — visible border around each task row.
+                    // Applied as a CSS class via box-shadow on each TD so the
+                    // border traces the full row inside a table layout.
+                    const cardShadow = task
+                      ? isThisRowDragging
+                        ? "inset 0 0 0 2px #0052cc"
+                        : "inset 0 0 0 1.5px #c1c7d0"
+                      : "none";
                     return (
                       <tr
                         key={`${topic.id ?? topic.topic_id ?? ti}-${task?.task_id ?? `empty-${ri}`}`}
-                        style={{ borderBottom }}
+                        draggable={!!task}
+                        onDragStart={(e) => {
+                          if (!task) return;
+                          // Don't capture drags from inputs/buttons inside the row
+                          const target = e.target as HTMLElement;
+                          if (target.closest("input, textarea, button, select, [data-no-drag]")) {
+                            e.preventDefault();
+                            return;
+                          }
+                          setDragSource({ ti, ri });
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", `task:${ti}:${ri}`);
+                        }}
+                        onDragEnd={() => {
+                          setDragSource(null);
+                          setDropTargetTi(null);
+                        }}
+                        style={{
+                          borderBottom: !isLastRowOfTopic
+                            ? "8px solid transparent"
+                            : isLastTopic
+                              ? "none"
+                              : "16px solid transparent",
+                          background: isDropTargetTopic
+                            ? "#e9f0ff"
+                            : isThisRowDragging
+                              ? "#deebff"
+                              : task
+                                ? "#fff"
+                                : undefined,
+                          boxShadow: cardShadow,
+                          borderRadius: 6,
+                          transition: "background .12s, box-shadow .12s, opacity .12s",
+                          opacity: isThisRowDragging ? 0.55 : 1,
+                          cursor: task ? "grab" : undefined,
+                          // Hide the visible borderBottom that was there before — now using spacing
+                          ...(borderBottom ? {} : {}),
+                        }}
                         onContextMenu={
                           task
                             ? (e) => {
@@ -754,6 +844,26 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                               }
                             : undefined
                         }
+                        onDragOver={(e) => {
+                          if (!dragSource || dragSource.ti === ti) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          if (dropTargetTi !== ti) setDropTargetTi(ti);
+                        }}
+                        onDragLeave={() => {
+                          if (dropTargetTi === ti) setDropTargetTi(null);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (!dragSource || dragSource.ti === ti) {
+                            setDragSource(null);
+                            setDropTargetTi(null);
+                            return;
+                          }
+                          moveTaskBetweenTopics(dragSource.ti, dragSource.ri, ti);
+                          setDragSource(null);
+                          setDropTargetTi(null);
+                        }}
                       >
                         {/* Topic name + importance — only first row */}
                         <td style={TABLE_TD_STYLE}>
@@ -789,6 +899,33 @@ export default function CallTopicsStage({ call, onAggregateComplete, onAutoAdvan
                         <td style={TABLE_TD_STYLE}>
                           {task && (
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              {/* Visual grip — the whole row is draggable, this just
+                                  shows the affordance. */}
+                              <span
+                                title="La carte est déplaçable — drag&drop vers un autre topic"
+                                style={{
+                                  display: "inline-grid",
+                                  gridTemplateColumns: "repeat(2, 3px)",
+                                  gridTemplateRows: "repeat(3, 3px)",
+                                  gap: "2px",
+                                  padding: "4px 6px",
+                                  borderRadius: 3,
+                                  flexShrink: 0,
+                                  pointerEvents: "none",
+                                }}
+                              >
+                                {[0, 1, 2, 3, 4, 5].map((i) => (
+                                  <span
+                                    key={i}
+                                    style={{
+                                      width: 3,
+                                      height: 3,
+                                      borderRadius: "50%",
+                                      background: dragSource && dragSource.ti === ti && dragSource.ri === ri ? "#0052cc" : "#5e6c84",
+                                    }}
+                                  />
+                                ))}
+                              </span>
                               <input
                                 key={task.task_id}
                                 type="text"

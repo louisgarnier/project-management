@@ -495,6 +495,7 @@ export const topicConfirmationAPI = {
       existing: ExistingTopicEntry[];
       new_candidates: NewTopicCandidate[];
       finalized: FinalizedTopic[];
+      kanban_stage: string | null;
     }>(`/api/calls/${callId}/topic-confirmation`),
 
   save: (callId: string, topics: FinalizedTopic[]) =>
@@ -520,6 +521,7 @@ export type GroupingTask = {
 };
 export type GroupingGroup = {
   id?: string;
+  name?: string | null;
   finalized_topic_id: string;
   group_kind: "new_only" | "old_only" | "mixed";
   task_ids: string[];
@@ -532,6 +534,7 @@ export const taskGroupingAPI = {
       tasks: GroupingTask[];
       groups: GroupingGroup[];
       orphans: string[];
+      dropped: string[];
     }>(`/api/calls/${callId}/task-grouping/state`),
 
   run: (callId: string) =>
@@ -540,12 +543,12 @@ export const taskGroupingAPI = {
       { method: "POST" },
     ),
 
-  save: (callId: string, groups: GroupingGroup[]) =>
+  save: (callId: string, groups: GroupingGroup[], dropped: string[] = []) =>
     proxyFetch<{ saved: number; orphans: string[]; advanced: boolean }>(
       `/api/calls/${callId}/task-grouping/save`,
       {
         method: "POST",
-        body: JSON.stringify({ groups }),
+        body: JSON.stringify({ groups, dropped }),
       },
     ),
 };

@@ -253,26 +253,43 @@ async def promote_not_discussed(call_id: str, payload: PromotePayload):
 
 @router.get("/calls/{call_id}/topics/match-groups")
 async def get_match_groups(call_id: str):
-    """Return saved match groups for a call with project topic names resolved."""
+    """Return saved match groups with project topic names + EPIC-20 finalized topic resolved."""
     logger.info(f"📥 [Topics] Match groups requested: call={call_id}")
     db = get_client()
 
     groups = (
         db.table("topic_match_groups")
-        .select("id, kind, call_task_refs, project_task_refs, call_topic_names, project_topic_ids")
+        .select(
+            "id, kind, call_task_refs, project_task_refs, call_topic_names, project_topic_ids, "
+            "target_topic_name, finalized_topic_id, group_kind"
+        )
         .eq("call_id", call_id)
         .execute()
         .data
     ) or []
 
+    # Build finalized_topic_id → name map (EPIC-20)
+    ft_rows = (
+        db.table("call_finalized_topics")
+        .select("id, name")
+        .eq("call_id", call_id)
+        .execute()
+        .data
+    ) or []
+    ft_name_by_id = {r["id"]: r["name"] for r in ft_rows}
+
     result = []
     for g in groups:
+        # Skip the dropped pseudo-group in the UI feed
+        if (g.get("target_topic_name") or "") == DROPPED_GROUP_MARKER:
+            continue
         ptids = g.get("project_topic_ids") or []
         names = []
         for ptid in ptids:
             row = db.table("topics").select("name").eq("id", ptid).execute().data
             if row:
                 names.append(row[0]["name"])
+        ftid = g.get("finalized_topic_id")
         result.append({
             "id": g.get("id"),
             "kind": g.get("kind", "binding"),
@@ -281,6 +298,11 @@ async def get_match_groups(call_id: str):
             "project_topic_ids": ptids,
             "project_topic_names": names,
             "call_topic_names": g.get("call_topic_names", []),
+            # EPIC-20 additions
+            "finalized_topic_id": ftid,
+            "finalized_topic_name": ft_name_by_id.get(ftid) if ftid else None,
+            "group_kind": g.get("group_kind"),
+            "target_topic_name": g.get("target_topic_name"),
         })
 
     logger.info(f"✅ [Topics] Returned {len(result)} match groups")
@@ -308,7 +330,7 @@ async def get_topic_confirmation(call_id: str):
 
     call_row = (
         db.table("calls")
-        .select("project_id, call_topics_v5_payload")
+        .select("project_id, call_topics_v5_payload, kanban_stage")
         .eq("id", call_id)
         .execute()
         .data
@@ -316,6 +338,7 @@ async def get_topic_confirmation(call_id: str):
     if not call_row:
         raise HTTPException(status_code=404, detail=f"Call {call_id} not found")
     project_id = call_row[0]["project_id"]
+    kanban_stage = call_row[0].get("kanban_stage")
 
     # Existing topics (project history)
     existing = []
@@ -358,7 +381,12 @@ async def get_topic_confirmation(call_id: str):
         f"✅ [Topics] Stage 1 payload: {len(existing)} existing, "
         f"{len(new_candidates)} new candidates, {len(finalized)} already-finalized"
     )
-    return {"existing": existing, "new_candidates": new_candidates, "finalized": finalized}
+    return {
+        "existing": existing,
+        "new_candidates": new_candidates,
+        "finalized": finalized,
+        "kanban_stage": kanban_stage,
+    }
 
 
 class TopicConfirmationSavePayload(PydanticBaseModel):
@@ -399,20 +427,65 @@ async def save_topic_confirmation(call_id: str, payload: TopicConfirmationSavePa
             except Exception as e:
                 logger.warning(f"⚠️ [Topics] Rename failed for {topic_id}: {e}")
 
-    # Build clean finalized rows
+    # Resolve project_id once for registry lookups
+    call_row = db.table("calls").select("project_id").eq("id", call_id).execute().data
+    proj_id = call_row[0]["project_id"] if call_row else None
+
+    # Build clean finalized rows.
+    # call_finalized_topics.topic_id FKs to topic_registry.id, but `existing` topics
+    # carry topics.id (operational table). Map name → topic_registry.id; NULL when
+    # no registry row exists.
+    def _registry_id_for(name: str) -> str | None:
+        if not (name and proj_id):
+            return None
+        try:
+            rows = (
+                db.table("topic_registry")
+                .select("id")
+                .eq("project_id", proj_id)
+                .ilike("name", name)
+                .execute()
+                .data
+            ) or []
+            return rows[0]["id"] if rows else None
+        except Exception:
+            return None
+
     clean: list[FinalizedTopic] = []
     for t in payload.topics:
-        clean.append(FinalizedTopic(
-            name=(t["name"] or "").strip(),
-            source=t.get("source", "existing"),
-            topic_id=t.get("topic_id"),
-            v5_cluster_id=t.get("v5_cluster_id"),
-        ))
-    result = save_finalized_topics(call_id, clean, db=db)
-
-    # Advance kanban stage: topic_confirmation → project_matching
+        name = (t["name"] or "").strip()
+        source = t.get("source", "existing")
+        # For 'existing' entries, look up the registry id (FK target). NULL if not found.
+        topic_id_for_fk = _registry_id_for(name) if source == "existing" else None
+        entry: FinalizedTopic = {
+            "name": name,
+            "source": source,
+            "topic_id": topic_id_for_fk,
+            "v5_cluster_id": t.get("v5_cluster_id"),
+        }
+        orig = (t.get("_original_name") or "").strip()
+        if orig:
+            entry["_original_name"] = orig
+        clean.append(entry)
     try:
-        db.table("calls").update({"kanban_stage": "project_matching"}).eq("id", call_id).execute()
+        result = save_finalized_topics(call_id, clean, db=db)
+    except Exception as e:
+        logger.exception(f"❌ [Topics] save_finalized_topics failed for call {call_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"save_finalized_topics: {e}")
+
+    # Only advance kanban_stage forward; never regress a call already past
+    # topic_confirmation (re-saving on an artifacts/done call must NOT reset it).
+    try:
+        cur = (
+            db.table("calls").select("kanban_stage").eq("id", call_id).execute().data
+        ) or []
+        cur_stage = (cur[0] or {}).get("kanban_stage") if cur else None
+        if cur_stage == "topic_confirmation":
+            db.table("calls").update({"kanban_stage": "project_matching"}).eq("id", call_id).execute()
+        else:
+            logger.info(
+                f"🗄️ [Topics] Stage 1 re-save on call at stage={cur_stage!r} — kanban_stage left untouched"
+            )
     except Exception as e:
         logger.warning(f"⚠️ [Topics] Advance to project_matching failed: {e}")
 
@@ -428,78 +501,127 @@ async def save_topic_confirmation(call_id: str, payload: TopicConfirmationSavePa
 def _collect_tasks_for_grouping(db, call_id: str, finalized: list[dict]) -> tuple[list[dict], list[dict]]:
     """Build the prev/new task lists for Stage 2.
 
-    Returns (prev_tasks, new_tasks). Each task has:
+    Identity is matched by NAME (case-insensitive), not topic_id, because:
+      - finalized.topic_id FKs to topic_registry.id (v5-only vocabulary)
+      - project_topic_state.topic_id is topics.id (operational)
+      - pre-v5 topics live in topics+topic_updates without a registry row
+    Names are stable across calls, so they're the safe join key.
+
+    Returns (prev_tasks, new_tasks). Each task carries:
       - id: prefixed local identifier ("prev:<uuid>" or "new:<uuid>")
-      - text: task text
-      - origin: 'previous' | 'new'
-      - _task_id / _topic_id (prev) | _unit_id (new): raw identifiers for routing back
-      - _topic_name: source topic name (for context)
+      - text + origin + _topic_name (display)
+      - For prev: _task_id (topic_updates.tasks[].task_id), _topic_id (topics.id)
+      - For new: _unit_id (pending_topics.tasks[].task_id)
     """
+    # Map finalized name (lower) → entry for fast lookup
+    ft_by_name = {(ft["name"] or "").strip().lower(): ft for ft in finalized}
+
+    # ── Previous-call tasks: read project_topic_state, filter by name match ──
+    call_row = db.table("calls").select(
+        "project_id, call_topics_v5_payload, pending_topics, extraction_cache, created_at"
+    ).eq("id", call_id).execute().data or []
+    project_id = (call_row[0] or {}).get("project_id") if call_row else None
+    current_call_created_at = (call_row[0] or {}).get("created_at") if call_row else None
+
     prev_tasks: list[dict] = []
-    for ft in finalized:
-        if ft.get("source") != "existing" or not ft.get("topic_id"):
-            continue
+    if project_id:
+        # Build {call_id -> created_at} so we can filter tasks by chronology.
+        # A task is "previous" iff its added_in_call_id refers to a call created
+        # strictly BEFORE the current call. On the project's first call, this
+        # filter yields zero prev_tasks even if project_topic_state was populated
+        # by later calls in the same project.
+        try:
+            sibling_calls = (
+                db.table("calls")
+                .select("id, created_at")
+                .eq("project_id", project_id)
+                .execute()
+                .data
+            ) or []
+        except Exception:
+            sibling_calls = []
+        call_created_by_id = {c["id"]: c.get("created_at") for c in sibling_calls}
+
         try:
             state_rows = (
                 db.table("project_topic_state")
-                .select("tasks")
-                .eq("topic_id", ft["topic_id"])
+                .select("topic_id, name, tasks")
+                .eq("project_id", project_id)
                 .execute()
                 .data
-            )
+            ) or []
         except Exception:
             state_rows = []
-        for sr in state_rows or []:
+        for sr in state_rows:
+            nm = (sr.get("name") or "").strip().lower()
+            if nm not in ft_by_name:
+                continue
+            display_name = ft_by_name[nm]["name"]
             for pt in (sr.get("tasks") or []):
                 tid = pt.get("task_id")
                 if not tid:
+                    continue
+                # Chronology filter: keep only tasks added before current call.
+                added_in = pt.get("added_in_call_id")
+                if current_call_created_at and added_in:
+                    added_at = call_created_by_id.get(added_in)
+                    if not added_at or added_at >= current_call_created_at:
+                        continue
+                elif current_call_created_at and not added_in:
+                    # Task missing added_in_call_id — conservatively skip on
+                    # any call where we can't prove it predates this one.
                     continue
                 prev_tasks.append({
                     "id": f"prev:{tid}",
                     "text": (pt.get("task") or "").strip(),
                     "origin": "previous",
                     "_task_id": tid,
-                    "_topic_id": ft["topic_id"],
-                    "_topic_name": ft["name"],
+                    "_topic_id": sr["topic_id"],     # topics.id, used by project_task_refs
+                    "_topic_name": display_name,
                 })
 
-    call_row = db.table("calls").select("call_topics_v5_payload, extraction_cache").eq("id", call_id).execute().data
-    v5 = (call_row[0] or {}).get("call_topics_v5_payload") or {} if call_row else {}
-    # Prefer synthesized_topics (task-level, post stage 8) over raw atomic_units
+    # ── New-call tasks: prefer pending_topics (always populated post-aggregate) ──
     new_tasks: list[dict] = []
-    for st in (v5.get("synthesized_topics") or []):
-        topic_name = (st.get("topic_name") or "").strip()
-        for tk in (st.get("tasks") or []):
-            tid = tk.get("task_id")
-            if not tid:
-                continue
-            new_tasks.append({
-                "id": f"new:{tid}",
-                "text": (tk.get("task") or "").strip(),
-                "origin": "new",
-                "_unit_id": tid,
-                "_topic_name": topic_name,
-            })
-    # Fallback: if synthesized_topics is empty, pull from extraction_cache (v4-shape)
-    if not new_tasks:
-        for st in ((call_row[0] or {}).get("extraction_cache") or []) if call_row else []:
+    seen_unit_ids: set[str] = set()
+
+    def _add_new(source_rows: list[dict], name_key: str) -> None:
+        for st in source_rows or []:
+            topic_name = (st.get(name_key) or "").strip()
             for tk in (st.get("tasks") or []):
                 tid = tk.get("task_id")
-                if not tid:
+                if not tid or tid in seen_unit_ids:
                     continue
+                seen_unit_ids.add(tid)
                 new_tasks.append({
                     "id": f"new:{tid}",
                     "text": (tk.get("task") or "").strip(),
                     "origin": "new",
                     "_unit_id": tid,
-                    "_topic_name": (st.get("name") or "").strip(),
+                    "_topic_name": topic_name,
                 })
+
+    if call_row:
+        _add_new((call_row[0] or {}).get("pending_topics") or [], "name")
+        if not new_tasks:
+            v5 = (call_row[0] or {}).get("call_topics_v5_payload") or {}
+            _add_new(v5.get("synthesized_topics") or [], "topic_name")
+        if not new_tasks:
+            _add_new((call_row[0] or {}).get("extraction_cache") or [], "name")
     return prev_tasks, new_tasks
+
+
+DROPPED_GROUP_MARKER = "__dropped__"
 
 
 @router.get("/calls/{call_id}/task-grouping/state")
 async def get_task_grouping_state(call_id: str):
-    """Stage 2 state for the UI: topics, all tasks (prev+new), existing groups, orphans."""
+    """Stage 2 state for the UI.
+
+    The 'dropped' pseudo-group (target_topic_name='__dropped__') is filtered out
+    of `groups`; its task_ids are surfaced in `dropped` so the UI can offer
+    a restore action. Dropped tasks are removed from `tasks` (don't show in cols)
+    and excluded from the orphan count (don't block advance).
+    """
     logger.info(f"📥 [TaskGrouping] state requested: call={call_id}")
     db = get_client()
     finalized = load_finalized_topics(call_id, db=db)
@@ -507,15 +629,12 @@ async def get_task_grouping_state(call_id: str):
 
     prev_tasks, new_tasks = _collect_tasks_for_grouping(db, call_id, finalized)
     all_tasks = prev_tasks + new_tasks
-    tasks_out = [
-        {"id": t["id"], "text": t["text"], "origin": t["origin"], "topic_name": t.get("_topic_name", "")}
-        for t in all_tasks
-    ]
 
     # Load existing groups → convert to local prefixed IDs
     groups_db = load_task_match_groups(call_id, db=db)
     groups_out: list[dict] = []
     assigned: set[str] = set()
+    dropped_ids: set[str] = set()
     for g in groups_db:
         task_ids: list[str] = []
         for r in (g.get("call_task_refs") or []):
@@ -526,19 +645,39 @@ async def get_task_grouping_state(call_id: str):
             tid = r.get("task_id")
             if tid:
                 task_ids.append(f"prev:{tid}")
+        # Dropped pseudo-group: not shown as a real group
+        if (g.get("target_topic_name") or "") == DROPPED_GROUP_MARKER:
+            dropped_ids.update(task_ids)
+            continue
         assigned.update(task_ids)
         groups_out.append({
             "id": g.get("id"),
+            "name": g.get("target_topic_name"),
             "finalized_topic_id": g.get("finalized_topic_id"),
             "group_kind": g.get("group_kind") or "new_only",
             "task_ids": task_ids,
         })
-    orphans = [t["id"] for t in all_tasks if t["id"] not in assigned]
+
+    # Drop the dropped ones from the visible task list + orphan calc
+    visible_tasks = [t for t in all_tasks if t["id"] not in dropped_ids]
+    tasks_out = [
+        {"id": t["id"], "text": t["text"], "origin": t["origin"], "topic_name": t.get("_topic_name", "")}
+        for t in visible_tasks
+    ]
+    orphans = [t["id"] for t in visible_tasks if t["id"] not in assigned]
+    dropped_out = sorted(dropped_ids)
+
     logger.info(
-        f"✅ [TaskGrouping] state: {len(topics_out)} topics, {len(all_tasks)} tasks, "
-        f"{len(groups_out)} groups, {len(orphans)} orphans"
+        f"✅ [TaskGrouping] state: {len(topics_out)} topics, {len(visible_tasks)} visible tasks, "
+        f"{len(groups_out)} groups, {len(orphans)} orphans, {len(dropped_out)} dropped"
     )
-    return {"topics": topics_out, "tasks": tasks_out, "groups": groups_out, "orphans": orphans}
+    return {
+        "topics": topics_out,
+        "tasks": tasks_out,
+        "groups": groups_out,
+        "orphans": orphans,
+        "dropped": dropped_out,
+    }
 
 
 def _resolve_project_default_llm(db, call_id: str) -> tuple[str, str | None]:
@@ -614,6 +753,7 @@ async def run_task_grouping_endpoint(call_id: str):
 
 class TaskGroupingSavePayload(PydanticBaseModel):
     groups: list[dict]
+    dropped: list[str] | None = None  # prefixed task_ids ("new:..." / "prev:...") that the user dropped
 
 
 @router.post("/calls/{call_id}/task-grouping/save")
@@ -653,11 +793,36 @@ async def save_task_grouping_endpoint(call_id: str, payload: TaskGroupingSavePay
         kind = "mixed" if (call_refs and proj_refs) else ("new_only" if call_refs else "old_only")
         groups_to_save.append(TaskMatchGroup(
             id=g.get("id"),
+            target_topic_name=(g.get("name") or "").strip() or None,
             finalized_topic_id=ftid,
             group_kind=kind,
             call_task_refs=call_refs,
             project_task_refs=proj_refs,
         ))
+
+    # Persist dropped tasks as a pseudo-group (target_topic_name='__dropped__').
+    # Pass 1/2/3 already filter by group_kind enum, so as long as we don't tag
+    # this row as new_only/old_only/mixed it gets ignored. We use group_kind=null.
+    dropped_ids = payload.dropped or []
+    drop_call, drop_proj = [], []
+    for tid in dropped_ids:
+        t = tasks_by_id.get(tid)
+        if not t:
+            continue
+        placed.add(tid)
+        if t["origin"] == "new":
+            drop_call.append({"task_id": t["_unit_id"]})
+        else:
+            drop_proj.append({"project_topic_id": t["_topic_id"], "task_id": t["_task_id"]})
+    if drop_call or drop_proj:
+        groups_to_save.append(TaskMatchGroup(
+            target_topic_name=DROPPED_GROUP_MARKER,
+            finalized_topic_id=None,
+            # Don't tag as new_only/old_only/mixed → routing skips it
+            call_task_refs=drop_call,
+            project_task_refs=drop_proj,
+        ))
+
     save_task_match_groups(call_id, groups_to_save, db=db)
 
     orphans = sorted(all_task_ids - placed)
@@ -1090,15 +1255,18 @@ async def _run_verify_new_background(call_id: str) -> None:
     try:
         await plog.log("🔍 Pass 1 — Verifying that your new task groups are really new (not continuations of past work).")
         groups = load_task_match_groups(call_id, db=db)
-        # EPIC-20: prefer group_kind enum when present; fall back to legacy EPIC-19 shape inference.
+        # EPIC-20: skip dropped pseudo-group; prefer group_kind enum.
         x0_groups = [
             g for g in groups
-            if (g.get("group_kind") == "new_only")
-            or (
-                not g.get("group_kind")
-                and g.get("kind") == "binding"
-                and g.get("call_task_refs")
-                and not g.get("project_task_refs")
+            if g.get("target_topic_name") != DROPPED_GROUP_MARKER
+            and (
+                (g.get("group_kind") == "new_only")
+                or (
+                    not g.get("group_kind")
+                    and g.get("kind") == "binding"
+                    and g.get("call_task_refs")
+                    and not g.get("project_task_refs")
+                )
             )
         ]
         await plog.log(f"You marked {len(x0_groups)} group(s) as new in matching. I'll check each one against past calls.")
@@ -1319,7 +1487,10 @@ async def _run_verify_not_discussed_background(call_id: str) -> None:
         # EPIC-20: prefer per-group routing when finalized_topic_id is set.
         # 'old_only' groups represent specific previous-call tasks the user
         # said weren't progressed this call → Pass 2 verifies that claim.
-        all_groups = load_task_match_groups(call_id, db=db)
+        all_groups = [
+            g for g in load_task_match_groups(call_id, db=db)
+            if g.get("target_topic_name") != DROPPED_GROUP_MARKER
+        ]
         epic20_mode = any(g.get("finalized_topic_id") for g in all_groups)
         previous = _get_previous_topics(project_id, db)
 
@@ -1428,14 +1599,17 @@ async def _run_extract_updates_background(call_id: str) -> None:
         await plog.log("Loading task-level match groups…")
         groups = load_task_match_groups(call_id, db=db)
         # EPIC-20: Pass 3 fires on 'mixed' groups (call+project tasks both present).
-        # Legacy: 'binding' kind with project_task_refs.
+        # Legacy: 'binding' kind with project_task_refs. Skip dropped pseudo-group.
         binding_groups = [
             g for g in groups
-            if (g.get("group_kind") == "mixed")
-            or (
-                not g.get("group_kind")
-                and g.get("kind") == "binding"
-                and g.get("project_task_refs")
+            if g.get("target_topic_name") != DROPPED_GROUP_MARKER
+            and (
+                (g.get("group_kind") == "mixed")
+                or (
+                    not g.get("group_kind")
+                    and g.get("kind") == "binding"
+                    and g.get("project_task_refs")
+                )
             )
         ]
         merged_topic_ids = set()
@@ -1464,6 +1638,15 @@ async def _run_extract_updates_background(call_id: str) -> None:
         pending_row = db.table("calls").select("pending_topics").eq("id", call_id).execute().data
         pending = (pending_row[0] or {}).get("pending_topics") or []
         pending_tasks_by_topic_name = {(p.get("name") or "").lower(): p.get("tasks", []) for p in pending}
+        # EPIC-20: also build a flat task_id → task lookup so we don't depend on
+        # call_topic_name being set in the refs (TaskGroupingStage writes refs
+        # with just {task_id}, no topic name).
+        pending_tasks_by_id: dict[str, dict] = {}
+        for p in pending:
+            for t in (p.get("tasks") or []):
+                tid = t.get("task_id")
+                if tid:
+                    pending_tasks_by_id[tid] = t
 
         # All transcripts in project
         all_calls = db.table("calls").select("id, transcript, created_at").eq("project_id", project_id).order("created_at").execute().data
@@ -1485,17 +1668,28 @@ async def _run_extract_updates_background(call_id: str) -> None:
                 continue
             # Collect new bound tasks for this topic
             new_bound = []
+            seen_task_ids: set[str] = set()
             for g in binding_groups:
                 pt_ids = {r.get("task_id") for r in g["project_task_refs"] if r.get("project_topic_id") == topic_id}
                 if not pt_ids:
                     continue
                 for r in g["call_task_refs"]:
-                    name = (r.get("call_topic_name") or "").lower()
-                    if not r.get("task_id"):
+                    tid = r.get("task_id")
+                    if not tid or tid in seen_task_ids:
                         continue
-                    for t in pending_tasks_by_topic_name.get(name, []):
-                        if t.get("task_id") == r["task_id"]:
-                            new_bound.append(t)
+                    # EPIC-20 path: direct task_id lookup (no topic_name dependency)
+                    t = pending_tasks_by_id.get(tid)
+                    if t:
+                        new_bound.append(t)
+                        seen_task_ids.add(tid)
+                        continue
+                    # Legacy EPIC-19 path: scoped lookup via call_topic_name
+                    name = (r.get("call_topic_name") or "").lower()
+                    for pt in pending_tasks_by_topic_name.get(name, []):
+                        if pt.get("task_id") == tid:
+                            new_bound.append(pt)
+                            seen_task_ids.add(tid)
+                            break
             if not new_bound:
                 await plog.log(f"  ⚠ Topic '{topic['name']}' has no bound new tasks — skip")
                 continue

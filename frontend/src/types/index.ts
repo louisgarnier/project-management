@@ -24,6 +24,10 @@ export type MatchGroup = {
   call_task_refs?: Array<{ call_topic_name?: string; task_id?: string }>;
   project_task_refs?: Array<{ project_topic_id?: string; task_id?: string }>;
   target_topic_name?: string | null;
+  // EPIC-20: each group has exactly one finalized topic (resolved by backend match-groups endpoint)
+  finalized_topic_id?: string | null;
+  finalized_topic_name?: string | null;
+  group_kind?: "new_only" | "old_only" | "mixed" | null;
 };
 
 export interface Call {
@@ -562,4 +566,8 @@ export interface TaskMatchGroup {
   call_task_refs: TaskRef[];
   project_task_refs: TaskRef[];
   target_topic_name?: string | null;  // EPIC-19: optional new topic name
+  // EPIC-20 additions
+  finalized_topic_id?: string | null;
+  finalized_topic_name?: string | null;
+  group_kind?: "new_only" | "old_only" | "mixed" | null;
 }

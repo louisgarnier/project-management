@@ -22,9 +22,13 @@ export default function TopicConfirmationStage({ callId, onAdvance }: Props) {
   const [existing, setExisting] = useState<ExistingTopicEntry[]>([]);
   const [candidates, setCandidates] = useState<NewTopicCandidate[]>([]);
   const [finalized, setFinalized] = useState<FinalizedTopic[]>([]);
+  const [callStage, setCallStage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const STAGE_ORDER = ["transcript", "call_topics", "topic_confirmation", "project_matching", "project_updates", "artifacts", "done"];
+  const isPastStage = callStage !== null && STAGE_ORDER.indexOf(callStage) > STAGE_ORDER.indexOf("topic_confirmation");
 
   useEffect(() => {
     let alive = true;
@@ -36,6 +40,7 @@ export default function TopicConfirmationStage({ callId, onAdvance }: Props) {
         if (!alive) return;
         setExisting(d.existing);
         setCandidates(d.new_candidates);
+        setCallStage(d.kanban_stage);
         if (d.finalized.length > 0) {
           setFinalized(d.finalized);
         } else {
@@ -253,15 +258,20 @@ export default function TopicConfirmationStage({ callId, onAdvance }: Props) {
             ))
           )}
           <button
-            disabled={saving || finalized.length === 0}
+            disabled={saving || finalized.length === 0 || isPastStage}
             onClick={save}
+            title={isPastStage ? "This call is already past topic confirmation. Use rollback to edit." : undefined}
             style={{
               ...saveBtn,
-              opacity: saving || finalized.length === 0 ? 0.5 : 1,
-              cursor: saving || finalized.length === 0 ? "not-allowed" : "pointer",
+              opacity: saving || finalized.length === 0 || isPastStage ? 0.5 : 1,
+              cursor: saving || finalized.length === 0 || isPastStage ? "not-allowed" : "pointer",
             }}
           >
-            {saving ? "Saving…" : `Save & advance to project matching (${finalized.length})`}
+            {saving
+              ? "Saving…"
+              : isPastStage
+                ? `🔒 Already past — rollback to edit (${finalized.length})`
+                : `Save & advance to project matching (${finalized.length})`}
           </button>
         </Column>
       </div>

@@ -186,6 +186,9 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             call_task_refs?: Array<{ call_topic_name?: string; task_id?: string }>;
             project_task_refs?: Array<{ project_topic_id?: string; task_id?: string }>;
             target_topic_name?: string | null;
+            finalized_topic_id?: string | null;
+            finalized_topic_name?: string | null;
+            group_kind?: "new_only" | "old_only" | "mixed" | null;
           }) => ({
             id: x.id,  // EPIC-19 Phase B: preserve DB id for per-group verdict lookup
             project_topic_ids: x.project_topic_ids ?? [],
@@ -195,6 +198,10 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             call_task_refs: x.call_task_refs ?? [],
             project_task_refs: x.project_task_refs ?? [],
             target_topic_name: x.target_topic_name ?? null,
+            // EPIC-20: each group has ONE finalized topic name (resolved by backend)
+            finalized_topic_id: x.finalized_topic_id ?? null,
+            finalized_topic_name: x.finalized_topic_name ?? null,
+            group_kind: x.group_kind ?? null,
           }))
         );
         setPending(p);
@@ -501,7 +508,18 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
   const stage1Done = eff.verify_new_status === "done";
   const stage2Done = eff.verify_not_discussed_status === "done";
   const stage3Done = eff.extract_updates_status === "done";
-  const allDone = stage1Done && stage2Done && stage3Done;
+  // EPIC-20: Pass 2 is only required if Section 2 has work.
+  // If Section 2 is empty (no old_only groups + no untouched topics) we skip its gate.
+  // sections is declared just above via useMemo; reference it through a guarded access
+  // to avoid a TDZ in case of HMR re-execution.
+  const stage2Required =
+    (sections?.oldGroups?.length ?? 0) > 0 || (sections?.notInCall?.length ?? 0) > 0;
+  const stage1Required = (sections?.newGroups?.length ?? 0) > 0;
+  const stage3Required = (sections?.mergedGroups?.length ?? 0) > 0;
+  const allDone =
+    (!stage1Required || stage1Done) &&
+    (!stage2Required || stage2Done) &&
+    (!stage3Required || stage3Done);
 
   const triggerPass = async (which: "①" | "②" | "③") => {
     setBusy(which);
@@ -773,9 +791,9 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
               <button
                 disabled={busy !== null || sections.newGroups.length === 0}
                 onClick={() => triggerPass("①")}
-                style={passButton(stage1Done)}
+                style={passButton(stage1Done, sections.newGroups.length === 0)}
               >
-                {busy === "①" ? "Running…" : stage1Done ? "Re-verify ①" : "① Verify new"}
+                {busy === "①" ? "Running…" : sections.newGroups.length === 0 ? "① rien à vérifier" : stage1Done ? "Re-verify ①" : "① Verify new"}
               </button>
             }
             done={stage1Done}
@@ -817,6 +835,11 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                   >
                     New group {ng.groupIndex + 1}
                   </span>
+                  {ng.g.finalized_topic_name && (
+                    <span style={topicBadge} title="Topic finalisé (Stage 1)">
+                      🎯 {ng.g.finalized_topic_name}
+                    </span>
+                  )}
                   {ng.candidateTopicNames.length > 0 && (
                     <span style={{ fontSize: 11, color: "#42526e" }}>
                       {ng.candidateTopicNames.join(", ")}
@@ -953,7 +976,9 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
           })}
         </section>
 
-        {/* Section 2 — Old not discussed (0:X groups + untouched topics fallback) */}
+        {/* Section 2 — Old not discussed. Hidden when nothing to verify (e.g. first
+            call or any call without untouched prior tasks). */}
+        {(sections.oldGroups.length > 0 || sections.notInCall.length > 0) && (
         <section style={{ marginBottom: 24 }}>
           <SectionHeader
             title="2. Old tasks not discussed in this call"
@@ -965,9 +990,15 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
               <button
                 disabled={!stage1Done || busy !== null || (sections.oldGroups.length === 0 && sections.notInCall.length === 0)}
                 onClick={() => triggerPass("②")}
-                style={passButton(stage2Done)}
+                style={passButton(stage2Done, sections.oldGroups.length === 0 && sections.notInCall.length === 0)}
               >
-                {busy === "②" ? "Running…" : stage2Done ? "Re-verify ②" : "② Verify not discussed"}
+                {busy === "②"
+                  ? "Running…"
+                  : (sections.oldGroups.length === 0 && sections.notInCall.length === 0)
+                    ? "② rien à vérifier"
+                    : stage2Done
+                      ? "Re-verify ②"
+                      : "② Verify not discussed"}
               </button>
             }
             done={stage2Done}
@@ -1032,6 +1063,11 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
                   >
                     Old group {og.groupIndex + 1}
                   </span>
+                  {og.g.finalized_topic_name && (
+                    <span style={topicBadge} title="Topic finalisé (Stage 1)">
+                      🎯 {og.g.finalized_topic_name}
+                    </span>
+                  )}
                   {og.projectTopicNames.length > 0 && (
                     <span style={{ fontSize: 11, color: "#42526e" }}>
                       {og.projectTopicNames.join(", ")}
@@ -1110,6 +1146,7 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             );
           })}
         </section>
+        )}
 
         {/* Section 3 — Merged groups (one card per merged binding group) */}
         <section style={{ marginBottom: 24 }}>
@@ -1118,15 +1155,25 @@ export default function ProjectUpdatesStage({ call, projectId, onValidateComplet
             count={sections.mergedGroups.length}
             button={
               <button
-                disabled={!stage2Done || busy !== null || sections.mergedGroups.length === 0}
+                disabled={
+                  busy !== null
+                  || sections.mergedGroups.length === 0
+                  || (!stage2Done && (sections.oldGroups.length > 0 || sections.notInCall.length > 0))
+                }
                 onClick={() => triggerPass("③")}
-                style={passButton(stage3Done)}
+                style={passButton(stage3Done, sections.mergedGroups.length === 0)}
               >
-                {busy === "③" ? "Running…" : stage3Done ? "Re-extract ③" : "③ Extract updates"}
+                {busy === "③"
+                  ? "Running…"
+                  : sections.mergedGroups.length === 0
+                    ? "③ rien à extraire"
+                    : stage3Done
+                      ? "Re-extract ③"
+                      : "③ Extract updates"}
               </button>
             }
             done={stage3Done}
-            disabled={!stage2Done}
+            disabled={!stage2Done && (sections.oldGroups.length > 0 || sections.notInCall.length > 0)}
           />
           <ProgressLog
             entries={readProgress(eff.extract_updates_cache)}
@@ -2363,16 +2410,17 @@ const cardStyle: React.CSSProperties = {
   background: "white",
 };
 
-const passButton = (done: boolean): React.CSSProperties => ({
+const passButton = (done: boolean, disabled: boolean = false): React.CSSProperties => ({
   padding: "5px 12px",
   borderRadius: 4,
   border: "none",
   fontFamily: "inherit",
-  background: done ? "#36b37e" : "#0052cc",
-  color: "white",
+  background: disabled ? "#f4f5f7" : done ? "#36b37e" : "#0052cc",
+  color: disabled ? "#97a0af" : "white",
   fontSize: 12,
   fontWeight: 600,
-  cursor: "pointer",
+  cursor: disabled ? "not-allowed" : "pointer",
+  opacity: disabled ? 0.7 : 1,
 });
 
 const badgeGreen: React.CSSProperties = {
@@ -2403,6 +2451,17 @@ const badgeRed: React.CSSProperties = {
   background: "#fff1f0",
   color: "#ae2a19",
   border: "1px solid #ffbdad",
+};
+
+// EPIC-20: finalized topic name on each group card
+const topicBadge: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  padding: "2px 8px",
+  borderRadius: 3,
+  background: "#e9f2ff",
+  color: "#0747a6",
+  border: "1px solid #cce0ff",
 };
 
 const decisionButton: React.CSSProperties = {

@@ -1046,7 +1046,10 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
                 f"🗄️ [Aggregate] Cleaned {len(affected_ids)} stale topics before re-save for call {call_id}"
             )
 
-        # Call 1: auto-advance — save all as new topics and jump to artifacts
+        # EPIC-20 (rev): Call 1 skips topic_confirmation entirely.
+        # The user already curates topics/tasks in the Call Topics window
+        # (extraction UI), and there's nothing to match against. Materialize
+        # topics + topic_updates directly and jump to artifacts.
         new_topics_to_save = [
             TopicUpdate(**{**t, "topic_id": None, "disposition": None})
             for t in call_topics
@@ -1056,25 +1059,21 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
             "id", call_id
         ).execute()
         db.table("calls").update(
-            {
-                "extraction_cache": None,
-                "extraction_status": "idle",
-            }
+            {"extraction_cache": None, "extraction_status": "idle"}
         ).eq("id", call_id).execute()
         logger.info(
-            f"✅ [Topics] Call 1 auto-advanced: saved {len(new_topics_to_save)} topics → artifacts"
+            f"✅ [Topics] Call 1: saved {len(new_topics_to_save)} topics → artifacts (no Stage 1)"
         )
         return {"auto_advanced": True, "call_number": call_number}
 
-    # Call 2+: save pending topics and advance to project_matching.
-    # Aggregate per-task fields to topic-level so downstream stages
-    # (project_matching, project_updates, artifacts) see the data via their
-    # existing topic-level reads. tasks[] keep their per-task fields too.
+    # Call 2+: save pending topics and advance to topic_confirmation (EPIC-20 Stage 1).
+    # User decides which topics are alive at topic_confirmation, then advances to
+    # project_matching (now the EPIC-20 Stage 2 task grouping).
     pending_for_save = [_topic_with_topic_level_aggregation(t) for t in call_topics]
     db.table("calls").update(
         {
             "pending_topics": pending_for_save,
-            "kanban_stage": "project_matching",
+            "kanban_stage": "topic_confirmation",
         }
     ).eq("id", call_id).execute()
     db.table("calls").update(
@@ -1084,9 +1083,9 @@ async def aggregate_topics(call_id: str, call_topics: list[dict]) -> dict:
         }
     ).eq("id", call_id).execute()
     logger.info(
-        f"✅ [Topics] Step-2 saved {len(call_topics)} pending topics → project_matching"
+        f"✅ [Topics] Step-2 saved {len(call_topics)} pending topics → topic_confirmation"
     )
-    return {"advanced_to": "project_matching", "call_number": call_number}
+    return {"advanced_to": "topic_confirmation", "call_number": call_number}
 
 
 async def get_pending_topics(call_id: str) -> list[dict]:
@@ -1498,6 +1497,7 @@ async def generate_brief(call_id: str) -> dict:
 _ROLLBACK_STAGE_ORDER = [
     "transcript",
     "call_topics",
+    "topic_confirmation",
     "project_matching",
     "project_updates",
     "artifacts",

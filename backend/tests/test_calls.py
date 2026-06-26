@@ -277,6 +277,53 @@ def test_rollback_cascades_later_calls_to_call_topics():
     assert ("call-3", "call_topics") in calls_made
 
 
+def test_rollback_from_topic_confirmation_to_call_topics():
+    """A call sitting at topic_confirmation (EPIC-20 Stage 1) must be rollback-able.
+
+    Regression: topic_confirmation was missing from _ROLLBACK_STAGE_ORDER, so the
+    validity check raised 422 "Call has unknown stage 'topic_confirmation'".
+    """
+    mc = _mock_client()
+    call_count = 0
+
+    def table_side(name):
+        nonlocal call_count
+        m = MagicMock()
+        if name == "calls":
+            call_count += 1
+            if call_count == 1:
+                # verify call exists + get current stage
+                m.select.return_value.eq.return_value.execute.return_value = MagicMock(
+                    data=[{"kanban_stage": "topic_confirmation"}]
+                )
+            elif call_count == 2:
+                # get project_id + created_at for cascade
+                m.select.return_value.eq.return_value.execute.return_value = MagicMock(
+                    data=[{"project_id": PROJECT_ID, "created_at": "2026-04-09T01:00:00Z"}]
+                )
+            elif call_count == 3:
+                # fetch later calls — none (this is the last call)
+                m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = MagicMock(
+                    data=[]
+                )
+            else:
+                m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+        else:
+            m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+        return m
+
+    mc.table.side_effect = table_side
+
+    with patch("backend.routers.calls.get_client", return_value=mc), \
+         patch("backend.routers.calls.rollback_to_stage") as mock_rollback:
+        mock_rollback.return_value = {"rolled_back_to": "call_topics"}
+        r = client.post(f"/api/calls/{CALL_ID}/rollback", json={"target_stage": "call_topics"})
+
+    assert r.status_code == 200, r.text
+    calls_made = [c.args for c in mock_rollback.call_args_list]
+    assert (CALL_ID, "call_topics") in calls_made
+
+
 def test_lock_call():
     mc = _mock_client()
     mc.table.return_value.update.return_value.eq.return_value.execute.return_value = (

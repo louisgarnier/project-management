@@ -4,15 +4,16 @@ import { useRouter, useParams } from "next/navigation";
 import type { Call, KanbanStage } from "@/types";
 
 const STAGES: { key: KanbanStage; label: string }[] = [
-  { key: "transcript",       label: "Transcript"       },
-  { key: "call_topics",      label: "Call Topics"      },
-  { key: "project_matching", label: "Project Matching" },
-  { key: "project_updates",  label: "Project Updates"  },
-  { key: "artifacts",        label: "Artifacts"        },
-  { key: "done",             label: "Done"             },
+  { key: "transcript",         label: "Transcript"         },
+  { key: "call_topics",        label: "Call Topics"        },
+  { key: "topic_confirmation", label: "Topic Confirmation" },
+  { key: "project_matching",   label: "Project Matching"   },
+  { key: "project_updates",    label: "Project Updates"    },
+  { key: "artifacts",          label: "Artifacts"          },
+  { key: "done",               label: "Done"               },
 ];
 const STAGE_ORDER: KanbanStage[] = [
-  "transcript", "call_topics", "project_matching", "project_updates", "artifacts", "done"
+  "transcript", "call_topics", "topic_confirmation", "project_matching", "project_updates", "artifacts", "done"
 ];
 
 const STAGE_INDEX: Record<KanbanStage, number> = Object.fromEntries(
